@@ -7,7 +7,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('http://localhost:8080/api/health')
+    fetch('http://localhost:8081/api/health')
       .then((res) => res.json())
       .then((data) => {
         setHealth(data);
@@ -50,7 +50,7 @@ export default function Home() {
           ) : (
             <div className="text-center space-y-2">
               <p className="text-red-400 font-bold">Backend Unreachable</p>
-              <p className="text-xs text-gray-500">Make sure the Golang server is running on port 8080</p>
+              <p className="text-xs text-gray-500">Make sure the Golang server is running on port 8081</p>
             </div>
           )}
         </div>
