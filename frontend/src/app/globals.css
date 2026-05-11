@@ -1,26 +1,52 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  /* Colors */
+  --color-navy: #0b1f35;
+  --color-navy-mid: #112d47;
+  --color-teal: #0e8a7a;
+  --color-teal-light: #12a896;
+  --color-cream: #faf8f5;
+  --color-text-mid: #3a5068;
+  --color-text-muted: #7a96aa;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  /* Fonts */
+  --font-serif: var(--font-dm-serif);
+  --font-outfit: var(--font-outfit);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  /* Animations */
+  --animate-fade-up: fadeUp 0.6s ease both;
+  --animate-fade-up-delay: fadeUp 0.6s 0.2s ease both;
+  --animate-float: float 5s ease-in-out infinite;
+  --animate-spin-slow: spin 0.6s linear infinite;
+  --animate-bar-grow: barGrow 1s 0.8s ease both;
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
   }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+  }
+  @keyframes barGrow {
+    from { width: 0%; }
+    to { width: 90%; }
+  }
+}
+
+:root {
+  --background: #faf8f5;
+  --foreground: #0b1f35;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-outfit), sans-serif;
+}
+
+/* Custom Utilities if needed */
+.text-balance {
+  text-wrap: balance;
 }
