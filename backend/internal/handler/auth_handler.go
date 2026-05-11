@@ -1,13 +1,16 @@
 package handler
 
 import (
+	"crypto/rand"
 	"log"
+	"math/big"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
+	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -15,11 +18,12 @@ import (
 )
 
 type AuthHandler struct {
-	repo *repository.UserRepository
+	repo      *repository.UserRepository
+	emailServ *service.EmailService
 }
 
-func NewAuthHandler(repo *repository.UserRepository) *AuthHandler {
-	return &AuthHandler{repo: repo}
+func NewAuthHandler(repo *repository.UserRepository, emailServ *service.EmailService) *AuthHandler {
+	return &AuthHandler{repo: repo, emailServ: emailServ}
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -35,11 +39,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	token := uuid.New().String()
 	user := &model.User{
-		Name:         req.Name,
-		Email:        req.Email,
-		PasswordHash: string(hashedPassword),
-		Role:         "owner",
+		Name:              req.Name,
+		Email:             req.Email,
+		PasswordHash:      string(hashedPassword),
+		Role:              "owner",
+		VerificationToken: &token,
 	}
 
 	if err := h.repo.Create(c.Request.Context(), user); err != nil {
@@ -48,7 +54,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully", "user": user})
+	// Send verification email
+	_ = h.emailServ.SendVerificationEmail(user.Email, token)
+
+	c.JSON(http.StatusCreated, gin.H{"message": "User registered successfully. Please check your email for verification.", "user": user})
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -61,6 +70,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	user, err := h.repo.FindByEmail(c.Request.Context(), req.Email)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
+		return
+	}
+
+	if !user.IsVerified {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Please verify your email before logging in."})
 		return
 	}
 
@@ -79,6 +93,97 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		User:  *user,
 		Token: token,
 	})
+}
+
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Verification token is required"})
+		return
+	}
+
+	user, err := h.repo.FindByVerificationToken(c.Request.Context(), token)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Invalid or expired verification token"})
+		return
+	}
+
+	if err := h.repo.VerifyUser(c.Request.Context(), user.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify user"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email verified successfully. You can now login."})
+}
+
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req model.ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.repo.FindByEmail(c.Request.Context(), req.Email)
+	if err != nil {
+		// Don't reveal if email exists or not for security, but here we'll just return success to mock
+		c.JSON(http.StatusOK, gin.H{"message": "If your email is registered, you will receive an OTP code."})
+		return
+	}
+
+	otp := generateOTP(6)
+	expiresAt := time.Now().Add(10 * time.Minute)
+
+	if err := h.repo.SetOTP(c.Request.Context(), user.Email, otp, expiresAt); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to set OTP"})
+		return
+	}
+
+	_ = h.emailServ.SendOTPEmail(user.Email, otp)
+
+	c.JSON(http.StatusOK, gin.H{"message": "OTP sent to your email."})
+}
+
+func (h *AuthHandler) VerifyOTP(c *gin.Context) {
+	var req model.VerifyOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.repo.FindByEmail(c.Request.Context(), req.Email)
+	if err != nil || user.OTPCode == nil || *user.OTPCode != req.OTP || user.OTPExpiresAt.Before(time.Now()) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired OTP"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "OTP verified successfully."})
+}
+
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req model.ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.repo.FindByEmail(c.Request.Context(), req.Email)
+	if err != nil || user.OTPCode == nil || *user.OTPCode != req.OTP || user.OTPExpiresAt.Before(time.Now()) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid or expired OTP"})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	if err := h.repo.ResetPassword(c.Request.Context(), user.Email, string(hashedPassword)); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reset password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Password reset successfully. You can now login."})
 }
 
 func (h *AuthHandler) Me(c *gin.Context) {
@@ -111,10 +216,20 @@ func (h *AuthHandler) generateToken(userID string) (string, error) {
 
 	claims := jwt.MapClaims{
 		"sub": userID,
-		"exp": time.Now().Add(time.Hour * 24).Unix(),
+		"exp": time.Now().Add(time.Hour * 24 * 30).Unix(), // 30 days for token
 		"iat": time.Now().Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
+}
+
+func generateOTP(n int) string {
+	const digits = "0123456789"
+	result := make([]byte, n)
+	for i := 0; i < n; i++ {
+		num, _ := rand.Int(rand.Reader, big.NewInt(int64(len(digits))))
+		result[i] = digits[num.Int64()]
+	}
+	return string(result)
 }

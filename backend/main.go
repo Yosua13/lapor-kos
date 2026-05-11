@@ -9,6 +9,7 @@ import (
 	"github.com/Yosua13/lapor-kos/backend/internal/handler"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
+	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -44,11 +45,14 @@ func main() {
 	}
 	log.Println("Successfully connected to PostgreSQL via pgxpool")
 
+	// Initialize services
+	emailServ := service.NewEmailService()
+
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(dbPool)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(userRepo)
+	authHandler := handler.NewAuthHandler(userRepo, emailServ)
 
 	router := gin.Default()
 
@@ -82,6 +86,10 @@ func main() {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.GET("/verify-email", authHandler.VerifyEmail)
+			auth.POST("/forgot-password", authHandler.ForgotPassword)
+			auth.POST("/verify-otp", authHandler.VerifyOTP)
+			auth.POST("/reset-password", authHandler.ResetPassword)
 			auth.GET("/me", middleware.AuthMiddleware(), authHandler.Me)
 		}
 	}

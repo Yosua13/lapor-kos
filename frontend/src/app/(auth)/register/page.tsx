@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Home, AlertCircle, Loader2, User } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, Home, AlertCircle, Loader2, User, CheckCircle2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import AuthCarousel from '@/components/AuthCarousel';
 
@@ -23,6 +23,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
 
   const {
     register,
@@ -41,7 +42,7 @@ export default function RegisterPage() {
         method: 'POST',
         body: JSON.stringify(data),
       });
-      router.push('/login');
+      setShowPopup(true);
     } catch (err: any) {
       setError(err.message || 'Terjadi kesalahan saat mendaftar. Silakan coba lagi.');
     } finally {
@@ -199,25 +200,42 @@ export default function RegisterPage() {
             </button>
           </form>
 
-          {/* Divider */}
-          <div className="my-10 flex items-center gap-4 text-text-muted text-[13px]">
-            <div className="flex-1 h-px bg-gray-200" />
-            <span>atau daftar dengan</span>
-            <div className="flex-1 h-px bg-gray-200" />
-          </div>
-
-          {/* Google Button */}
-          <button className="w-full bg-white border border-gray-200 hover:border-gray-300 py-3.5 rounded-xl font-medium text-navy flex items-center justify-center gap-3 transition-all hover:bg-gray-50 active:scale-[0.98]">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19.642 10.231c0-.704-.063-1.38-.18-2.03H10v3.841h5.405c-.233 1.254-.939 2.315-2.003 3.027v2.516h3.245c1.898-1.748 2.995-4.321 2.995-7.354z" fill="#4285F4"/>
-              <path d="M10 20c2.7 0 4.964-.895 6.621-2.423l-3.245-2.516c-.9.602-2.052.958-3.376.958-2.597 0-4.793-1.754-5.577-4.111H1.185v2.599C2.836 17.766 6.166 20 10 20z" fill="#34A853"/>
-              <path d="M4.423 11.908c-.2-.602-.314-1.246-.314-1.908s.114-1.306.314-1.908V5.493H1.185C.428 7.004 0 8.7 0 10.5s.428 3.496 1.185 5.007l3.238-2.599z" fill="#FBBC05"/>
-              <path d="M10 3.977c1.468 0 2.786.504 3.823 1.495l2.868-2.868C14.959.941 12.695 0 10 0 6.166 0 2.836 2.234 1.185 5.493l3.238 2.599c.784-2.357 2.98-4.115 5.577-4.115z" fill="#EA4335"/>
-            </svg>
-            <span>Daftar dengan Google</span>
-          </button>
+          {/* Footer Footer */}
+          <p className="mt-10 text-center text-[12px] text-text-muted leading-relaxed">
+            Dengan mendaftar, Anda menyetujui{' '}
+            <Link href="/terms" className="text-teal font-medium hover:underline">Syarat & Ketentuan</Link>
+            {' '}dan{' '}
+            <Link href="/privacy" className="text-teal font-medium hover:underline">Kebijakan Privasi</Link> kami.
+          </p>
         </div>
       </section>
+
+      {/* Success Popup */}
+      {showPopup && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-navy/60 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl p-8 max-w-[400px] w-full shadow-2xl text-center relative animate-in zoom-in-95 duration-300">
+            <button 
+              onClick={() => { setShowPopup(false); router.push('/login'); }}
+              className="absolute top-4 right-4 text-text-muted hover:text-navy transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <div className="w-20 h-20 bg-teal/10 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle2 className="w-10 h-10 text-teal" />
+            </div>
+            <h3 className="font-serif text-2xl text-navy mb-4">Cek Email Anda</h3>
+            <p className="text-text-mid text-[15px] leading-relaxed mb-8">
+              Kami telah mengirimkan tautan verifikasi ke email Anda. Silakan klik tautan tersebut untuk mengaktifkan akun Anda.
+            </p>
+            <button
+              onClick={() => { setShowPopup(false); router.push('/login'); }}
+              className="w-full bg-teal text-white font-semibold py-3.5 rounded-xl hover:bg-teal-light transition-all"
+            >
+              Kembali ke Login
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
