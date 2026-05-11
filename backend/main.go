@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -6,8 +6,11 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/handler"
+	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
+	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
 
@@ -28,14 +31,24 @@ func main() {
 		log.Fatal("DATABASE_URL environment variable is not set")
 	}
 
-	// Connect to database
-	conn, err := pgx.Connect(context.Background(), dbURL)
+	// Connect to database using pgxpool
+	dbPool, err := pgxpool.New(context.Background(), dbURL)
 	if err != nil {
-		log.Printf("Unable to connect to database: %v\n", err)
-	} else {
-		defer conn.Close(context.Background())
-		log.Println("Successfully connected to PostgreSQL")
+		log.Fatalf("Unable to connect to database: %v\n", err)
 	}
+	defer dbPool.Close()
+
+	// Verify connection
+	if err := dbPool.Ping(context.Background()); err != nil {
+		log.Fatalf("Database ping failed: %v\n", err)
+	}
+	log.Println("Successfully connected to PostgreSQL via pgxpool")
+
+	// Initialize repositories
+	userRepo := repository.NewUserRepository(dbPool)
+
+	// Initialize handlers
+	authHandler := handler.NewAuthHandler(userRepo)
 
 	router := gin.Default()
 
@@ -54,19 +67,24 @@ func main() {
 		c.Next()
 	})
 
-	router.GET("/api/health", func(c *gin.Context) {
-		status := "UP"
-		dbStatus := "Connected"
-		if err != nil {
-			dbStatus = "Disconnected"
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":   status,
-			"database": dbStatus,
-			"message":  "Lapor Kos API is running",
+	// Routes
+	api := router.Group("/api")
+	{
+		api.GET("/health", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"status":   "UP",
+				"database": "Connected",
+				"message":  "Lapor Kos API is running",
+			})
 		})
-	})
+
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", authHandler.Register)
+			auth.POST("/login", authHandler.Login)
+			auth.GET("/me", middleware.AuthMiddleware(), authHandler.Me)
+		}
+	}
 
 	log.Printf("Server starting on port %s...", port)
 	if err := router.Run(":" + port); err != nil {
