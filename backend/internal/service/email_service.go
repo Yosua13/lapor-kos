@@ -10,6 +10,11 @@ import (
 	"gopkg.in/gomail.v2"
 )
 
+type EmailServiceInterface interface {
+	SendVerificationEmail(email string, token string) error
+	SendOTPEmail(email string, otp string) error
+}
+
 type EmailService struct {
 	host        string
 	port        int

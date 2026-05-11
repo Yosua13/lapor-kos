@@ -9,6 +9,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type UserRepo interface {
+	Create(ctx context.Context, user *model.User) error
+	FindByEmail(ctx context.Context, email string) (*model.User, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*model.User, error)
+	FindByVerificationToken(ctx context.Context, token string) (*model.User, error)
+	VerifyUser(ctx context.Context, id uuid.UUID) error
+	SetOTP(ctx context.Context, email string, code string, expiresAt time.Time) error
+	ResetPassword(ctx context.Context, email string, newPasswordHash string) error
+}
+
 type UserRepository struct {
 	db *pgxpool.Pool
 }
