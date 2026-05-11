@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
-const TOKEN_KEY = 'lapor_kos_token';
+const TOKEN_KEY = 'auth_token';
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get(TOKEN_KEY)?.value;
