@@ -18,11 +18,11 @@ import (
 )
 
 type AuthHandler struct {
-	repo      *repository.UserRepository
-	emailServ *service.EmailService
+	repo      repository.UserRepo
+	emailServ service.EmailServiceInterface
 }
 
-func NewAuthHandler(repo *repository.UserRepository, emailServ *service.EmailService) *AuthHandler {
+func NewAuthHandler(repo repository.UserRepo, emailServ service.EmailServiceInterface) *AuthHandler {
 	return &AuthHandler{repo: repo, emailServ: emailServ}
 }
 
