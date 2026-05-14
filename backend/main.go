@@ -60,8 +60,8 @@ func main() {
 
 	router := gin.Default()
 
-	// Static files for uploads
-	router.Static("/uploads", "./uploads")
+	// Static files for uploads served from shared frontend folder
+	router.Static("/uploads", "../frontend/public/uploads")
 
 	// CORS middleware
 	router.Use(func(c *gin.Context) {
