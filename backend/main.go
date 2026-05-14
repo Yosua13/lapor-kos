@@ -50,11 +50,18 @@ func main() {
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(dbPool)
+	roomRepo := repository.NewRoomRepository(dbPool)
+	tenantRepo := repository.NewTenantRepository(dbPool)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(userRepo, emailServ)
+	roomHandler := handler.NewRoomHandler(roomRepo)
+	tenantHandler := handler.NewTenantHandler(tenantRepo)
 
 	router := gin.Default()
+
+	// Static files for uploads
+	router.Static("/uploads", "./uploads")
 
 	// CORS middleware
 	router.Use(func(c *gin.Context) {
@@ -91,6 +98,26 @@ func main() {
 			auth.POST("/verify-otp", authHandler.VerifyOTP)
 			auth.POST("/reset-password", authHandler.ResetPassword)
 			auth.GET("/me", middleware.AuthMiddleware(), authHandler.Me)
+		}
+
+		// Room routes (Protected)
+		rooms := api.Group("/rooms", middleware.AuthMiddleware())
+		{
+			rooms.POST("", roomHandler.CreateRoom)
+			rooms.GET("", roomHandler.GetRooms)
+			rooms.GET("/:id", roomHandler.GetRoom)
+			rooms.PUT("/:id", roomHandler.UpdateRoom)
+			rooms.DELETE("/:id", roomHandler.DeleteRoom)
+		}
+
+		// Tenant routes (Protected)
+		tenants := api.Group("/tenants", middleware.AuthMiddleware())
+		{
+			tenants.POST("", tenantHandler.CreateTenant)
+			tenants.GET("", tenantHandler.GetTenants)
+			tenants.GET("/:id", tenantHandler.GetTenant)
+			tenants.PUT("/:id", tenantHandler.UpdateTenant)
+			tenants.DELETE("/:id", tenantHandler.DeleteTenant)
 		}
 	}
 

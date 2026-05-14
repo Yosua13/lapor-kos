@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* Colors */
+  /* Original Colors for Auth & Layouts */
   --color-navy: #0b1f35;
   --color-navy-mid: #112d47;
   --color-teal: #0e8a7a;
@@ -10,9 +10,17 @@
   --color-text-mid: #3a5068;
   --color-text-muted: #7a96aa;
 
+  /* Colors - The Dynamic Pulse Palette */
+  --color-brand-navy: #0F172A;
+  --color-brand-teal: #14B8A6;
+  --color-brand-teal-light: #2DD4BF;
+  --color-brand-cream: #F8FAFC;
+  
   /* Fonts */
   --font-serif: var(--font-dm-serif);
   --font-outfit: var(--font-outfit);
+  --font-display: "Outfit", sans-serif;
+  --font-body: "Plus Jakarta Sans", sans-serif;
 
   /* Animations */
   --animate-fade-up: fadeUp 0.6s ease both;
@@ -20,6 +28,12 @@
   --animate-float: float 5s ease-in-out infinite;
   --animate-spin-slow: spin 0.6s linear infinite;
   --animate-bar-grow: barGrow 1s 0.8s ease both;
+
+  --animate-pulse-teal: pulseTeal 2s infinite;
+  --animate-slide-up: slideUp 0.6s cubic-bezier(0.2, 1, 0.3, 1) both;
+  --animate-grow-width: growWidth 1.5s cubic-bezier(0.65, 0, 0.35, 1) both;
+  --animate-grow-height: growHeight 1.5s cubic-bezier(0.65, 0, 0.35, 1) both;
+  --animate-stroke-fill: strokeFill 2s cubic-bezier(0.65, 0, 0.35, 1) both;
 
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(18px); }
@@ -33,20 +47,81 @@
     from { width: 0%; }
     to { width: 90%; }
   }
+
+  @keyframes pulseTeal {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(20, 184, 166, 0); }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes growWidth {
+    from { width: 0%; }
+    to { width: var(--final-width, 100%); }
+  }
+  @keyframes growHeight {
+    from { transform: scaleY(0); }
+    to { transform: scaleY(1); }
+  }
+  @keyframes strokeFill {
+    from { stroke-dasharray: 0, 100; }
+    to { stroke-dasharray: var(--final-stroke, 66), 100; }
+  }
 }
 
-:root {
-  --background: #faf8f5;
-  --foreground: #0b1f35;
+@layer base {
+  body {
+    @apply bg-brand-cream text-brand-navy antialiased;
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    @apply tracking-tight font-semibold;
+  }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-outfit), sans-serif;
-}
+@layer utilities {
+  .glass-panel {
+    @apply backdrop-blur-md bg-white/80 border border-white/20 shadow-sm transition-all duration-500;
+  }
+  
+  .glass-dark {
+    @apply backdrop-blur-md bg-brand-navy/90 border border-white/10 shadow-xl transition-all duration-500;
+  }
 
-/* Custom Utilities if needed */
-.text-balance {
-  text-wrap: balance;
+  .glass-panel-hover {
+    @apply hover:shadow-[0_20px_50px_rgba(15,23,42,0.05)] hover:scale-[1.02] hover:-translate-y-1;
+  }
+
+  .sidebar-glow {
+    @apply relative after:absolute after:right-0 after:top-1/4 after:bottom-1/4 after:w-[3px] after:bg-brand-teal after:rounded-l-full after:shadow-[0_0_15px_rgba(20,184,166,0.8)];
+  }
+
+  .ledger-border {
+    @apply relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-[1px] after:bg-brand-teal after:transition-all after:duration-500 hover:after:w-full;
+  }
+
+  .noise-bg {
+    position: fixed;
+    inset: 0;
+    background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+    opacity: 0.03;
+    pointer-events: none;
+    z-index: 50;
+    animation: grain 8s steps(10) infinite;
+  }
+
+  @keyframes grain {
+    0%, 100% { transform: translate(0, 0); }
+    10% { transform: translate(-5%, -10%); }
+    20% { transform: translate(-15%, 5%); }
+    30% { transform: translate(7%, -25%); }
+    40% { transform: translate(-5%, 25%); }
+    50% { transform: translate(-15%, 10%); }
+    60% { transform: translate(15%, 0%); }
+    70% { transform: translate(0%, 15%); }
+    80% { transform: translate(3%, 35%); }
+    90% { transform: translate(-10%, 10%); }
+  }
 }
