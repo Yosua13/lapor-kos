@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
@@ -34,12 +35,19 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 		entryDate = time.Now()
 	}
 
+	// Clean RoomID string from any JSON array/brackets notation if sent incorrectly by multipart client
+	cleanRoomID := strings.Trim(req.RoomID, `[]" `)
+	var roomIDPtr *uuid.UUID
+	if parsedUUID, err := uuid.Parse(cleanRoomID); err == nil {
+		roomIDPtr = &parsedUUID
+	}
+
 	// Handle file uploads
 	ktpPath, _ := h.saveFile(c, "ktp")
 	selfiePath, _ := h.saveFile(c, "selfie")
 
 	tenant := &model.Tenant{
-		RoomID:    req.RoomID,
+		RoomID:    roomIDPtr,
 		Name:      req.Name,
 		Phone:     req.Phone,
 		KTPURL:    ktpPath,
@@ -103,6 +111,14 @@ func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 		entryDate = existing.EntryDate
 	}
 
+	cleanRoomID := strings.Trim(req.RoomID, `[]" `)
+	var roomIDPtr *uuid.UUID
+	if parsedUUID, err := uuid.Parse(cleanRoomID); err == nil {
+		roomIDPtr = &parsedUUID
+	} else {
+		roomIDPtr = existing.RoomID
+	}
+
 	ktpPath, _ := h.saveFile(c, "ktp")
 	if ktpPath == "" {
 		ktpPath = existing.KTPURL
@@ -115,7 +131,7 @@ func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 
 	tenant := &model.Tenant{
 		ID:        id,
-		RoomID:    req.RoomID,
+		RoomID:    roomIDPtr,
 		Name:      req.Name,
 		Phone:     req.Phone,
 		KTPURL:    ktpPath,
@@ -138,6 +154,16 @@ func (h *TenantHandler) DeleteTenant(c *gin.Context) {
 		return
 	}
 
+	// Find tenant to delete their associated image files from frontend folder
+	if tenant, err := h.repo.FindByID(c.Request.Context(), id); err == nil {
+		if tenant.KTPURL != "" {
+			os.Remove(filepath.Join("..", "frontend", "public", filepath.Clean(tenant.KTPURL)))
+		}
+		if tenant.SelfieURL != "" {
+			os.Remove(filepath.Join("..", "frontend", "public", filepath.Clean(tenant.SelfieURL)))
+		}
+	}
+
 	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete tenant"})
 		return
@@ -152,10 +178,10 @@ func (h *TenantHandler) saveFile(c *gin.Context, fieldName string) (string, erro
 		return "", err
 	}
 
-	// Create uploads directory if not exists
-	uploadDir := "uploads"
+	// Create uploads directory in frontend/public/uploads
+	uploadDir := filepath.Join("..", "frontend", "public", "uploads")
 	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		os.Mkdir(uploadDir, 0755)
+		os.MkdirAll(uploadDir, 0755)
 	}
 
 	// Generate unique filename

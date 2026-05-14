@@ -19,8 +19,8 @@ type Tenant struct {
 }
 
 type CreateTenantRequest struct {
-	RoomID    *uuid.UUID `form:"room_id"`
-	Name      string     `form:"name" binding:"required"`
-	Phone     string     `form:"phone"`
-	EntryDate string     `form:"entry_date"` // Will be parsed to time.Time
+	RoomID    string `form:"room_id"`
+	Name      string `form:"name" binding:"required"`
+	Phone     string `form:"phone"`
+	EntryDate string `form:"entry_date"` // Will be parsed to time.Time
 }

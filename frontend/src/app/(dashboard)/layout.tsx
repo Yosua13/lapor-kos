@@ -182,7 +182,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Page Content */}
-        <main className="p-6 lg:p-10 animate-slide-in">
+        <main className="p-6 lg:p-10 animate-slide-in bg-transparent">
           {children}
         </main>
       </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Plus, 
   Search, 
@@ -25,6 +26,7 @@ interface Room {
 }
 
 export default function RoomsPage() {
+  const [mounted, setMounted] = useState(false);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +54,7 @@ export default function RoomsPage() {
   };
 
   useEffect(() => {
+    setMounted(true);
     fetchRooms();
   }, []);
 
@@ -126,6 +129,7 @@ export default function RoomsPage() {
           <p className="text-brand-navy/40 text-sm mt-1">Kelola ketersediaan dan informasi kamar kos Anda.</p>
         </div>
         <button 
+          type="button"
           onClick={() => handleOpenModal()}
           className="bg-brand-teal hover:bg-brand-teal-light text-white text-sm font-bold px-6 py-3.5 rounded-2xl shadow-lg shadow-brand-teal/30 transition-all flex items-center gap-2 group w-fit"
         >
@@ -239,11 +243,21 @@ export default function RoomsPage() {
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-navy/40 backdrop-blur-sm animate-in fade-in duration-500">
+      {/* Add/Edit Modal rendered via Portal to escape parent CSS stacking contexts */}
+      {isModalOpen && mounted && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-500"
+          style={{ 
+            position: 'fixed',
+            inset: 0,
+            backdropFilter: 'blur(6px)', 
+            WebkitBackdropFilter: 'blur(6px)',
+            backgroundColor: 'rgba(11, 31, 53, 0.45)'
+          }}
+        >
           <div className="bg-white rounded-[40px] p-10 max-w-[550px] w-full shadow-2xl relative animate-slide-up">
             <button 
+              type="button"
               onClick={() => setIsModalOpen(false)}
               className="absolute top-8 right-8 text-brand-navy/20 hover:text-brand-navy transition-colors p-2"
             >
@@ -325,7 +339,8 @@ export default function RoomsPage() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
