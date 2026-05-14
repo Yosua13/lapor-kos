@@ -10,19 +10,19 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
       case 'available':
       case 'tersedia':
         return {
-          label: 'Tersedia',
-          classes: 'bg-emerald-50 text-emerald-600 border-emerald-100'
+          label: 'KOSONG',
+          classes: 'bg-amber-500/10 text-amber-600'
         };
       case 'occupied':
       case 'terisi':
         return {
-          label: 'Terisi',
-          classes: 'bg-orange-50 text-orange-600 border-orange-100'
+          label: 'TERISI',
+          classes: 'bg-brand-teal/10 text-brand-teal animate-pulse-teal shadow-[0_0_15px_rgba(20,184,166,0.1)]'
         };
       default:
         return {
-          label: status,
-          classes: 'bg-gray-50 text-gray-600 border-gray-100'
+          label: status.toUpperCase(),
+          classes: 'bg-brand-navy/5 text-brand-navy/40'
         };
     }
   };
@@ -30,7 +30,7 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
   const config = getStatusConfig(status);
 
   return (
-    <span className={`px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider border ${config.classes}`}>
+    <span className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all duration-500 ${config.classes}`}>
       {config.label}
     </span>
   );

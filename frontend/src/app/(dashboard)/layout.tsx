@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
   Home, 
-  UserGroupIcon, // I'll use Lucide icons instead
-  Settings, 
   LogOut, 
   Menu, 
   X,
@@ -15,7 +13,10 @@ import {
   Users,
   Bell,
   Search,
-  User
+  User,
+  Settings,
+  CreditCard,
+  MessageSquare
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { removeToken } from '@/lib/auth';
@@ -48,99 +49,140 @@ export default function DashboardLayout({
   };
 
   const navItems = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Manajemen Kamar', href: '/rooms', icon: DoorOpen },
-    { name: 'Data Penghuni', href: '/tenants', icon: Users },
+    { section: 'MENU UTAMA', items: [
+      { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+      { name: 'Manajemen Kamar', href: '/rooms', icon: DoorOpen },
+      { name: 'Data Penghuni', href: '/tenants', icon: Users },
+    ]},
+    { section: 'KEUANGAN', items: [
+      { name: 'Pembayaran', href: '/payments', icon: CreditCard, badge: '3' },
+      { name: 'Laporan', href: '/reports', icon: Home },
+    ]},
+    { section: 'LAINNYA', items: [
+      { name: 'Komplain', href: '/complaints', icon: MessageSquare, badge: '1' },
+      { name: 'Pengaturan', href: '/settings', icon: Settings },
+    ]}
   ];
 
   return (
-    <div className="min-h-screen bg-cream flex">
+    <div className="min-h-screen bg-brand-cream flex relative overflow-hidden">
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap');
+      `}</style>
+
+      {/* Background Decor */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-brand-teal/5 blur-[120px] rounded-full -mr-48 -mt-48" />
+      <div className="noise-bg" />
+
       {/* Sidebar Desktop */}
-      <aside className="hidden lg:flex flex-col w-72 bg-navy text-white h-screen sticky top-0 border-r border-navy-light/10">
+      <aside className="hidden lg:flex flex-col w-72 bg-brand-navy text-white h-screen sticky top-0 z-40">
         <div className="p-8 flex items-center gap-3">
-          <div className="w-10 h-10 bg-teal rounded-xl flex items-center justify-center">
+          <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center shadow-lg shadow-brand-teal/20">
             <Home className="text-white w-5 h-5" />
           </div>
-          <span className="font-serif text-xl">Lapor <span className="italic text-teal-light">Kos</span></span>
+          <span className="font-display text-2xl font-bold tracking-tight">Lapor <span className="text-brand-teal italic">Kos</span></span>
         </div>
 
-        <nav className="flex-1 px-4 mt-4">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`flex items-center gap-3 px-4 py-3.5 mb-2 rounded-xl transition-all group ${
-                  isActive 
-                    ? 'bg-teal text-white shadow-lg shadow-teal/20' 
-                    : 'text-text-muted hover:bg-navy-light/30 hover:text-white'
-                }`}
-              >
-                <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-text-muted group-hover:text-teal-light'}`} />
-                <span className="font-medium">{item.name}</span>
-              </Link>
-            );
-          })}
+        <nav className="flex-1 px-4 mt-4 space-y-8">
+          {navItems.map((section) => (
+            <div key={section.section}>
+              <p className="text-[10px] font-bold text-white/30 tracking-[0.2em] px-4 mb-4">{section.section}</p>
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const isActive = pathname === item.href;
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-300 group ${
+                        isActive 
+                          ? 'bg-brand-teal/10 text-brand-teal sidebar-glow' 
+                          : 'text-white/50 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className={`w-5 h-5 transition-transform duration-500 ${isActive ? 'scale-110' : 'group-hover:translate-x-1'}`} />
+                        <span className="text-sm font-semibold">{item.name}</span>
+                      </div>
+                      {item.badge && (
+                        <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-red-500/20">
+                          {item.badge}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
-        <div className="p-6 border-t border-navy-light/10">
+        <div className="p-6 border-t border-white/5">
+          <div className="flex items-center gap-3 mb-6 px-4">
+             <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center border border-white/5">
+                <User className="text-brand-teal w-5 h-5" />
+             </div>
+             <div className="overflow-hidden">
+                <p className="text-sm font-bold truncate">{userData?.name || 'Yosua R.'}</p>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">Property Owner</p>
+             </div>
+          </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 w-full text-text-muted hover:text-red-400 transition-colors"
+            className="flex items-center gap-3 px-4 py-3 w-full text-white/40 hover:text-red-400 transition-colors text-sm font-bold group"
           >
-            <LogOut className="w-5 h-5" />
-            <span className="font-medium">Keluar</span>
+            <LogOut className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <span>Keluar</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 relative z-10">
         {/* Header */}
-        <header className="h-20 bg-white border-b border-gray-100 flex items-center justify-between px-6 lg:px-10 sticky top-0 z-40">
-          <div className="flex items-center gap-4">
+        <header className="h-20 bg-white/70 backdrop-blur-md flex items-center justify-between px-6 lg:px-10 sticky top-0 z-40 border-b border-brand-navy/5">
+          <div className="flex items-center gap-4 flex-1">
             <button 
-              className="lg:hidden p-2 text-navy"
+              className="lg:hidden p-2 text-brand-navy"
               onClick={() => setIsSidebarOpen(true)}
             >
               <Menu className="w-6 h-6" />
             </button>
-            <div className="hidden md:flex items-center gap-3 bg-cream/50 px-4 py-2 rounded-xl border border-gray-100 w-80">
-              <Search className="w-4 h-4 text-text-muted" />
+            <div className="hidden md:flex items-center gap-3 bg-brand-navy/5 px-4 py-2.5 rounded-2xl w-full max-w-md border border-brand-navy/5 focus-within:bg-white focus-within:shadow-xl focus-within:shadow-brand-teal/5 transition-all">
+              <Search className="w-4 h-4 text-brand-navy/30" />
               <input 
                 type="text" 
-                placeholder="Cari sesuatu..." 
-                className="bg-transparent border-none text-sm focus:outline-none w-full text-navy"
+                placeholder="Cari kamar, penghuni, atau pembayaran..." 
+                className="bg-transparent border-none text-sm focus:outline-none w-full text-brand-navy placeholder:text-brand-navy/30"
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            <button className="relative p-2 text-text-muted hover:text-teal transition-colors">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-            </button>
-            
-            <div className="flex items-center gap-3 pl-6 border-l border-gray-100">
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-semibold text-navy leading-none mb-1">
-                  {userData?.name || 'Loading...'}
-                </p>
-                <p className="text-[11px] text-teal font-medium uppercase tracking-wider">
-                  {userData?.role || 'Owner'}
-                </p>
-              </div>
-              <div className="w-10 h-10 bg-teal/10 rounded-full flex items-center justify-center border border-teal/20 overflow-hidden">
-                <User className="text-teal w-5 h-5" />
-              </div>
-            </div>
+          <div className="flex items-center gap-4">
+             <div className="flex items-center gap-2">
+                <button className="p-2.5 text-brand-navy/40 hover:text-brand-teal hover:bg-brand-teal/5 rounded-xl transition-all">
+                  <Bell className="w-5 h-5" />
+                </button>
+                <button className="p-2.5 text-brand-navy/40 hover:text-brand-teal hover:bg-brand-teal/5 rounded-xl transition-all">
+                   <Settings className="w-5 h-5" />
+                </button>
+             </div>
+             <div className="w-[1px] h-6 bg-brand-navy/10 mx-2" />
+             <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-brand-teal/10">
+                  YR
+                </div>
+                <div className="hidden sm:block">
+                   <p className="text-xs font-bold leading-none mb-1">Yosua Reynaldi</p>
+                   <p className="text-[10px] text-brand-teal font-bold uppercase tracking-widest">Owner</p>
+                </div>
+             </div>
           </div>
         </header>
 
         {/* Page Content */}
-        <main className="p-6 lg:p-10">
+        <main className="p-6 lg:p-10 animate-slide-in">
           {children}
         </main>
       </div>
@@ -148,43 +190,18 @@ export default function DashboardLayout({
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-navy/60 backdrop-blur-sm z-50 lg:hidden"
+          className="fixed inset-0 bg-brand-navy/60 backdrop-blur-sm z-50 lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
         >
           <div 
-            className="w-72 bg-navy h-full animate-in slide-in-from-left duration-300"
+            className="w-72 bg-brand-navy h-full"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Mobile Nav Content (simplified) */}
             <div className="p-8 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-teal rounded-lg flex items-center justify-center">
-                  <Home className="text-white w-4 h-4" />
-                </div>
-                <span className="font-serif text-lg text-white">Lapor <span className="italic text-teal-light">Kos</span></span>
-              </div>
-              <button onClick={() => setIsSidebarOpen(false)} className="text-white">
-                <X className="w-6 h-6" />
-              </button>
+               <span className="font-display text-2xl font-bold text-white">Lapor <span className="text-brand-teal">Kos</span></span>
+               <button onClick={() => setIsSidebarOpen(false)} className="text-white/40"><X className="w-6 h-6" /></button>
             </div>
-            <nav className="px-4 mt-4">
-              {navItems.map((item) => {
-                const isActive = pathname === item.href;
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    onClick={() => setIsSidebarOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3.5 mb-2 rounded-xl transition-all ${
-                      isActive ? 'bg-teal text-white shadow-lg shadow-teal/20' : 'text-text-muted'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="font-medium">{item.name}</span>
-                  </Link>
-                );
-              })}
-            </nav>
           </div>
         </div>
       )}
