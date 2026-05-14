@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Plus, 
   Search, 
@@ -33,6 +34,7 @@ interface Tenant {
 }
 
 export default function TenantsPage() {
+  const [mounted, setMounted] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [rooms, setRooms] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,6 +70,7 @@ export default function TenantsPage() {
   };
 
   useEffect(() => {
+    setMounted(true);
     fetchData();
   }, []);
 
@@ -130,6 +133,7 @@ export default function TenantsPage() {
           <p className="text-brand-navy/40 text-sm mt-1">Daftar penghuni aktif dan riwayat dokumen identitas.</p>
         </div>
         <button 
+          type="button"
           onClick={() => setIsModalOpen(true)}
           className="bg-brand-teal hover:bg-brand-teal-light text-white text-sm font-bold px-6 py-3.5 rounded-2xl shadow-lg shadow-brand-teal/30 transition-all flex items-center gap-2 group w-fit"
         >
@@ -243,132 +247,261 @@ export default function TenantsPage() {
         )}
       </div>
 
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-brand-navy/40 backdrop-blur-sm animate-in fade-in duration-500 overflow-y-auto">
-          <div className="bg-white rounded-[40px] p-10 max-w-[650px] w-full shadow-2xl relative my-8 animate-slide-up">
+      {/* Modal rendered via Portal to escape parent CSS stacking contexts */}
+      {isModalOpen && mounted && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-500 overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
+          style={{ 
+            position: 'fixed',
+            inset: 0,
+            backdropFilter: 'blur(6px)', 
+            WebkitBackdropFilter: 'blur(6px)',
+            backgroundColor: 'rgba(11, 31, 53, 0.45)',
+            scrollbarWidth: 'none', 
+            msOverflowStyle: 'none' 
+          }}
+        >
+          <div className="bg-white rounded-[32px] pt-8 px-8 pb-0 max-w-[620px] w-full shadow-[0_20px_60px_rgba(15,23,42,0.2)] border border-brand-navy/10 relative my-auto animate-slide-up flex flex-col max-h-[90vh] overflow-hidden">
+            {/* Tombol Close */}
             <button 
+              type="button"
               onClick={() => setIsModalOpen(false)}
-              className="absolute top-8 right-8 text-brand-navy/20 hover:text-brand-navy transition-colors p-2"
+              className="absolute top-6 right-6 text-gray-400 hover:text-brand-navy transition-colors p-2 rounded-full hover:bg-gray-100 z-10"
             >
-              <X className="w-6 h-6" />
+              <X className="w-5 h-5" />
             </button>
             
-            <div className="mb-10">
-               <p className="text-[10px] font-bold text-brand-teal uppercase tracking-[0.3em] mb-1">REGISTRASI PENGHUNI</p>
-               <h3 className="text-3xl font-display font-bold text-brand-navy">Tambah Penghuni Baru</h3>
-               <p className="text-brand-navy/40 text-sm mt-1">Lengkapi data identitas dan dokumen pendukung.</p>
+            {/* Modal Header */}
+            <div className="mb-6 shrink-0">
+               <span className="inline-block px-2.5 py-1 bg-brand-teal/10 text-brand-teal text-[10px] font-extrabold uppercase tracking-widest rounded-md mb-2">
+                 REGISTRASI PENGHUNI
+               </span>
+               <h3 className="text-2xl font-display font-bold text-brand-navy leading-tight">Tambah Penghuni Baru</h3>
+               <p className="text-gray-500 text-xs mt-1 font-medium">Lengkapi data identitas dan dokumen pendukung</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-brand-navy/40 uppercase tracking-widest ml-1">Nama Lengkap</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    placeholder="E.g. Andi Setiawan"
-                    className="w-full bg-brand-navy/5 border-none rounded-2xl py-4 px-5 text-brand-navy font-semibold focus:ring-2 focus:ring-brand-teal/20 transition-all placeholder:text-brand-navy/10"
-                  />
+            <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between overflow-hidden">
+              {/* Scrollable Form Body */}
+              <div 
+                className="space-y-6 overflow-y-auto pr-2 flex-1 scrollbar-none [&::-webkit-scrollbar]:hidden"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                {/* GRUP 1: DATA DIRI */}
+                <div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest whitespace-nowrap">DATA DIRI</span>
+                    <div className="h-[1.5px] w-full bg-gray-200"></div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Nama Lengkap */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-brand-navy">
+                        Nama Lengkap <span className="text-red-500">*</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        required
+                        value={formData.name}
+                        onChange={(e) => setFormData({...formData, name: e.target.value})}
+                        placeholder="E.g. Andi Setiawan"
+                        className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all placeholder:text-gray-400 shadow-sm"
+                      />
+                      <p className="text-[10px] text-gray-500 font-medium">Sesuai KTP</p>
+                    </div>
+
+                    {/* Nomor HP/WA */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-brand-navy">
+                        Nomor HP / WA <span className="text-red-500">*</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        required
+                        value={formData.phone}
+                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                        placeholder="0812xxxx"
+                        className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all placeholder:text-gray-400 shadow-sm"
+                      />
+                      <p className="text-[10px] text-gray-500 font-medium">Nomor aktif yang bisa dihubungi</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-brand-navy/40 uppercase tracking-widest ml-1">Nomor HP/WA</label>
-                  <input 
-                    type="text" 
-                    value={formData.phone}
-                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                    placeholder="0812xxxx"
-                    className="w-full bg-brand-navy/5 border-none rounded-2xl py-4 px-5 text-brand-navy font-semibold focus:ring-2 focus:ring-brand-teal/20 transition-all placeholder:text-brand-navy/10"
-                  />
+
+                {/* GRUP 2: DATA KAMAR */}
+                <div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest whitespace-nowrap">DATA KAMAR</span>
+                    <div className="h-[1.5px] w-full bg-gray-200"></div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                    {/* Pilih Kamar Tersedia */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-brand-navy">
+                        Kamar Tersedia <span className="text-red-500">*</span>
+                      </label>
+                      <select 
+                        required
+                        value={formData.room_id}
+                        onChange={(e) => setFormData({...formData, room_id: e.target.value})}
+                        className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all cursor-pointer shadow-sm"
+                      >
+                        <option value="">— Pilih Kamar —</option>
+                        {rooms.filter(r => r.status === 'available').map(room => (
+                          <option key={room.id} value={room.id}>Kamar {room.room_number}</option>
+                        ))}
+                      </select>
+
+                      {/* Info Card Kamar Terpilih */}
+                      {(() => {
+                        const selectedRoom = rooms.find(r => r.id === formData.room_id);
+                        if (!selectedRoom) return null;
+                        return (
+                          <div className="bg-[#f0faf8] border-[1.5px] border-brand-teal/60 rounded-[9px] p-2.5 mt-2 flex justify-between items-center animate-slide-up shadow-sm">
+                            <div className="pr-2">
+                              <p className="text-[11px] font-bold text-brand-navy leading-none">Kamar {selectedRoom.room_number}</p>
+                              <p className="text-[9px] text-brand-navy/70 font-medium line-clamp-1 mt-1">{selectedRoom.description || 'Lantai standar • Fasilitas lengkap'}</p>
+                            </div>
+                            <p className="text-xs font-bold text-brand-teal shrink-0">
+                              Rp {selectedRoom.price_per_month?.toLocaleString('id-ID')}
+                              <span className="text-[8px] font-normal text-brand-navy/50">/bln</span>
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Tanggal Masuk */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-brand-navy">
+                        Tanggal Masuk <span className="text-red-500">*</span>
+                      </label>
+                      <input 
+                        type="date" 
+                        required
+                        value={formData.entry_date}
+                        onChange={(e) => setFormData({...formData, entry_date: e.target.value})}
+                        className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all shadow-sm"
+                      />
+                      <p className="text-[10px] text-gray-500 font-medium">Awal periode kontrak</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-brand-navy/40 uppercase tracking-widest ml-1">Pilih Kamar Tersedia</label>
-                  <select 
-                    value={formData.room_id}
-                    onChange={(e) => setFormData({...formData, room_id: e.target.value})}
-                    className="w-full bg-brand-navy/5 border-none rounded-2xl py-4 px-5 text-brand-navy font-bold focus:ring-2 focus:ring-brand-teal/20 transition-all appearance-none cursor-pointer"
+
+                {/* GRUP 3: DOKUMEN IDENTITAS */}
+                <div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest whitespace-nowrap">DOKUMEN IDENTITAS</span>
+                    <div className="h-[1.5px] w-full bg-gray-200"></div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-2">
+                    {/* Dokumen KTP */}
+                    <div className="space-y-1">
+                      <div className="relative">
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          onChange={(e) => handleFileChange(e, 'ktp')}
+                          className="hidden" 
+                          id="ktp-upload"
+                        />
+                        <label 
+                          htmlFor="ktp-upload"
+                          className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${
+                            files.ktp 
+                              ? 'border-green-500 bg-[#f0faf8]' 
+                              : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'
+                          }`}
+                        >
+                          {files.ktp && (
+                            <span className="absolute top-2 right-2 bg-green-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">
+                              Terupload
+                            </span>
+                          )}
+                          <div className="text-2xl mb-1">
+                            {files.ktp ? '✅' : '🪪'}
+                          </div>
+                          <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">
+                            {files.ktp ? 'Dokumen KTP' : 'Dokumen KTP'}
+                          </p>
+                          <p className={`text-[9px] text-center ${files.ktp ? 'text-green-600 font-semibold truncate max-w-[140px]' : 'text-gray-500 font-medium'}`}>
+                            {files.ktp ? files.ktp.name : 'Klik untuk pilih foto'}
+                          </p>
+                          {!files.ktp && <p className="text-[8px] text-gray-400 mt-0.5 text-center">JPG / PNG • maks. 5 MB</p>}
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Foto Selfie */}
+                    <div className="space-y-1">
+                      <div className="relative">
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          onChange={(e) => handleFileChange(e, 'selfie')}
+                          className="hidden" 
+                          id="selfie-upload"
+                        />
+                        <label 
+                          htmlFor="selfie-upload"
+                          className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${
+                            files.selfie 
+                              ? 'border-green-500 bg-[#f0faf8]' 
+                              : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'
+                          }`}
+                        >
+                          {files.selfie && (
+                            <span className="absolute top-2 right-2 bg-green-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">
+                              Terupload
+                            </span>
+                          )}
+                          <div className="text-2xl mb-1">
+                            {files.selfie ? '✅' : '🤳'}
+                          </div>
+                          <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">
+                            {files.selfie ? 'Foto Selfie' : 'Foto Selfie'}
+                          </p>
+                          <p className={`text-[9px] text-center ${files.selfie ? 'text-green-600 font-semibold truncate max-w-[140px]' : 'text-gray-500 font-medium'}`}>
+                            {files.selfie ? files.selfie.name : 'Klik untuk pilih foto'}
+                          </p>
+                          {!files.selfie && <p className="text-[8px] text-gray-400 mt-0.5 text-center">Selfie pegang KTP • maks. 5 MB</p>}
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Modal */}
+              <div className="bg-[#faf8f5] border-t border-gray-200 px-8 py-4 -mx-8 mb-0 rounded-b-[32px] flex items-center justify-between mt-4 shrink-0">
+                <span className="text-[10px] text-gray-500 font-medium">
+                  <span className="text-red-500">*</span> Field wajib diisi
+                </span>
+                <div className="flex gap-3">
+                  <button 
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2 border-[1.5px] border-gray-300 hover:border-gray-400 text-brand-navy font-bold rounded-[9px] transition-all text-xs bg-white shadow-sm"
                   >
-                    <option value="">Pilih Kamar</option>
-                    {rooms.filter(r => r.status === 'available').map(room => (
-                      <option key={room.id} value={room.id}>Kamar {room.room_number}</option>
-                    ))}
-                  </select>
+                    Batal
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-5 py-2 bg-brand-teal hover:bg-brand-teal-light text-white font-bold rounded-[9px] shadow-md shadow-brand-teal/20 transition-all flex items-center gap-2 text-xs"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <span className="font-bold">✓</span>
+                    )}
+                    <span>Simpan Data Penghuni</span>
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-brand-navy/40 uppercase tracking-widest ml-1">Tanggal Masuk</label>
-                  <input 
-                    type="date" 
-                    required
-                    value={formData.entry_date}
-                    onChange={(e) => setFormData({...formData, entry_date: e.target.value})}
-                    className="w-full bg-brand-navy/5 border-none rounded-2xl py-4 px-5 text-brand-navy font-bold focus:ring-2 focus:ring-brand-teal/20 transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-brand-navy/40 uppercase tracking-widest ml-1">Dokumen KTP</label>
-                  <div className="relative">
-                    <input 
-                      type="file" 
-                      accept="image/*"
-                      onChange={(e) => handleFileChange(e, 'ktp')}
-                      className="hidden" 
-                      id="ktp-upload"
-                    />
-                    <label 
-                      htmlFor="ktp-upload"
-                      className="flex flex-col items-center justify-center border-2 border-dashed border-brand-navy/10 rounded-[24px] p-6 hover:border-brand-teal hover:bg-brand-teal/5 cursor-pointer transition-all bg-brand-navy/5 group/file"
-                    >
-                      <ImageIcon className="w-8 h-8 text-brand-navy/20 mb-2 group-hover/file:text-brand-teal transition-colors" />
-                      <span className="text-[10px] font-bold text-brand-navy/40 uppercase tracking-widest text-center">{files.ktp ? files.ktp.name : 'Pilih Foto KTP'}</span>
-                    </label>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-brand-navy/40 uppercase tracking-widest ml-1">Foto Selfie</label>
-                  <div className="relative">
-                    <input 
-                      type="file" 
-                      accept="image/*"
-                      onChange={(e) => handleFileChange(e, 'selfie')}
-                      className="hidden" 
-                      id="selfie-upload"
-                    />
-                    <label 
-                      htmlFor="selfie-upload"
-                      className="flex flex-col items-center justify-center border-2 border-dashed border-brand-navy/10 rounded-[24px] p-6 hover:border-brand-teal hover:bg-brand-teal/5 cursor-pointer transition-all bg-brand-navy/5 group/file"
-                    >
-                      <ImageIcon className="w-8 h-8 text-brand-navy/20 mb-2 group-hover/file:text-brand-teal transition-colors" />
-                      <span className="text-[10px] font-bold text-brand-navy/40 uppercase tracking-widest text-center">{files.selfie ? files.selfie.name : 'Pilih Foto Selfie'}</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-6 flex gap-4">
-                <button 
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 bg-brand-navy/5 hover:bg-brand-navy/10 text-brand-navy font-bold py-4 rounded-2xl transition-all text-sm uppercase tracking-widest"
-                >
-                  Batal
-                </button>
-                <button 
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="flex-[2] bg-brand-teal hover:bg-brand-teal-light text-white font-bold py-4 rounded-2xl shadow-lg shadow-brand-teal/30 transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-widest"
-                >
-                  {isSubmitting && <Loader2 className="w-5 h-5 animate-spin" />}
-                  <span>Simpan Data Penghuni</span>
-                </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
