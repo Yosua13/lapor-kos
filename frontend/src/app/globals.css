@@ -1,6 +1,15 @@
 @import "tailwindcss";
 
 @theme {
+  /* Original Colors for Auth & Layouts */
+  --color-navy: #0b1f35;
+  --color-navy-mid: #112d47;
+  --color-teal: #0e8a7a;
+  --color-teal-light: #12a896;
+  --color-cream: #faf8f5;
+  --color-text-mid: #3a5068;
+  --color-text-muted: #7a96aa;
+
   /* Colors - The Dynamic Pulse Palette */
   --color-brand-navy: #0F172A;
   --color-brand-teal: #14B8A6;
@@ -8,24 +17,40 @@
   --color-brand-cream: #F8FAFC;
   
   /* Fonts */
+  --font-serif: var(--font-dm-serif);
+  --font-outfit: var(--font-outfit);
   --font-display: "Outfit", sans-serif;
   --font-body: "Plus Jakarta Sans", sans-serif;
 
   /* Animations */
+  --animate-fade-up: fadeUp 0.6s ease both;
+  --animate-fade-up-delay: fadeUp 0.6s 0.2s ease both;
+  --animate-float: float 5s ease-in-out infinite;
+  --animate-spin-slow: spin 0.6s linear infinite;
+  --animate-bar-grow: barGrow 1s 0.8s ease both;
+
   --animate-pulse-teal: pulseTeal 2s infinite;
-  --animate-float: float 4s ease-in-out infinite;
   --animate-slide-up: slideUp 0.6s cubic-bezier(0.2, 1, 0.3, 1) both;
   --animate-grow-width: growWidth 1.5s cubic-bezier(0.65, 0, 0.35, 1) both;
   --animate-grow-height: growHeight 1.5s cubic-bezier(0.65, 0, 0.35, 1) both;
   --animate-stroke-fill: strokeFill 2s cubic-bezier(0.65, 0, 0.35, 1) both;
 
-  @keyframes pulseTeal {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.4); }
-    50% { box-shadow: 0 0 0 8px rgba(20, 184, 166, 0); }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
   }
   @keyframes float {
     0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+    50% { transform: translateY(-6px); }
+  }
+  @keyframes barGrow {
+    from { width: 0%; }
+    to { width: 90%; }
+  }
+
+  @keyframes pulseTeal {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(20, 184, 166, 0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(20, 184, 166, 0); }
   }
   @keyframes slideUp {
     from { opacity: 0; transform: translateY(20px); }
