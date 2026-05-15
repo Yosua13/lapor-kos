@@ -23,6 +23,33 @@ func (r *RoomRepository) Create(ctx context.Context, room *model.Room) error {
 		Scan(&room.ID, &room.CreatedAt)
 }
 
+func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room, tenant *model.Tenant) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	roomQuery := `INSERT INTO rooms (room_number, price_per_month, description, status) 
+	              VALUES ($1, $2, $3, $4) RETURNING id, created_at`
+	err = tx.QueryRow(ctx, roomQuery, room.RoomNumber, room.PricePerMonth, room.Description, room.Status).
+		Scan(&room.ID, &room.CreatedAt)
+	if err != nil {
+		return err
+	}
+
+	tenant.RoomID = &room.ID
+	tenantQuery := `INSERT INTO tenants (room_id, name, phone, ktp_url, selfie_url, entry_date, rental_duration) 
+	                VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`
+	err = tx.QueryRow(ctx, tenantQuery, tenant.RoomID, tenant.Name, tenant.Phone, tenant.KTPURL, tenant.SelfieURL, tenant.EntryDate, tenant.RentalDuration).
+		Scan(&tenant.ID, &tenant.CreatedAt)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (r *RoomRepository) FindAll(ctx context.Context) ([]model.Room, error) {
 	query := `SELECT id, room_number, price_per_month, description, status, created_at FROM rooms ORDER BY room_number ASC`
 	rows, err := r.db.Query(ctx, query)
@@ -59,8 +86,26 @@ func (r *RoomRepository) Update(ctx context.Context, room *model.Room) error {
 	return err
 }
 
-func (r *RoomRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `DELETE FROM rooms WHERE id = $1`
-	_, err := r.db.Exec(ctx, query, id)
-	return err
+func (r *RoomRepository) Delete(ctx context.Context, id uuid.UUID, deleteTenant bool) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if deleteTenant {
+		_, err = tx.Exec(ctx, `DELETE FROM tenants WHERE room_id = $1`, id)
+	} else {
+		_, err = tx.Exec(ctx, `UPDATE tenants SET room_id = NULL WHERE room_id = $1`, id)
+	}
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, `DELETE FROM rooms WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

@@ -46,13 +46,19 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 	ktpPath, _ := h.saveFile(c, "ktp")
 	selfiePath, _ := h.saveFile(c, "selfie")
 
+	rentalDuration := req.RentalDuration
+	if rentalDuration <= 0 {
+		rentalDuration = 1 // default to 1 month
+	}
+
 	tenant := &model.Tenant{
-		RoomID:    roomIDPtr,
-		Name:      req.Name,
-		Phone:     req.Phone,
-		KTPURL:    ktpPath,
-		SelfieURL: selfiePath,
-		EntryDate: entryDate,
+		RoomID:         roomIDPtr,
+		Name:           req.Name,
+		Phone:          req.Phone,
+		KTPURL:         ktpPath,
+		SelfieURL:      selfiePath,
+		EntryDate:      entryDate,
+		RentalDuration: rentalDuration,
 	}
 
 	if err := h.repo.Create(c.Request.Context(), tenant); err != nil {
@@ -129,14 +135,20 @@ func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 		selfiePath = existing.SelfieURL
 	}
 
+	rentalDuration := req.RentalDuration
+	if rentalDuration <= 0 {
+		rentalDuration = existing.RentalDuration
+	}
+
 	tenant := &model.Tenant{
-		ID:        id,
-		RoomID:    roomIDPtr,
-		Name:      req.Name,
-		Phone:     req.Phone,
-		KTPURL:    ktpPath,
-		SelfieURL: selfiePath,
-		EntryDate: entryDate,
+		ID:             id,
+		RoomID:         roomIDPtr,
+		Name:           req.Name,
+		Phone:          req.Phone,
+		KTPURL:         ktpPath,
+		SelfieURL:      selfiePath,
+		EntryDate:      entryDate,
+		RentalDuration: rentalDuration,
 	}
 
 	if err := h.repo.Update(c.Request.Context(), tenant); err != nil {
