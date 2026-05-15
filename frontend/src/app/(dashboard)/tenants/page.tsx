@@ -47,6 +47,7 @@ export default function TenantsPage() {
     phone: '',
     room_id: '',
     entry_date: new Date().toISOString().split('T')[0],
+    rental_duration: '1',
   });
   const [files, setFiles] = useState<{ktp: File | null, selfie: File | null}>({
     ktp: null,
@@ -80,8 +81,68 @@ export default function TenantsPage() {
     }
   };
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value;
+    if (val === '' || val === '+62' || val === '+62-') {
+      setFormData({ ...formData, phone: '' });
+      return;
+    }
+    
+    let digits = val.replace(/\D/g, '');
+    if (digits.startsWith('62')) {
+      digits = digits.slice(2);
+    } else if (digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+    digits = digits.slice(0, 12);
+
+    let formatted = '';
+    if (digits.length > 0) {
+      formatted = '+62';
+      formatted += '-' + digits.slice(0, 3);
+      if (digits.length > 3) {
+        formatted += '-' + digits.slice(3, 7);
+      }
+      if (digits.length > 7) {
+        formatted += '-' + digits.slice(7, 12);
+      }
+    }
+    setFormData({ ...formData, phone: formatted });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!formData.name || formData.name.trim() === '') {
+      alert('Nama Lengkap wajib diisi.');
+      return;
+    }
+    if (!formData.phone || formData.phone.trim() === '') {
+      alert('Nomor HP / WA wajib diisi.');
+      return;
+    }
+    const rawDigits = formData.phone.replace(/\D/g, '');
+    if (rawDigits.length - 2 < 10) {
+      alert('Nomor HP / WA minimal harus 10 digit angka.');
+      return;
+    }
+    if (!formData.room_id || formData.room_id.trim() === '') {
+      alert('Kamar wajib dipilih.');
+      return;
+    }
+    if (!formData.entry_date || formData.entry_date.trim() === '') {
+      alert('Tanggal Masuk wajib diisi.');
+      return;
+    }
+    if (!files.ktp) {
+      alert('Dokumen KTP wajib diupload.');
+      return;
+    }
+    if (!files.selfie) {
+      alert('Foto Selfie wajib diupload.');
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {
@@ -90,6 +151,7 @@ export default function TenantsPage() {
       data.append('phone', formData.phone);
       data.append('room_id', formData.room_id);
       data.append('entry_date', formData.entry_date);
+      data.append('rental_duration', formData.rental_duration);
       if (files.ktp) data.append('ktp', files.ktp);
       if (files.selfie) data.append('selfie', files.selfie);
 
@@ -238,9 +300,12 @@ export default function TenantsPage() {
                    <span>DOKUMEN KTP</span>
                    <ArrowUpRight className="w-3 h-3 opacity-0 group-hover/link:opacity-100 transition-opacity" />
                  </a>
-                 <button className="flex items-center justify-center gap-2 py-3 bg-brand-teal/5 hover:bg-brand-teal/10 text-[10px] font-bold text-brand-teal uppercase tracking-[0.2em] rounded-2xl transition-all">
+                 <a 
+                   href={`/tenants/${tenant.id}`}
+                   className="flex items-center justify-center gap-2 py-3 bg-brand-teal/5 hover:bg-brand-teal/10 text-[10px] font-bold text-brand-teal uppercase tracking-[0.2em] rounded-2xl transition-all"
+                 >
                    <span>DETAIL PROFIL</span>
-                 </button>
+                 </a>
               </div>
             </div>
           ))
@@ -318,8 +383,8 @@ export default function TenantsPage() {
                         type="text" 
                         required
                         value={formData.phone}
-                        onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                        placeholder="0812xxxx"
+                        onChange={handlePhoneChange}
+                        placeholder="+62-8xx-xxxx-xxxx"
                         className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all placeholder:text-gray-400 shadow-sm"
                       />
                       <p className="text-[10px] text-gray-500 font-medium">Nomor aktif yang bisa dihubungi</p>
@@ -333,7 +398,7 @@ export default function TenantsPage() {
                     <span className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest whitespace-nowrap">DATA KAMAR</span>
                     <div className="h-[1.5px] w-full bg-gray-200"></div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
                     {/* Pilih Kamar Tersedia */}
                     <div className="space-y-1">
                       <label className="block text-xs font-bold text-brand-navy">
@@ -384,6 +449,25 @@ export default function TenantsPage() {
                       />
                       <p className="text-[10px] text-gray-500 font-medium">Awal periode kontrak</p>
                     </div>
+
+                    {/* Durasi Sewa */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-brand-navy">
+                        Durasi Sewa <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        required
+                        value={formData.rental_duration}
+                        onChange={(e) => setFormData({...formData, rental_duration: e.target.value})}
+                        className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all cursor-pointer shadow-sm"
+                      >
+                        <option value="1">1 Bulan</option>
+                        <option value="3">3 Bulan</option>
+                        <option value="6">6 Bulan</option>
+                        <option value="12">12 Bulan (1 Tahun)</option>
+                      </select>
+                      <p className="text-[10px] text-gray-500 font-medium">Jangka waktu kontrak sewa</p>
+                    </div>
                   </div>
                 </div>
 
@@ -421,7 +505,7 @@ export default function TenantsPage() {
                             {files.ktp ? '✅' : '🪪'}
                           </div>
                           <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">
-                            {files.ktp ? 'Dokumen KTP' : 'Dokumen KTP'}
+                            {files.ktp ? 'Dokumen KTP' : 'Dokumen KTP'} <span className="text-red-500">*</span>
                           </p>
                           <p className={`text-[9px] text-center ${files.ktp ? 'text-green-600 font-semibold truncate max-w-[140px]' : 'text-gray-500 font-medium'}`}>
                             {files.ktp ? files.ktp.name : 'Klik untuk pilih foto'}
@@ -458,7 +542,7 @@ export default function TenantsPage() {
                             {files.selfie ? '✅' : '🤳'}
                           </div>
                           <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">
-                            {files.selfie ? 'Foto Selfie' : 'Foto Selfie'}
+                            {files.selfie ? 'Foto Selfie' : 'Foto Selfie'} <span className="text-red-500">*</span>
                           </p>
                           <p className={`text-[9px] text-center ${files.selfie ? 'text-green-600 font-semibold truncate max-w-[140px]' : 'text-gray-500 font-medium'}`}>
                             {files.selfie ? files.selfie.name : 'Klik untuk pilih foto'}
