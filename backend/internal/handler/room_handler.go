@@ -1,7 +1,12 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
@@ -103,10 +108,91 @@ func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 		return
 	}
 
-	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
+	deleteTenant := c.Query("delete_tenant") == "true"
+
+	if err := h.repo.Delete(c.Request.Context(), id, deleteTenant); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete room"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Room deleted successfully"})
+}
+
+func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form"})
+		return
+	}
+
+	roomNumber := c.PostForm("room_number")
+	priceStr := c.PostForm("price_per_month")
+	description := c.PostForm("description")
+	status := c.PostForm("status")
+	
+	price, _ := strconv.ParseFloat(priceStr, 64)
+	if status == "" {
+		status = "occupied"
+	}
+
+	room := &model.Room{
+		RoomNumber:    roomNumber,
+		PricePerMonth: price,
+		Description:   description,
+		Status:        status,
+	}
+
+	name := c.PostForm("name")
+	phone := c.PostForm("phone")
+	entryDateStr := c.PostForm("entry_date")
+
+	entryDate, _ := time.Parse("2006-01-02", entryDateStr)
+	if entryDate.IsZero() {
+		entryDate = time.Now()
+	}
+
+	rentalDurationStr := c.PostForm("rental_duration")
+	rentalDuration, _ := strconv.Atoi(rentalDurationStr)
+	if rentalDuration <= 0 {
+		rentalDuration = 1
+	}
+
+	ktpPath, _ := h.saveFile(c, "ktp")
+	selfiePath, _ := h.saveFile(c, "selfie")
+
+	tenant := &model.Tenant{
+		Name:           name,
+		Phone:          phone,
+		KTPURL:         ktpPath,
+		SelfieURL:      selfiePath,
+		EntryDate:      entryDate,
+		RentalDuration: rentalDuration,
+	}
+
+	if err := h.repo.CreateWithTenant(c.Request.Context(), room, tenant); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create room and tenant"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"room": room, "tenant": tenant})
+}
+
+func (h *RoomHandler) saveFile(c *gin.Context, fieldName string) (string, error) {
+	file, err := c.FormFile(fieldName)
+	if err != nil {
+		return "", err
+	}
+
+	uploadDir := filepath.Join("..", "frontend", "public", "uploads")
+	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
+		os.MkdirAll(uploadDir, 0755)
+	}
+
+	filename := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), uuid.New().String(), filepath.Ext(file.Filename))
+	dst := filepath.Join(uploadDir, filename)
+
+	if err := c.SaveUploadedFile(file, dst); err != nil {
+		return "", err
+	}
+
+	return "/uploads/" + filename, nil
 }

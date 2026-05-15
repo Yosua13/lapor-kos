@@ -104,6 +104,7 @@ func main() {
 		rooms := api.Group("/rooms", middleware.AuthMiddleware())
 		{
 			rooms.POST("", roomHandler.CreateRoom)
+			rooms.POST("/with-tenant", roomHandler.CreateRoomWithTenant)
 			rooms.GET("", roomHandler.GetRooms)
 			rooms.GET("/:id", roomHandler.GetRoom)
 			rooms.PUT("/:id", roomHandler.UpdateRoom)
