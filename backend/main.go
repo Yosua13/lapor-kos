@@ -52,11 +52,13 @@ func main() {
 	userRepo := repository.NewUserRepository(dbPool)
 	roomRepo := repository.NewRoomRepository(dbPool)
 	tenantRepo := repository.NewTenantRepository(dbPool)
+	contractRepo := repository.NewContractRepository(dbPool)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(userRepo, emailServ)
 	roomHandler := handler.NewRoomHandler(roomRepo)
 	tenantHandler := handler.NewTenantHandler(tenantRepo)
+	contractHandler := handler.NewContractHandler(contractRepo)
 
 	router := gin.Default()
 
@@ -119,6 +121,16 @@ func main() {
 			tenants.GET("/:id", tenantHandler.GetTenant)
 			tenants.PUT("/:id", tenantHandler.UpdateTenant)
 			tenants.DELETE("/:id", tenantHandler.DeleteTenant)
+		}
+
+		// Contract routes (Protected)
+		contracts := api.Group("/contracts", middleware.AuthMiddleware())
+		{
+			contracts.POST("", contractHandler.CreateContract)
+			contracts.GET("", contractHandler.GetContracts)
+			contracts.GET("/:id", contractHandler.GetContract)
+			contracts.PUT("/:id", contractHandler.UpdateContract)
+			contracts.DELETE("/:id", contractHandler.DeleteContract)
 		}
 	}
 

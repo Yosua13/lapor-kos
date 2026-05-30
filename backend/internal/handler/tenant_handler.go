@@ -29,6 +29,13 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 		return
 	}
 
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	ownerID, _ := uuid.Parse(userIDStr.(string))
+
 	// Parse entry date
 	entryDate, _ := time.Parse("2006-01-02", req.EntryDate)
 	if entryDate.IsZero() {
@@ -52,16 +59,18 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 	}
 
 	tenant := &model.Tenant{
-		RoomID:         roomIDPtr,
-		Name:           req.Name,
-		Phone:          req.Phone,
-		KTPURL:         ktpPath,
-		SelfieURL:      selfiePath,
-		EntryDate:      entryDate,
-		RentalDuration: rentalDuration,
+		RoomID:    roomIDPtr,
+		Name:      req.Name,
+		Phone:     req.Phone,
+		KTPURL:    ktpPath,
+		SelfieURL: selfiePath,
+		Contract: &model.Contract{
+			StartDate:      entryDate,
+			RentalDuration: rentalDuration,
+		},
 	}
 
-	if err := h.repo.Create(c.Request.Context(), tenant); err != nil {
+	if err := h.repo.Create(c.Request.Context(), tenant, ownerID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create tenant"})
 		return
 	}
@@ -113,8 +122,8 @@ func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 	}
 
 	entryDate, _ := time.Parse("2006-01-02", req.EntryDate)
-	if entryDate.IsZero() {
-		entryDate = existing.EntryDate
+	if entryDate.IsZero() && existing.Contract != nil {
+		entryDate = existing.Contract.StartDate
 	}
 
 	cleanRoomID := strings.Trim(req.RoomID, `[]" `)
@@ -136,19 +145,21 @@ func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 	}
 
 	rentalDuration := req.RentalDuration
-	if rentalDuration <= 0 {
-		rentalDuration = existing.RentalDuration
+	if rentalDuration <= 0 && existing.Contract != nil {
+		rentalDuration = existing.Contract.RentalDuration
 	}
 
 	tenant := &model.Tenant{
-		ID:             id,
-		RoomID:         roomIDPtr,
-		Name:           req.Name,
-		Phone:          req.Phone,
-		KTPURL:         ktpPath,
-		SelfieURL:      selfiePath,
-		EntryDate:      entryDate,
-		RentalDuration: rentalDuration,
+		ID:        id,
+		RoomID:    roomIDPtr,
+		Name:      req.Name,
+		Phone:     req.Phone,
+		KTPURL:    ktpPath,
+		SelfieURL: selfiePath,
+		Contract: &model.Contract{
+			StartDate:      entryDate,
+			RentalDuration: rentalDuration,
+		},
 	}
 
 	if err := h.repo.Update(c.Request.Context(), tenant); err != nil {

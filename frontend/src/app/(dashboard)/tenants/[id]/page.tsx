@@ -29,8 +29,13 @@ interface Tenant {
   room_id: string;
   ktp_url: string;
   selfie_url: string;
-  entry_date: string;
-  rental_duration: number;
+
+  contract?: {
+    start_date: string;
+    end_date: string;
+    rental_duration: number;
+    status: string;
+  };
   created_at: string;
   room?: {
     id: string;
@@ -91,8 +96,8 @@ export default function TenantProfilePage() {
         name: tenantData.name,
         phone: tenantData.phone,
         room_id: tenantData.room_id || '',
-        entry_date: tenantData.entry_date ? tenantData.entry_date.split('T')[0] : '',
-        rental_duration: tenantData.rental_duration || 1
+        entry_date: tenantData.contract?.start_date ? tenantData.contract.start_date.split('T')[0] : '',
+        rental_duration: tenantData.contract?.rental_duration || 1
       });
     } catch (err: any) {
       alert(err.message || 'Gagal memuat detail penghuni');
@@ -202,13 +207,12 @@ export default function TenantProfilePage() {
   if (!tenant) return null;
 
   // Calculations
-  const entryDateObj = new Date(tenant.entry_date);
-  const endDateObj = new Date(entryDateObj);
-  endDateObj.setMonth(endDateObj.getMonth() + tenant.rental_duration);
+  const entryDateObj = new Date(tenant.contract?.start_date || tenant.created_at);
+  const endDateObj = new Date(tenant.contract?.end_date || tenant.created_at);
   const isContractActive = endDateObj >= new Date();
   const contractStatus = isContractActive ? 'Aktif' : 'Kontrak Habis';
   const contractStatusColor = isContractActive ? 'text-green-500 bg-green-50' : 'text-red-500 bg-red-50';
-  const totalPembayaran = tenant.room ? tenant.room.price_per_month * tenant.rental_duration : 0;
+  const totalPembayaran = tenant.room ? tenant.room.price_per_month * (tenant.contract?.rental_duration || 1) : 0;
   const initials = tenant.name.substring(0, 2).toUpperCase();
 
   // Mock Activities (Combining real created_at with mock payments)
@@ -217,14 +221,14 @@ export default function TenantProfilePage() {
       id: 1,
       title: 'Pembayaran Lunas',
       subtitle: `Rp ${totalPembayaran.toLocaleString('id-ID')} - Transfer BCA`,
-      date: new Date(tenant.entry_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+      date: new Date(tenant.contract?.start_date || tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
       icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
       color: 'bg-green-100'
     },
     {
       id: 2,
       title: 'Kontrak Dibuat',
-      subtitle: `Periode ${tenant.rental_duration} bulan dimulai`,
+      subtitle: `Periode ${tenant.contract?.rental_duration || 1} bulan dimulai`,
       date: new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
       icon: <Clock className="w-4 h-4 text-brand-teal" />,
       color: 'bg-brand-teal/10'
@@ -364,7 +368,7 @@ export default function TenantProfilePage() {
           <div>
             <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Status Bayar</p>
             <p className="text-lg font-display font-bold text-brand-navy">Tepat Waktu</p>
-            <p className="text-xs text-gray-500">{tenant.rental_duration} bulan terakhir</p>
+            <p className="text-xs text-gray-500">{tenant.contract?.rental_duration || 1} bulan terakhir</p>
           </div>
         </div>
         <div className="bg-white border-[1.5px] border-gray-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
@@ -520,7 +524,7 @@ export default function TenantProfilePage() {
                     <option value="12">12 Bulan</option>
                   </select>
                 ) : (
-                  <span className="text-sm font-bold text-brand-navy">{tenant.rental_duration} Bulan</span>
+                  <span className="text-sm font-bold text-brand-navy">{tenant.contract?.rental_duration || 1} Bulan</span>
                 )}
               </div>
               <div className="flex justify-between items-center py-2 border-b border-dashed border-gray-200">

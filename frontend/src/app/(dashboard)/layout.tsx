@@ -16,7 +16,8 @@ import {
   User,
   Settings,
   CreditCard,
-  MessageSquare
+  MessageSquare,
+  FileText
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { removeToken } from '@/lib/auth';
@@ -53,6 +54,7 @@ export default function DashboardLayout({
       { name: 'Dashboard', href: '/', icon: LayoutDashboard },
       { name: 'Manajemen Kamar', href: '/rooms', icon: DoorOpen },
       { name: 'Data Penghuni', href: '/tenants', icon: Users },
+      { name: 'Manajemen Kontrak', href: '/contracts', icon: FileText },
     ]},
     { section: 'KEUANGAN', items: [
       { name: 'Pembayaran', href: '/payments', icon: CreditCard, badge: '3' },

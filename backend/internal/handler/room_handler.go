@@ -119,6 +119,13 @@ func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 }
 
 func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	ownerID, _ := uuid.Parse(userIDStr.(string))
+
 	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form"})
 		return
@@ -160,15 +167,17 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	selfiePath, _ := h.saveFile(c, "selfie")
 
 	tenant := &model.Tenant{
-		Name:           name,
-		Phone:          phone,
-		KTPURL:         ktpPath,
-		SelfieURL:      selfiePath,
-		EntryDate:      entryDate,
-		RentalDuration: rentalDuration,
+		Name:      name,
+		Phone:     phone,
+		KTPURL:    ktpPath,
+		SelfieURL: selfiePath,
+		Contract: &model.Contract{
+			StartDate:      entryDate,
+			RentalDuration: rentalDuration,
+		},
 	}
 
-	if err := h.repo.CreateWithTenant(c.Request.Context(), room, tenant); err != nil {
+	if err := h.repo.CreateWithTenant(c.Request.Context(), room, tenant, ownerID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create room and tenant"})
 		return
 	}
