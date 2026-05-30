@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -15,10 +15,16 @@ import {
   ChevronRight,
   Phone,
   Calendar,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Users,
+  CheckCircle2,
+  LayoutGrid,
+  List as ListIcon,
+  TrendingUp,
+  Key,
+  Home
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
-import StatusBadge from '../../../components/StatusBadge';
 
 interface Room {
   id: string;
@@ -35,6 +41,12 @@ export default function RoomsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+
+  // Filter & View State
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [activeTab, setActiveTab] = useState<'all' | 'available' | 'occupied'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'number_asc' | 'price_asc' | 'price_desc'>('number_asc');
 
   // 2-Step Form state
   const [step, setStep] = useState(1);
@@ -81,6 +93,34 @@ export default function RoomsPage() {
     setMounted(true);
     fetchRooms();
   }, []);
+
+  const stats = useMemo(() => {
+    const total = rooms.length;
+    const occupied = rooms.filter(r => r.status === 'occupied').length;
+    const available = rooms.filter(r => r.status === 'available').length;
+    const occupancyRate = total > 0 ? Math.round((occupied / total) * 100) : 0;
+    return { total, occupied, available, occupancyRate };
+  }, [rooms]);
+
+  const filteredAndSortedRooms = useMemo(() => {
+    let result = rooms;
+
+    if (activeTab === 'available') result = result.filter(r => r.status === 'available');
+    else if (activeTab === 'occupied') result = result.filter(r => r.status === 'occupied');
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(r => r.room_number.toLowerCase().includes(q));
+    }
+
+    result.sort((a, b) => {
+      if (sortBy === 'price_asc') return a.price_per_month - b.price_per_month;
+      if (sortBy === 'price_desc') return b.price_per_month - a.price_per_month;
+      return a.room_number.localeCompare(b.room_number, undefined, {numeric: true});
+    });
+
+    return result;
+  }, [rooms, activeTab, searchQuery, sortBy]);
 
   const handleOpenModal = (room?: Room) => {
     setStep(1);
@@ -274,126 +314,231 @@ export default function RoomsPage() {
   }
 
   return (
-    <div className="space-y-8 animate-slide-up max-w-[1400px] mx-auto">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-6 animate-slide-up pb-10">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-bold text-brand-teal uppercase tracking-[0.3em] mb-1">DATA INVENTORI</p>
-          <h1 className="text-4xl font-display font-bold text-brand-navy">Manajemen Kamar</h1>
-          <p className="text-brand-navy/40 text-sm mt-1">Kelola ketersediaan dan informasi kamar kos Anda.</p>
+          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">DATA INVENTORI</p>
+          <h1 className="text-3xl font-display font-bold text-brand-navy">Manajemen Kamar</h1>
+          <p className="text-sm text-gray-500 mt-1">Kelola ketersediaan dan informasi kamar kos Anda</p>
         </div>
-        <button
-          type="button"
-          onClick={() => handleOpenModal()}
-          className="bg-brand-teal hover:bg-brand-teal-light text-white text-sm font-bold px-6 py-3.5 rounded-2xl shadow-lg shadow-brand-teal/30 transition-all flex items-center gap-2 group w-fit"
-        >
-          <Plus className="w-5 h-5 group-hover:rotate-90 transition-transform duration-500" />
-          <span>Tambah Kamar</span>
-        </button>
-      </header>
-
-      {/* Filter & Search */}
-      <div className="flex flex-col md:flex-row gap-4">
-        <div className="flex-1 glass-panel px-6 py-1 rounded-[24px] flex items-center gap-3 focus-within:shadow-xl focus-within:shadow-brand-teal/5 transition-all">
-          <Search className="w-5 h-5 text-brand-navy/20" />
-          <input
-            type="text"
-            placeholder="Cari nomor kamar..."
-            className="bg-transparent border-none w-full focus:outline-none text-brand-navy font-medium py-3.5 placeholder:text-brand-navy/20"
-          />
+        <div className="flex items-center gap-3">
+          <button className="px-4 py-2 border-[1.5px] border-gray-200 text-brand-navy font-bold text-sm rounded-xl hover:bg-gray-50 transition-colors flex items-center gap-2">
+            <Calendar className="w-4 h-4" /> Export
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOpenModal()}
+            className="px-4 py-2 bg-brand-teal text-white font-bold text-sm rounded-xl hover:bg-brand-teal-light transition-all flex items-center gap-2 shadow-sm group"
+          >
+            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" /> Tambah Kamar
+          </button>
         </div>
-        <select className="glass-panel px-6 py-3.5 rounded-[24px] text-brand-navy font-bold text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal/20 transition-all appearance-none cursor-pointer">
-          <option value="all">SEMUA STATUS</option>
-          <option value="available">TERSEDIA</option>
-          <option value="occupied">TERISI</option>
-        </select>
       </div>
 
-      {/* Table Section */}
-      <div className="glass-panel rounded-[40px] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-brand-navy/5">
-                <th className="px-8 py-6 text-[10px] font-bold text-brand-navy/30 uppercase tracking-[0.2em]">Nomor Kamar</th>
-                <th className="px-8 py-6 text-[10px] font-bold text-brand-navy/30 uppercase tracking-[0.2em]">Harga/Bulan</th>
-                <th className="px-8 py-6 text-[10px] font-bold text-brand-navy/30 uppercase tracking-[0.2em]">Deskripsi</th>
-                <th className="px-8 py-6 text-[10px] font-bold text-brand-navy/30 uppercase tracking-[0.2em]">Status</th>
-                <th className="px-8 py-6 text-[10px] font-bold text-brand-navy/30 uppercase tracking-[0.2em] text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-brand-navy/5">
-              {isLoading && rooms.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-8 py-24 text-center">
-                    <Loader2 className="w-10 h-10 animate-spin text-brand-teal mx-auto mb-4" />
-                    <p className="text-brand-navy/40 font-bold text-xs uppercase tracking-widest">Memuat Data Kamar...</p>
-                  </td>
-                </tr>
-              ) : rooms.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-8 py-24 text-center">
-                    <div className="w-20 h-20 bg-brand-navy/5 rounded-[32px] flex items-center justify-center mx-auto mb-6 text-brand-navy/10">
-                      <DoorOpen className="w-10 h-10" />
+      {/* STAT CARDS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-brand-navy transition-colors"></div>
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-brand-navy"><Home className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-md">Total</span>
+          </div>
+          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TOTAL KAMAR</p>
+          <p className="text-3xl font-display font-bold text-brand-navy">{stats.total}</p>
+        </div>
+
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-brand-teal transition-colors"></div>
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 bg-brand-teal/10 rounded-xl flex items-center justify-center text-brand-teal"><Users className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-brand-teal bg-brand-teal/10 px-2 py-1 rounded-md">Berpenghuni</span>
+          </div>
+          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">KAMAR TERISI</p>
+          <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupied}</p>
+        </div>
+
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-amber-500 transition-colors"></div>
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-500"><Key className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">Siap Huni</span>
+          </div>
+          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">KAMAR KOSONG</p>
+          <p className="text-3xl font-display font-bold text-brand-navy">{stats.available}</p>
+        </div>
+
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-blue-500 transition-colors"></div>
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500"><TrendingUp className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md">Efisiensi</span>
+          </div>
+          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TINGKAT HUNIAN</p>
+          <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupancyRate}%</p>
+        </div>
+      </div>
+
+      {/* TOOLBAR */}
+      <div className="flex flex-col lg:flex-row items-center gap-4 py-2">
+        <div className="flex bg-gray-100 p-1 rounded-xl w-full lg:w-auto overflow-x-auto no-scrollbar shrink-0">
+          {[
+            { id: 'all', label: `Semua (${stats.total})` },
+            { id: 'available', label: 'Tersedia' },
+            { id: 'occupied', label: 'Terisi' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-4 py-2 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${
+                activeTab === tab.id ? 'bg-white text-brand-teal shadow-sm' : 'text-gray-500 hover:text-brand-navy'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 flex flex-col md:flex-row items-center gap-3 w-full">
+          <div className="relative w-full md:max-w-xs">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input 
+              type="text" 
+              placeholder="Cari nomor kamar..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white border-[1.5px] border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-brand-navy focus:outline-none focus:border-brand-teal transition-colors"
+            />
+          </div>
+          <select 
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="w-full md:w-auto bg-white border-[1.5px] border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-navy focus:outline-none focus:border-brand-teal transition-colors cursor-pointer"
+          >
+            <option value="number_asc">Nomor Kamar</option>
+            <option value="price_asc">Harga Terendah</option>
+            <option value="price_desc">Harga Tertinggi</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
+          <span className="text-xs text-gray-500 font-medium">Menampilkan <b>{filteredAndSortedRooms.length}</b> kamar</span>
+          <div className="flex bg-gray-100 p-1 rounded-xl shrink-0">
+            <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-400 hover:text-brand-navy'}`}><LayoutGrid className="w-4 h-4" /></button>
+            <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-400 hover:text-brand-navy'}`}><ListIcon className="w-4 h-4" /></button>
+          </div>
+        </div>
+      </div>
+
+      {/* CONTENT VIEW */}
+      {isLoading && rooms.length === 0 ? (
+        <div className="flex justify-center items-center h-64"><Loader2 className="w-10 h-10 animate-spin text-brand-teal" /></div>
+      ) : filteredAndSortedRooms.length === 0 ? (
+        <div className="bg-white border-[1.5px] border-gray-200 border-dashed rounded-[24px] p-12 text-center">
+          <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4 text-gray-400"><DoorOpen className="w-8 h-8" /></div>
+          <h3 className="text-lg font-bold text-brand-navy mb-1">Tidak ada kamar</h3>
+          <p className="text-sm text-gray-500 max-w-sm mx-auto">Data kamar tidak ditemukan berdasarkan pencarian atau filter yang Anda pilih.</p>
+        </div>
+      ) : viewMode === 'grid' ? (
+        // GRID VIEW
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredAndSortedRooms.map(room => (
+            <div key={room.id} className="bg-white border-[1.5px] border-gray-200 rounded-[24px] shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative group">
+              <div className={`h-1.5 w-full ${room.status === 'occupied' ? 'bg-brand-teal' : 'bg-amber-500'}`}></div>
+              <div className="p-5 flex-1">
+                <div className="flex justify-between items-start mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center font-bold text-lg ${room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'}`}>
+                      {room.room_number.slice(-2)}
                     </div>
-                    <p className="text-brand-navy font-bold text-lg">Belum Ada Kamar</p>
-                    <p className="text-brand-navy/30 text-sm mt-1">Mulai kelola kos Anda dengan menambahkan kamar pertama.</p>
-                  </td>
+                    <div>
+                      <h3 className="font-display font-bold text-brand-navy text-lg leading-tight">Kamar {room.room_number}</h3>
+                      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-bold mt-1 ${
+                        room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'
+                      }`}>
+                        {room.status === 'occupied' ? 'TERISI' : 'KOSONG'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleOpenModal(room)} className="p-1.5 text-gray-400 hover:text-brand-teal hover:bg-brand-teal/10 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => handleDeleteClick(room)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <p className="text-xl font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')} <span className="text-xs font-medium text-gray-400 font-sans">/ bulan</span></p>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {(room.description ? room.description.split(',') : []).slice(0, 4).map((facility, idx) => (
+                    <span key={idx} className="px-2 py-1 rounded bg-gray-50 text-gray-600 text-[10px] font-medium border border-gray-100">
+                      {facility.trim()}
+                    </span>
+                  ))}
+                  {room.description && room.description.split(',').length > 4 && (
+                    <span className="px-2 py-1 rounded bg-gray-50 text-gray-400 text-[10px] font-medium border border-gray-100">
+                      +{room.description.split(',').length - 4}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        // LIST VIEW
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[24px] overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-gray-50 border-b border-gray-200 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
+                <tr>
+                  <th className="px-6 py-4">Nomor Kamar</th>
+                  <th className="px-6 py-4">Harga/Bulan</th>
+                  <th className="px-6 py-4">Deskripsi</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
-              ) : (
-                rooms.map((room, i) => (
-                  <tr
-                    key={room.id}
-                    className="hover:bg-brand-cream/50 transition-colors group ledger-border animate-slide-up"
-                    style={{ animationDelay: `${i * 50}ms` }}
-                  >
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-brand-navy/5 rounded-2xl flex items-center justify-center font-bold text-brand-navy group-hover:bg-brand-teal group-hover:text-white transition-all duration-300">
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredAndSortedRooms.map(room => (
+                  <tr key={room.id} className="hover:bg-gray-50/50 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-[10px] flex items-center justify-center font-bold ${room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'}`}>
                           {room.room_number.slice(-2)}
                         </div>
                         <div>
                           <p className="font-bold text-brand-navy">Kamar {room.room_number}</p>
-                          <p className="text-[10px] text-brand-navy/30 uppercase tracking-widest font-bold">Standard Unit</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-8 py-6">
-                      <span className="font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')}</span>
+                    <td className="px-6 py-4 font-bold text-brand-navy">
+                      Rp {room.price_per_month.toLocaleString('id-ID')}
                     </td>
-                    <td className="px-8 py-6">
-                      <p className="text-sm text-brand-navy/60 line-clamp-1 max-w-[250px]">{room.description || '-'}</p>
+                    <td className="px-6 py-4 text-xs text-gray-500 max-w-[200px] truncate">
+                      {room.description || '-'}
                     </td>
-                    <td className="px-8 py-6">
-                      <span className={`inline-block px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${room.status === 'occupied'
-                          ? 'bg-brand-teal/10 text-brand-teal animate-pulse-teal'
-                          : 'bg-amber-500/10 text-amber-600'
-                        }`}>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${
+                        room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'
+                      }`}>
                         {room.status === 'occupied' ? 'TERISI' : 'KOSONG'}
                       </span>
                     </td>
-                    <td className="px-8 py-6 text-right">
-                      <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => handleOpenModal(room)}
-                          className="p-2.5 text-brand-navy/20 hover:text-brand-teal hover:bg-brand-teal/5 rounded-xl transition-all"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(room)}
-                          className="p-2.5 text-brand-navy/20 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => handleOpenModal(room)} className="p-1.5 text-gray-400 hover:text-brand-teal hover:bg-brand-teal/10 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
+                        <button onClick={() => handleDeleteClick(room)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Add/Edit Modal rendered via Portal to escape parent CSS stacking contexts */}
       {isModalOpen && mounted && createPortal(

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { apiFetch } from '@/lib/api';
 import { 
   Users, CheckCircle2, Calendar, AlertTriangle, 
@@ -263,9 +264,9 @@ export default function TenantsPage() {
           </button>
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2 bg-brand-teal text-white font-bold text-sm rounded-xl hover:bg-brand-teal-light transition-colors flex items-center gap-2 shadow-sm"
+            className="px-4 py-2 bg-brand-teal text-white font-bold text-sm rounded-xl hover:bg-brand-teal-light transition-all flex items-center gap-2 shadow-sm group"
           >
-            <Plus className="w-4 h-4" /> Tambah Penghuni
+            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" /> Tambah Penghuni
           </button>
         </div>
       </div>
@@ -526,15 +527,43 @@ export default function TenantsPage() {
       )}
 
       {/* MODAL TAMBAH PENGHUNI */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[24px] max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-in slide-in-from-bottom-8">
-            <div className="sticky top-0 bg-white/80 backdrop-blur-md px-6 py-4 border-b border-gray-100 flex justify-between items-center z-10">
-              <h2 className="text-lg font-display font-bold text-brand-navy">Tambah Penghuni Baru</h2>
-              <button onClick={() => setIsModalOpen(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"><X className="w-4 h-4" /></button>
+      {isModalOpen && mounted && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-500 overflow-y-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            backgroundColor: 'rgba(11, 31, 53, 0.45)',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none'
+          }}
+        >
+          <div className="bg-white rounded-[32px] pt-8 px-8 pb-0 max-w-[620px] w-full shadow-[0_20px_60px_rgba(15,23,42,0.2)] border border-brand-navy/10 relative my-auto animate-slide-up flex flex-col max-h-[90vh] overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="absolute top-6 right-6 text-gray-400 hover:text-brand-navy transition-colors p-2 rounded-full hover:bg-gray-100 z-10"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="mb-6 shrink-0">
+              <span className="inline-block px-2.5 py-1 bg-brand-teal/10 text-brand-teal text-[10px] font-extrabold uppercase tracking-widest rounded-md mb-2">
+                REGISTRASI PENGHUNI
+              </span>
+              <h3 className="text-2xl font-display font-bold text-brand-navy leading-tight">
+                Tambah Penghuni Baru
+              </h3>
+              <p className="text-gray-500 text-xs mt-1 font-medium">
+                Lengkapi data identitas dan dokumen pendukung
+              </p>
             </div>
-            <div className="p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="flex-1 flex flex-col justify-between overflow-hidden">
+              <div
+                className="space-y-6 overflow-y-auto pr-2 flex-1 scrollbar-none [&::-webkit-scrollbar]:hidden pb-4"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
                 
                 {/* GRUP 1: DATA DIRI */}
                 <div>
@@ -632,16 +661,21 @@ export default function TenantsPage() {
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-4 border-t border-gray-100">
-                  <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="flex-1 py-3 border-[1.5px] border-gray-200 text-brand-navy font-bold text-sm rounded-xl hover:bg-gray-50 transition-colors">Batal</button>
-                  <button type="submit" disabled={isSubmitting} className="flex-1 py-3 bg-brand-teal hover:bg-brand-teal-light text-white font-bold text-sm rounded-xl transition-all shadow-md hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                    {isSubmitting ? <><Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...</> : 'Simpan Data'}
+              </div>
+              <div className="bg-[#faf8f5] border-t border-gray-200 px-8 py-4 -mx-8 mb-0 rounded-b-[32px] flex items-center justify-between mt-4 shrink-0">
+                <span className="text-[10px] text-gray-500 font-medium"><span className="text-red-500">*</span> Field wajib diisi</span>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="px-4 py-2 border-[1.5px] border-gray-300 hover:border-gray-400 text-brand-navy font-bold rounded-[9px] transition-all text-xs bg-white shadow-sm">Batal</button>
+                  <button type="submit" disabled={isSubmitting} className="px-5 py-2 bg-brand-teal hover:bg-brand-teal-light text-white font-bold rounded-[9px] shadow-md shadow-brand-teal/20 transition-all flex items-center gap-2 text-xs disabled:opacity-70 disabled:cursor-not-allowed">
+                    {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="font-bold">✓</span>}
+                    <span>Simpan Data</span>
                   </button>
                 </div>
-              </form>
-            </div>
+              </div>
+            </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
