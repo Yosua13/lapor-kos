@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/google/uuid"
@@ -23,7 +24,7 @@ func (r *RoomRepository) Create(ctx context.Context, room *model.Room) error {
 		Scan(&room.ID, &room.CreatedAt)
 }
 
-func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room, tenant *model.Tenant) error {
+func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room, tenant *model.Tenant, ownerID uuid.UUID) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -39,10 +40,27 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 	}
 
 	tenant.RoomID = &room.ID
-	tenantQuery := `INSERT INTO tenants (room_id, name, phone, ktp_url, selfie_url, entry_date, rental_duration) 
-	                VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`
-	err = tx.QueryRow(ctx, tenantQuery, tenant.RoomID, tenant.Name, tenant.Phone, tenant.KTPURL, tenant.SelfieURL, tenant.EntryDate, tenant.RentalDuration).
+	tenantQuery := `INSERT INTO tenants (room_id, name, phone, ktp_url, selfie_url) 
+	                VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`
+	err = tx.QueryRow(ctx, tenantQuery, tenant.RoomID, tenant.Name, tenant.Phone, tenant.KTPURL, tenant.SelfieURL).
 		Scan(&tenant.ID, &tenant.CreatedAt)
+	if err != nil {
+		return err
+	}
+
+	// Create a contract for this tenant and room
+	contractQuery := `INSERT INTO contracts (room_id, tenant_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes) 
+	                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+	
+	startDate := tenant.Contract.StartDate
+	rentalDuration := tenant.Contract.RentalDuration
+	endDate := startDate.AddDate(0, rentalDuration, 0)
+	dueDate := startDate.AddDate(0, 1, -3)
+	paymentDueDay := dueDate.Day()
+	notes := fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
+	totalPrice := room.PricePerMonth * float64(rentalDuration)
+	
+	_, err = tx.Exec(ctx, contractQuery, room.ID, tenant.ID, ownerID, startDate, endDate, rentalDuration, room.PricePerMonth, totalPrice, 0, paymentDueDay, "active", notes)
 	if err != nil {
 		return err
 	}
@@ -98,6 +116,11 @@ func (r *RoomRepository) Delete(ctx context.Context, id uuid.UUID, deleteTenant 
 	} else {
 		_, err = tx.Exec(ctx, `UPDATE tenants SET room_id = NULL WHERE room_id = $1`, id)
 	}
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, `DELETE FROM contracts WHERE room_id = $1`, id)
 	if err != nil {
 		return err
 	}
