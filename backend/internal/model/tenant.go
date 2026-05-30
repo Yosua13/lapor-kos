@@ -13,10 +13,9 @@ type Tenant struct {
 	Phone          string     `json:"phone"`
 	KTPURL         string     `json:"ktp_url"`
 	SelfieURL      string     `json:"selfie_url"`
-	EntryDate      time.Time  `json:"entry_date"`
-	RentalDuration int        `json:"rental_duration"`
 	CreatedAt      time.Time  `json:"created_at"`
 	Room           *Room      `json:"room,omitempty"`
+	Contract       *Contract  `json:"contract,omitempty"`
 }
 
 type CreateTenantRequest struct {
