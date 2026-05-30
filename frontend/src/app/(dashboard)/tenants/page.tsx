@@ -6,7 +6,7 @@ import { apiFetch } from '@/lib/api';
 import { 
   Users, CheckCircle2, Calendar, AlertTriangle, 
   Search, Plus, LayoutGrid, List as ListIcon, 
-  MoreVertical, Phone, ArrowUp, X, Loader2, User, FileText, Image as ImageIcon 
+  MoreVertical, Phone, ArrowUp, X, Loader2, User, FileText, Image as ImageIcon, Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -17,8 +17,12 @@ interface Tenant {
   room_id: string;
   ktp_url: string;
   selfie_url: string;
-  entry_date: string;
-  rental_duration: number;
+  contract?: {
+    start_date: string;
+    end_date: string;
+    rental_duration: number;
+    status: string;
+  };
   created_at: string;
   room?: {
     id: string;
@@ -87,9 +91,8 @@ export default function TenantsPage() {
   // Enhance Tenants Data with Calculations
   const enhancedTenants = useMemo(() => {
     return tenants.map(t => {
-      const entryDate = new Date(t.entry_date);
-      const endDate = new Date(entryDate);
-      endDate.setMonth(endDate.getMonth() + t.rental_duration);
+      const entryDate = new Date(t.contract?.start_date || t.created_at);
+      const endDate = new Date(t.contract?.end_date || t.created_at);
       
       const now = new Date();
       now.setHours(0,0,0,0);
@@ -138,7 +141,7 @@ export default function TenantsPage() {
     return {
       active: enhancedTenants.filter(t => t.daysUntilExpiry >= 0).length,
       newThisMonth: enhancedTenants.filter(t => {
-        const d = new Date(t.entry_date);
+        const d = new Date(t.contract?.start_date || t.created_at);
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
       }).length,
       expiringSoon: enhancedTenants.filter(t => t.daysUntilExpiry >= 0 && t.daysUntilExpiry <= 30).length,
@@ -243,6 +246,21 @@ export default function TenantsPage() {
       alert(err.message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Apakah Anda yakin ingin menghapus data penghuni ${name}?`)) return;
+    try {
+      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+      const res = await fetch(`http://localhost:8081/api/tenants/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Gagal menghapus penghuni');
+      fetchData();
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -413,7 +431,7 @@ export default function TenantsPage() {
                       </div>
                     </div>
                   </div>
-                  <button className="text-gray-400 hover:text-brand-navy p-1"><MoreVertical className="w-4 h-4" /></button>
+                  <button onClick={() => handleDelete(tenant.id, tenant.name)} title="Hapus Data" className="text-red-400 hover:text-red-600 p-1 transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
 
                 <div className="space-y-2 mb-4">
@@ -421,7 +439,7 @@ export default function TenantsPage() {
                     <Phone className="w-3.5 h-3.5" /> {tenant.phone}
                   </div>
                   <div className="flex items-center gap-2 text-xs font-medium text-gray-500">
-                    <Calendar className="w-3.5 h-3.5" /> Masuk <span className="font-bold text-brand-navy">{new Date(tenant.entry_date).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'})}</span> 
+                    <Calendar className="w-3.5 h-3.5" /> Masuk <span className="font-bold text-brand-navy">{new Date(tenant.contract?.start_date || tenant.created_at).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'})}</span> 
                     · habis <span className="font-bold text-brand-navy">{tenant.endDate.toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'})}</span>
                   </div>
                 </div>
@@ -488,7 +506,7 @@ export default function TenantsPage() {
                         </div>
                         <div>
                           <p className="font-bold text-brand-navy">{tenant.name}</p>
-                          <p className="text-[10px] text-gray-400">Sejak {new Date(tenant.entry_date).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'})}</p>
+                          <p className="text-[10px] text-gray-400">Sejak {new Date(tenant.contract?.start_date || tenant.created_at).toLocaleDateString('id-ID', {day:'numeric',month:'short',year:'numeric'})}</p>
                         </div>
                       </div>
                     </td>
@@ -511,12 +529,21 @@ export default function TenantsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={() => router.push(`/tenants/${tenant.id}`)}
-                        className="px-3 py-1.5 text-xs font-bold text-brand-teal bg-brand-teal/10 hover:bg-brand-teal/20 rounded-lg transition-colors"
-                      >
-                        Detail Profil
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        <button 
+                          onClick={() => handleDelete(tenant.id, tenant.name)}
+                          className="px-2 py-1.5 text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                          title="Hapus"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => router.push(`/tenants/${tenant.id}`)}
+                          className="px-3 py-1.5 text-xs font-bold text-brand-teal bg-brand-teal/10 hover:bg-brand-teal/20 rounded-lg transition-colors"
+                        >
+                          Detail Profil
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -611,8 +638,35 @@ export default function TenantsPage() {
                         <option value="6">6 Bulan</option>
                         <option value="12">12 Bulan (1 Tahun)</option>
                       </select>
+                      {formData.entry_date && (
+                        <p className="text-[10px] text-brand-teal font-medium mt-1">
+                          Berakhir: {
+                            (() => {
+                              const end = new Date(formData.entry_date);
+                              end.setMonth(end.getMonth() + parseInt(formData.rental_duration));
+                              return end.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+                            })()
+                          }
+                        </p>
+                      )}
                     </div>
                   </div>
+                  
+                  {formData.room_id && (
+                    <div className="mt-4 bg-brand-teal/5 border border-brand-teal/20 rounded-xl p-4 flex justify-between items-center">
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">Total Harga (Sewa x Durasi)</p>
+                        <p className="text-xl font-display font-bold text-brand-teal">
+                          {(() => {
+                            const selectedRoom = rooms.find(r => r.id === formData.room_id);
+                            const price = selectedRoom ? selectedRoom.price_per_month : 0;
+                            const total = price * parseInt(formData.rental_duration);
+                            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(total);
+                          })()}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* GRUP 3: DOKUMEN IDENTITAS */}
