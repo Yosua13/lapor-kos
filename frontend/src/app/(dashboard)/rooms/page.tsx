@@ -69,6 +69,7 @@ export default function RoomsPage() {
   const [tenantFormData, setTenantFormData] = useState({
     name: '',
     phone: '',
+    email: '',
     entry_date: new Date().toISOString().split('T')[0],
     rental_duration: '1'
   });
@@ -127,6 +128,7 @@ export default function RoomsPage() {
     setTenantFormData({
       name: '',
       phone: '',
+      email: '',
       entry_date: new Date().toISOString().split('T')[0],
       rental_duration: '1',
     });
@@ -243,6 +245,7 @@ export default function RoomsPage() {
 
       data.append('name', tenantFormData.name);
       data.append('phone', tenantFormData.phone);
+      data.append('email', tenantFormData.email);
       data.append('entry_date', tenantFormData.entry_date);
       data.append('rental_duration', tenantFormData.rental_duration);
       if (files.ktp) data.append('ktp', files.ktp);
@@ -714,6 +717,16 @@ export default function RoomsPage() {
                           onChange={handlePhoneChange}
                           placeholder="+62-8xx-xxxx-xxxx"
                           className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all placeholder:text-gray-400 shadow-sm"
+                        />
+                      </div>
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="block text-xs font-bold text-brand-navy">Email Penghuni <span className="text-gray-400">(Opsional untuk login portal)</span></label>
+                        <input
+                          type="email"
+                          value={tenantFormData.email}
+                          onChange={(e) => setTenantFormData({ ...tenantFormData, email: e.target.value })}
+                          className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all placeholder:text-gray-400 shadow-sm"
+                          placeholder="Contoh: budi.santoso@gmail.com"
                         />
                       </div>
                     </div>
