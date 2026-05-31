@@ -53,12 +53,14 @@ func main() {
 	roomRepo := repository.NewRoomRepository(dbPool)
 	tenantRepo := repository.NewTenantRepository(dbPool)
 	contractRepo := repository.NewContractRepository(dbPool)
+	paymentRepo := repository.NewPaymentRepository(dbPool)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(userRepo, emailServ)
 	roomHandler := handler.NewRoomHandler(roomRepo)
 	tenantHandler := handler.NewTenantHandler(tenantRepo)
 	contractHandler := handler.NewContractHandler(contractRepo)
+	paymentHandler := handler.NewPaymentHandler(paymentRepo, tenantRepo)
 
 	router := gin.Default()
 
@@ -116,11 +118,12 @@ func main() {
 		// Tenant routes (Protected)
 		tenants := api.Group("/tenants", middleware.AuthMiddleware())
 		{
-			tenants.POST("", tenantHandler.CreateTenant)
-			tenants.GET("", tenantHandler.GetTenants)
-			tenants.GET("/:id", tenantHandler.GetTenant)
-			tenants.PUT("/:id", tenantHandler.UpdateTenant)
-			tenants.DELETE("/:id", tenantHandler.DeleteTenant)
+			tenants.GET("/me", middleware.RoleMiddleware(dbPool, "tenant"), tenantHandler.GetMyTenantProfile)
+			tenants.POST("", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.CreateTenant)
+			tenants.GET("", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.GetTenants)
+			tenants.GET("/:id", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.GetTenant)
+			tenants.PUT("/:id", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.UpdateTenant)
+			tenants.DELETE("/:id", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.DeleteTenant)
 		}
 
 		// Contract routes (Protected)
@@ -131,6 +134,23 @@ func main() {
 			contracts.GET("/:id", contractHandler.GetContract)
 			contracts.PUT("/:id", contractHandler.UpdateContract)
 			contracts.DELETE("/:id", contractHandler.DeleteContract)
+		}
+
+		// Payment routes (Protected)
+		payments := api.Group("/payments", middleware.AuthMiddleware())
+		{
+			// Shared access (Owner & Tenant)
+			payments.GET("/:id", paymentHandler.GetPayment)
+			payments.GET("/:id/receipt", paymentHandler.GetReceiptHTML)
+
+			// Owner only access
+			payments.GET("", middleware.RoleMiddleware(dbPool, "owner"), paymentHandler.GetAllPayments)
+			payments.POST("", middleware.RoleMiddleware(dbPool, "owner"), paymentHandler.CreatePaymentBill)
+			payments.PUT("/:id/verify", middleware.RoleMiddleware(dbPool, "owner"), paymentHandler.VerifyPayment)
+
+			// Tenant only access
+			payments.GET("/my", middleware.RoleMiddleware(dbPool, "tenant"), paymentHandler.GetTenantPayments)
+			payments.POST("/:id/submit", middleware.RoleMiddleware(dbPool, "tenant"), paymentHandler.SubmitPaymentProof)
 		}
 	}
 

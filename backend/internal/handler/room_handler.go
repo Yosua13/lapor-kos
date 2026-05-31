@@ -150,6 +150,7 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 
 	name := c.PostForm("name")
 	phone := c.PostForm("phone")
+	email := c.PostForm("email")
 	entryDateStr := c.PostForm("entry_date")
 
 	entryDate, _ := time.Parse("2006-01-02", entryDateStr)
@@ -169,6 +170,7 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	tenant := &model.Tenant{
 		Name:      name,
 		Phone:     phone,
+		Email:     email,
 		KTPURL:    ktpPath,
 		SelfieURL: selfiePath,
 		Contract: &model.Contract{
