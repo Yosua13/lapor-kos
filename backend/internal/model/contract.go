@@ -41,10 +41,12 @@ type CreateContractRequest struct {
 }
 
 type UpdateContractRequest struct {
-	EndDate       string  `json:"end_date"`
-	MonthlyRent   float64 `json:"monthly_rent"`
-	Deposit       float64 `json:"deposit"`
-	PaymentDueDay int     `json:"payment_due_day"`
-	Status        string  `json:"status"`
-	Notes         string  `json:"notes"`
+	StartDate      string  `json:"start_date"`
+	RentalDuration int     `json:"rental_duration"`
+	EndDate        string  `json:"end_date"`
+	MonthlyRent    float64 `json:"monthly_rent"`
+	Deposit        float64 `json:"deposit"`
+	PaymentDueDay  int     `json:"payment_due_day"`
+	Status         string  `json:"status"`
+	Notes          string  `json:"notes"`
 }

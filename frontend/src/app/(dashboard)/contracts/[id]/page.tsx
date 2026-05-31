@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { 
   ArrowLeft, Calendar, FileText, Check, AlertTriangle, 
-  Banknote, DoorOpen, User, RefreshCw, X, Loader2, Edit2, Trash2
+  Trash2, Loader2, Edit2, Save
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -16,9 +16,27 @@ export default function ContractDetailPage() {
   const [contract, setContract] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  const [isExtendModalOpen, setIsExtendModalOpen] = useState(false);
-  const [extendDuration, setExtendDuration] = useState('1');
-  const [isExtending, setIsExtending] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  const [formData, setFormData] = useState({
+    start_date: '',
+    rental_duration: 1,
+    end_date: '',
+    monthly_rent: '',
+    deposit: '',
+    payment_due_day: '',
+    status: '',
+    notes: ''
+  });
+
+  useEffect(() => {
+    if (isEditing && formData.start_date && formData.rental_duration) {
+      const d = new Date(formData.start_date);
+      d.setMonth(d.getMonth() + Number(formData.rental_duration));
+      setFormData(prev => ({ ...prev, end_date: d.toISOString().split('T')[0] }));
+    }
+  }, [formData.start_date, formData.rental_duration, isEditing]);
 
   const getMonths = (start: string, end: string) => {
     const d1 = new Date(start);
@@ -39,6 +57,16 @@ export default function ContractDetailPage() {
     try {
       const data = await apiFetch(`/api/contracts/${params.id}`);
       setContract(data);
+      setFormData({
+        start_date: data.start_date ? data.start_date.split('T')[0] : '',
+        rental_duration: data.rental_duration || 1,
+        end_date: data.end_date ? data.end_date.split('T')[0] : '',
+        monthly_rent: data.monthly_rent?.toString() || '0',
+        deposit: data.deposit?.toString() || '0',
+        payment_due_day: data.payment_due_day?.toString() || '1',
+        status: data.status || 'active',
+        notes: data.notes || ''
+      });
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -46,27 +74,28 @@ export default function ContractDetailPage() {
     }
   };
 
-  const handleExtend = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!extendDuration) return;
-    
-    setIsExtending(true);
+  const handleUpdate = async () => {
+    setIsSaving(true);
     try {
-      const currentEnd = new Date(contract.end_date);
-      const newEnd = new Date(currentEnd);
-      newEnd.setMonth(currentEnd.getMonth() + parseInt(extendDuration));
-      const finalExtendDate = newEnd.toISOString().split('T')[0];
-
       await apiFetch(`/api/contracts/${params.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ end_date: finalExtendDate })
+        body: JSON.stringify({
+          start_date: formData.start_date,
+          rental_duration: Number(formData.rental_duration),
+          end_date: formData.end_date,
+          monthly_rent: parseFloat(formData.monthly_rent),
+          deposit: parseFloat(formData.deposit),
+          payment_due_day: parseInt(formData.payment_due_day),
+          status: formData.status,
+          notes: formData.notes
+        })
       });
-      setIsExtendModalOpen(false);
+      setIsEditing(false);
       fetchContract();
     } catch (err: any) {
-      alert(err.message || 'Gagal memperpanjang kontrak');
+      alert(err.message || 'Gagal menyimpan kontrak');
     } finally {
-      setIsExtending(false);
+      setIsSaving(false);
     }
   };
 
@@ -112,23 +141,43 @@ export default function ContractDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={handleDelete} className="px-4 py-2 border-[1.5px] border-red-200 text-red-500 font-bold text-sm rounded-xl hover:bg-red-50 transition-colors flex items-center gap-2">
-            <Trash2 className="w-4 h-4" /> Hapus
-          </button>
-          <button
-            onClick={() => setIsExtendModalOpen(true)}
-            className="px-4 py-2 bg-brand-teal text-white font-bold text-sm rounded-xl hover:bg-brand-teal-light transition-all flex items-center gap-2 shadow-sm"
-          >
-            <RefreshCw className="w-4 h-4" /> Perpanjang
-          </button>
+          {isEditing ? (
+            <>
+              <button onClick={() => { setIsEditing(false); fetchContract(); }} className="px-6 py-2 border-[1.5px] border-gray-200 text-brand-navy font-bold text-sm rounded-xl hover:bg-gray-50 transition-colors">
+                Batal
+              </button>
+              <button onClick={handleUpdate} disabled={isSaving} className="px-6 py-2 bg-brand-teal text-white font-bold text-sm rounded-xl hover:bg-brand-teal-light transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Simpan
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={handleDelete} className="px-4 py-2 border-[1.5px] border-red-200 text-red-500 font-bold text-sm rounded-xl hover:bg-red-50 transition-colors flex items-center gap-2">
+                <Trash2 className="w-4 h-4" /> Hapus
+              </button>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-4 py-2 bg-brand-teal/10 text-brand-teal font-bold text-sm rounded-xl hover:bg-brand-teal/20 transition-all flex items-center gap-2 shadow-sm"
+              >
+                <Edit2 className="w-4 h-4" /> Edit Kontrak
+              </button>
+            </>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white border-[1.5px] border-gray-200 rounded-[24px] overflow-hidden shadow-sm">
-            <div className={`h-1.5 w-full ${contract.status === 'active' ? 'bg-brand-teal' : 'bg-red-500'}`}></div>
+            <div className={`h-1.5 w-full ${(isEditing ? formData.status : contract.status) === 'active' ? 'bg-brand-teal' : 'bg-red-500'}`}></div>
             <div className="p-8">
+              
+              {isEditing && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-700 px-6 py-3 rounded-2xl flex items-center gap-3 text-sm font-bold shadow-sm mb-6">
+                  <Edit2 className="w-4 h-4" /> Mode Edit Aktif — Jangan lupa simpan perubahan Anda.
+                </div>
+              )}
+
               <div className="flex justify-between items-start mb-8">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-brand-navy"><FileText className="w-6 h-6" /></div>
@@ -138,10 +187,17 @@ export default function ContractDetailPage() {
                   </div>
                 </div>
                 <div className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 ${
-                  contract.status === 'active' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                  (isEditing ? formData.status : contract.status) === 'active' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
                 }`}>
-                  {contract.status === 'active' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-                  {contract.status === 'active' ? 'Kontrak Aktif' : 'Kontrak Berakhir'}
+                  {(isEditing ? formData.status : contract.status) === 'active' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                  {isEditing ? (
+                    <select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="bg-transparent font-bold outline-none cursor-pointer text-current">
+                      <option value="active">Kontrak Aktif</option>
+                      <option value="expired">Kontrak Berakhir</option>
+                    </select>
+                  ) : (
+                    contract.status === 'active' ? 'Kontrak Aktif' : 'Kontrak Berakhir'
+                  )}
                 </div>
               </div>
 
@@ -163,23 +219,49 @@ export default function ContractDetailPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Tanggal Mulai</p>
-                    <p className="font-bold text-brand-navy">{formatDate(contract.start_date)}</p>
+                    {isEditing ? (
+                      <input type="date" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} className="w-full text-sm font-bold text-brand-navy border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 transition-all" />
+                    ) : (
+                      <p className="font-bold text-brand-navy">{formatDate(contract.start_date)}</p>
+                    )}
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">Tanggal Selesai</p>
-                    <p className="font-bold text-brand-navy">{formatDate(contract.end_date)}</p>
+                    <p className="text-xs text-gray-500 mb-1">Durasi Sewa & Selesai</p>
+                    {isEditing ? (
+                      <div className="flex gap-2">
+                        <select value={formData.rental_duration} onChange={e => setFormData({...formData, rental_duration: Number(e.target.value)})} className="w-24 text-sm font-bold text-brand-navy border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 transition-all cursor-pointer">
+                          <option value="1">1 Bln</option>
+                          <option value="3">3 Bln</option>
+                          <option value="6">6 Bln</option>
+                          <option value="12">12 Bln</option>
+                        </select>
+                        <input type="text" readOnly value={formatDate(formData.end_date)} className="flex-1 text-xs font-bold text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 outline-none cursor-not-allowed" />
+                      </div>
+                    ) : (
+                      <p className="font-bold text-brand-navy">{formatDate(contract.end_date)} <span className="text-gray-400 text-xs font-normal">({contract.rental_duration} bln)</span></p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Sewa Bulanan Disepakati</p>
-                    <p className="font-bold text-brand-teal">{formatCurrency(contract.monthly_rent)}</p>
+                    <p className="font-bold text-brand-teal">{formatCurrency(contract.monthly_rent)} <span className="text-[10px] text-gray-400 font-normal uppercase ml-1">(Terkunci)</span></p>
                   </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1">Uang Deposit</p>
-                    <p className="font-bold text-brand-navy">{formatCurrency(contract.deposit)}</p>
+                    {isEditing ? (
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">Rp</span>
+                        <input type="text" value={formData.deposit ? new Intl.NumberFormat('id-ID').format(Number(formData.deposit)) : ''} onChange={e => {
+                          const rawValue = e.target.value.replace(/\D/g, '');
+                          setFormData({...formData, deposit: rawValue});
+                        }} className="w-full pl-9 pr-3 py-1.5 text-sm font-bold text-brand-navy border border-gray-300 rounded-lg outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 transition-all" />
+                      </div>
+                    ) : (
+                      <p className="font-bold text-brand-navy">{formatCurrency(contract.deposit)}</p>
+                    )}
                   </div>
                 </div>
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <p className="text-sm font-medium text-gray-600">Jatuh tempo pembayaran setiap <span className="font-bold text-brand-navy">Tanggal {contract.payment_due_day}</span> per bulannya.</p>
+                <div className="mt-4 pt-4 border-t border-gray-200 flex flex-wrap gap-2 items-center">
+                  <p className="text-sm font-medium text-gray-600">Jatuh tempo pembayaran setiap <span className="font-bold text-brand-navy">Tanggal {contract.payment_due_day}</span> per bulannya. <span className="text-[10px] text-gray-400 font-normal uppercase ml-1">(Terkunci)</span></p>
                 </div>
               </div>
 
@@ -187,88 +269,28 @@ export default function ContractDetailPage() {
                 <div>
                   <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Total Harga yang Harus Dibayar</p>
                   <p className="text-3xl font-display font-bold text-brand-teal">
-                    {formatCurrency(contract.monthly_rent * getMonths(contract.start_date, contract.end_date))}
+                    {formatCurrency(
+                      (isEditing ? Number(formData.monthly_rent || 0) : contract.monthly_rent) * 
+                      getMonths(contract.start_date, isEditing ? formData.end_date : contract.end_date)
+                    )}
                   </p>
                 </div>
               </div>
 
-              {contract.notes && (
-                <div className="mt-6">
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Catatan Tambahan</p>
+              <div className="mt-6">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Catatan Tambahan</p>
+                {isEditing ? (
+                  <textarea rows={3} value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="w-full bg-white p-4 rounded-xl border border-gray-300 text-sm font-medium text-brand-navy outline-none focus:border-brand-teal focus:ring-2 focus:ring-brand-teal/20 transition-all resize-none" placeholder="Masukkan catatan..."></textarea>
+                ) : contract.notes ? (
                   <p className="text-sm text-gray-600 bg-gray-50 p-4 rounded-xl border border-gray-100">{contract.notes}</p>
-                </div>
-              )}
+                ) : (
+                  <p className="text-sm text-gray-400 italic">Tidak ada catatan</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
-
-      {isExtendModalOpen && (
-        <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-500"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backdropFilter: 'blur(6px)',
-            WebkitBackdropFilter: 'blur(6px)',
-            backgroundColor: 'rgba(11, 31, 53, 0.45)',
-          }}
-        >
-          <div className="relative bg-white rounded-[32px] pt-8 px-8 pb-8 w-full max-w-md shadow-[0_20px_60px_rgba(15,23,42,0.2)] animate-slide-up flex flex-col overflow-hidden">
-            <div className="mb-6 shrink-0 text-center">
-              <span className="inline-block px-2.5 py-1 bg-brand-teal/10 text-brand-teal text-[10px] font-extrabold uppercase tracking-widest rounded-md mb-2">
-                PERPANJANGAN
-              </span>
-              <h3 className="text-2xl font-display font-bold text-brand-navy leading-tight">
-                Perpanjang Kontrak
-              </h3>
-            </div>
-            <button onClick={() => setIsExtendModalOpen(false)} className="absolute top-6 right-6 w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-brand-navy hover:bg-gray-100 transition-colors">
-              <X className="w-5 h-5" />
-            </button>
-            
-            <form onSubmit={handleExtend}>
-              <div className="mb-6 space-y-4">
-                <div className="bg-blue-50 text-blue-800 text-sm p-4 rounded-xl border border-blue-100 text-center">
-                  Berakhir pada: <b>{formatDate(contract.end_date)}</b>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-brand-navy">Durasi Perpanjangan <span className="text-red-500">*</span></label>
-                  <select 
-                    required
-                    value={extendDuration}
-                    onChange={(e) => setExtendDuration(e.target.value)}
-                    className="w-full bg-white border-[1.5px] border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-brand-navy focus:outline-none focus:border-brand-teal transition-colors"
-                  >
-                    <option value="1">1 Bulan</option>
-                    <option value="3">3 Bulan</option>
-                    <option value="6">6 Bulan</option>
-                    <option value="12">12 Bulan (1 Tahun)</option>
-                  </select>
-                  <p className="text-[10px] text-brand-teal font-medium mt-1">
-                    Tanggal berakhir baru: {
-                      (() => {
-                        const newEnd = new Date(contract.end_date);
-                        newEnd.setMonth(newEnd.getMonth() + parseInt(extendDuration));
-                        return newEnd.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-                      })()
-                    }
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setIsExtendModalOpen(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 font-bold text-sm rounded-xl hover:bg-gray-200 transition-colors">
-                  Batal
-                </button>
-                <button type="submit" disabled={isExtending} className="flex-1 py-3 bg-brand-teal text-white font-bold text-sm rounded-xl hover:bg-brand-teal-light transition-all flex items-center justify-center gap-2 disabled:opacity-50">
-                  {isExtending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-                  Simpan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

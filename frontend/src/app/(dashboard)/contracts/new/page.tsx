@@ -50,7 +50,7 @@ export default function NewContractPage() {
           apiFetch('/api/tenants')
         ]);
         setRooms((roomsData || []).filter((r: any) => r.status === 'available'));
-        setTenants(tenantsData || []);
+        setTenants((tenantsData || []).filter((t: any) => !t.room_id));
       } catch (err: any) {
         console.error(err);
       }
