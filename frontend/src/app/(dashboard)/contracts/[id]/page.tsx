@@ -271,7 +271,7 @@ export default function ContractDetailPage() {
                   <p className="text-3xl font-display font-bold text-brand-teal">
                     {formatCurrency(
                       (isEditing ? Number(formData.monthly_rent || 0) : contract.monthly_rent) * 
-                      getMonths(contract.start_date, isEditing ? formData.end_date : contract.end_date)
+                      (isEditing ? Number(formData.rental_duration) : contract.rental_duration)
                     )}
                   </p>
                 </div>

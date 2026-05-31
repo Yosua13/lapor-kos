@@ -44,32 +44,71 @@ export default function DashboardLayout({
     fetchUser();
   }, [router]);
 
+  useEffect(() => {
+    if (userData && userData.role === 'tenant') {
+      const ownerOnlyPaths = ['/rooms', '/tenants', '/contracts', '/reports'];
+      const isOwnerPath = ownerOnlyPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
+      if (isOwnerPath) {
+        router.push('/');
+      }
+    }
+  }, [pathname, userData, router]);
+
   const handleLogout = () => {
     removeToken();
     router.push('/login');
   };
 
-  const navItems = [
-    { section: 'MENU UTAMA', items: [
-      { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-      { name: 'Manajemen Kamar', href: '/rooms', icon: DoorOpen },
-      { name: 'Data Penghuni', href: '/tenants', icon: Users },
-      { name: 'Manajemen Kontrak', href: '/contracts', icon: FileText },
-    ]},
-    { section: 'KEUANGAN', items: [
-      { name: 'Pembayaran', href: '/payments', icon: CreditCard, badge: '3' },
-      { name: 'Laporan', href: '/reports', icon: Home },
-    ]},
-    { section: 'LAINNYA', items: [
-      { name: 'Komplain', href: '/complaints', icon: MessageSquare, badge: '1' },
-      { name: 'Pengaturan', href: '/settings', icon: Settings },
-    ]}
-  ];
+  const isTenant = userData?.role === 'tenant';
+
+  const navItems: {
+    section: string;
+    items: {
+      name: string;
+      href: string;
+      icon: any;
+      badge?: string;
+    }[];
+  }[] = isTenant
+    ? [
+        { section: 'PORTAL PENGHUNI', items: [
+          { name: 'Dashboard Saya', href: '/', icon: LayoutDashboard },
+          { name: 'Tagihan & Bayar', href: '/payments', icon: CreditCard },
+        ]},
+        { section: 'LAINNYA', items: [
+          { name: 'Komplain Fasilitas', href: '/complaints', icon: MessageSquare },
+          { name: 'Pengaturan Akun', href: '/settings', icon: Settings },
+        ]}
+      ]
+    : [
+        { section: 'MENU UTAMA', items: [
+          { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+          { name: 'Manajemen Kamar', href: '/rooms', icon: DoorOpen },
+          { name: 'Data Penghuni', href: '/tenants', icon: Users },
+          { name: 'Manajemen Kontrak', href: '/contracts', icon: FileText },
+        ]},
+        { section: 'KEUANGAN', items: [
+          { name: 'Pembayaran', href: '/payments', icon: CreditCard },
+          { name: 'Laporan', href: '/reports', icon: Home },
+        ]},
+        { section: 'LAINNYA', items: [
+          { name: 'Komplain', href: '/complaints', icon: MessageSquare },
+          { name: 'Pengaturan', href: '/settings', icon: Settings },
+        ]}
+      ];
 
   return (
-    <div className="min-h-screen bg-brand-cream flex relative overflow-hidden">
+    <div className="h-screen w-full bg-brand-cream flex relative overflow-hidden">
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap');
+        
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
       `}</style>
 
       {/* Background Decor */}
@@ -77,7 +116,7 @@ export default function DashboardLayout({
       <div className="noise-bg" />
 
       {/* Sidebar Desktop */}
-      <aside className="hidden lg:flex flex-col w-72 bg-brand-navy text-white h-screen sticky top-0 z-40">
+      <aside className="hidden lg:flex flex-col w-72 bg-brand-navy text-white h-full z-40 flex-shrink-0">
         <div className="p-8 flex items-center gap-3">
           <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center shadow-lg shadow-brand-teal/20">
             <Home className="text-white w-5 h-5" />
@@ -127,7 +166,9 @@ export default function DashboardLayout({
              </div>
              <div className="overflow-hidden">
                 <p className="text-sm font-bold truncate">{userData?.name || 'Yosua R.'}</p>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest">Property Owner</p>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest">
+                  {userData?.role === 'tenant' ? 'Penghuni Kamar' : 'Property Owner'}
+                </p>
              </div>
           </div>
           <button
@@ -141,9 +182,9 @@ export default function DashboardLayout({
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 relative z-10">
+      <div className="flex-1 flex flex-col min-w-0 relative z-10 h-full overflow-y-auto no-scrollbar scroll-smooth">
         {/* Header */}
-        <header className="h-20 bg-white/70 backdrop-blur-md flex items-center justify-between px-6 lg:px-10 sticky top-0 z-40 border-b border-brand-navy/5">
+        <header className="h-20 bg-white/70 backdrop-blur-md flex items-center justify-between px-6 lg:px-10 sticky top-0 z-40 border-b border-brand-navy/5 flex-shrink-0">
           <div className="flex items-center gap-4 flex-1">
             <button 
               className="lg:hidden p-2 text-brand-navy"
@@ -172,13 +213,15 @@ export default function DashboardLayout({
              </div>
              <div className="w-[1px] h-6 bg-brand-navy/10 mx-2" />
              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-brand-teal/10">
-                  YR
-                </div>
-                <div className="hidden sm:block">
-                   <p className="text-xs font-bold leading-none mb-1">Yosua Reynaldi</p>
-                   <p className="text-[10px] text-brand-teal font-bold uppercase tracking-widest">Owner</p>
-                </div>
+                 <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-brand-teal/10">
+                   {userData?.name ? userData.name.substring(0, 2).toUpperCase() : 'YR'}
+                 </div>
+                 <div className="hidden sm:block">
+                    <p className="text-xs font-bold leading-none mb-1">{userData?.name || 'User'}</p>
+                    <p className="text-[10px] text-brand-teal font-bold uppercase tracking-widest">
+                      {userData?.role === 'tenant' ? 'Penghuni' : 'Owner'}
+                    </p>
+                 </div>
              </div>
           </div>
         </header>

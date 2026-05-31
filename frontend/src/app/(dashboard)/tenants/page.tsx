@@ -52,6 +52,7 @@ export default function TenantsPage() {
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
+    email: '',
     room_id: '',
     entry_date: new Date().toISOString().split('T')[0],
     rental_duration: '1',
@@ -223,6 +224,7 @@ export default function TenantsPage() {
       const data = new FormData();
       data.append('name', formData.name);
       data.append('phone', formData.phone);
+      data.append('email', formData.email);
       data.append('room_id', formData.room_id);
       data.append('entry_date', formData.entry_date);
       data.append('rental_duration', formData.rental_duration);
@@ -239,7 +241,7 @@ export default function TenantsPage() {
       if (!response.ok) throw new Error('Gagal menambahkan penghuni');
       
       setIsModalOpen(false);
-      setFormData({ name: '', phone: '', room_id: '', entry_date: new Date().toISOString().split('T')[0], rental_duration: '1' });
+      setFormData({ name: '', phone: '', email: '', room_id: '', entry_date: new Date().toISOString().split('T')[0], rental_duration: '1' });
       setFiles({ ktp: null, selfie: null });
       fetchData();
     } catch (err: any) {
@@ -606,6 +608,10 @@ export default function TenantsPage() {
                     <div className="space-y-1">
                       <label className="block text-xs font-bold text-brand-navy">Nomor HP / WA <span className="text-red-500">*</span></label>
                       <input required type="text" value={formData.phone} onChange={handlePhoneChange} placeholder="+62-8xx-xxxx-xxxx" className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all placeholder:text-gray-400 shadow-sm" />
+                    </div>
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="block text-xs font-bold text-brand-navy">Email Penghuni <span className="text-gray-400">(Opsional untuk login portal)</span></label>
+                      <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all placeholder:text-gray-400 shadow-sm" placeholder="Contoh: budi.santoso@gmail.com" />
                     </div>
                   </div>
                 </div>

@@ -7,6 +7,7 @@ import (
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type RoomRepository struct {
@@ -39,10 +40,37 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 		return err
 	}
 
+	var userIDPtr *uuid.UUID
+	if tenant.Email != "" {
+		var existingUserID uuid.UUID
+		err = tx.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", tenant.Email).Scan(&existingUserID)
+		if err == nil {
+			userIDPtr = &existingUserID
+		} else {
+			pass := tenant.Phone
+			if pass == "" {
+				pass = "password123"
+			}
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
+			if err != nil {
+				return err
+			}
+			newUserID := uuid.New()
+			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified) 
+			              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
+			err = tx.QueryRow(ctx, userQuery, newUserID, tenant.Name, tenant.Email, string(hashedPassword), "tenant", true).Scan(&newUserID)
+			if err != nil {
+				return err
+			}
+			userIDPtr = &newUserID
+		}
+	}
+	tenant.UserID = userIDPtr
+
 	tenant.RoomID = &room.ID
-	tenantQuery := `INSERT INTO tenants (room_id, name, phone, ktp_url, selfie_url) 
-	                VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`
-	err = tx.QueryRow(ctx, tenantQuery, tenant.RoomID, tenant.Name, tenant.Phone, tenant.KTPURL, tenant.SelfieURL).
+	tenantQuery := `INSERT INTO tenants (room_id, name, phone, ktp_url, selfie_url, user_id) 
+	                VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`
+	err = tx.QueryRow(ctx, tenantQuery, tenant.RoomID, tenant.Name, tenant.Phone, tenant.KTPURL, tenant.SelfieURL, tenant.UserID).
 		Scan(&tenant.ID, &tenant.CreatedAt)
 	if err != nil {
 		return err

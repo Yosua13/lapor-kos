@@ -217,3 +217,21 @@ func (h *TenantHandler) saveFile(c *gin.Context, fieldName string) (string, erro
 
 	return "/uploads/" + filename, nil
 }
+
+func (h *TenantHandler) GetMyTenantProfile(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userID, _ := uuid.Parse(userIDStr.(string))
+
+	tenant, err := h.repo.FindByUserID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tenant profile not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, tenant)
+}
+
