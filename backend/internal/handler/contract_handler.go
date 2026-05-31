@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
@@ -70,6 +71,10 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 	}
 
 	if err := h.repo.Create(c.Request.Context(), contract); err != nil {
+		if strings.Contains(err.Error(), "kamar tidak tersedia") {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create contract"})
 		return
 	}
@@ -136,6 +141,15 @@ func (h *ContractHandler) UpdateContract(c *gin.Context) {
 		return
 	}
 
+	if req.StartDate != "" {
+		startDate, err := time.Parse("2006-01-02", req.StartDate)
+		if err == nil {
+			contract.StartDate = startDate
+		}
+	}
+	if req.RentalDuration > 0 {
+		contract.RentalDuration = req.RentalDuration
+	}
 	if req.EndDate != "" {
 		endDate, err := time.Parse("2006-01-02", req.EndDate)
 		if err == nil {

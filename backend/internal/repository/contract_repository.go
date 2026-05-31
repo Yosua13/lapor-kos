@@ -24,6 +24,17 @@ func (r *ContractRepository) Create(ctx context.Context, contract *model.Contrac
 	}
 	defer tx.Rollback(ctx)
 
+	if contract.RoomID != nil {
+		var status string
+		err = tx.QueryRow(ctx, "SELECT status FROM rooms WHERE id = $1 FOR UPDATE", contract.RoomID).Scan(&status)
+		if err != nil {
+			return fmt.Errorf("failed to check room status: %w", err)
+		}
+		if status != "available" {
+			return fmt.Errorf("kamar tidak tersedia (status: %s)", status)
+		}
+	}
+
 	query := `INSERT INTO contracts (room_id, tenant_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes) 
 	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, created_at`
 	err = tx.QueryRow(ctx, query, contract.RoomID, contract.TenantID, contract.OwnerID, contract.StartDate, contract.EndDate, contract.RentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, contract.PaymentDueDay, contract.Status, contract.Notes).
@@ -164,9 +175,9 @@ func (r *ContractRepository) FindByID(ctx context.Context, id uuid.UUID, ownerID
 
 func (r *ContractRepository) Update(ctx context.Context, contract *model.Contract) error {
 	query := `UPDATE contracts 
-	          SET end_date = $1, monthly_rent = $2, deposit = $3, payment_due_day = $4, status = $5, notes = $6 
-	          WHERE id = $7 AND owner_id = $8`
-	_, err := r.db.Exec(ctx, query, contract.EndDate, contract.MonthlyRent, contract.Deposit, contract.PaymentDueDay, contract.Status, contract.Notes, contract.ID, contract.OwnerID)
+	          SET start_date = $1, end_date = $2, rental_duration = $3, monthly_rent = $4, deposit = $5, payment_due_day = $6, status = $7, notes = $8 
+	          WHERE id = $9 AND owner_id = $10`
+	_, err := r.db.Exec(ctx, query, contract.StartDate, contract.EndDate, contract.RentalDuration, contract.MonthlyRent, contract.Deposit, contract.PaymentDueDay, contract.Status, contract.Notes, contract.ID, contract.OwnerID)
 	return err
 }
 
