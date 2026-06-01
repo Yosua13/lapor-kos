@@ -1,293 +1,92 @@
-# PROMPT — Perbaikan UI Seluruh Halaman Lapor Kos (Owner)
+# Implementasi Issue #8: Kalender Kontrak & Jatuh Tempo
 
-## Konteks
-Perbaiki tampilan 4 halaman utama aplikasi Lapor Kos tanpa mengubah logika bisnis, API call, atau struktur data. Hanya perubahan UI/CSS/komponen. Ikuti design system yang sudah ada
+Tujuan: Membangun visualisasi kalender di halaman dashboard untuk memantau tanggal habis kontrak dan jatuh tempo pembayaran dalam satu tampilan terpadu, lengkap dengan filter, kode warna (hijau/kuning/merah), dan popup detail event yang terhubung dengan modul lainnya.
 
----
+## User Review Required
 
-## HALAMAN 1 — Dashboard (`/dashboard`)
+> [!IMPORTANT]
+> Mohon direview rancangan filter dan visualisasi warna kalender berikut:
+> - **Filter**: Semua / Kontrak Habis / Jatuh Tempo.
+> - **Aksi Klik Event**: Membuka popup detail yang berisi informasi ringkas dan memiliki tautan/tombol untuk mengarahkan pengguna ke halaman detail Kontrak atau detail Pembayaran terkait.
+> - **Hak Akses**: Kalender ini dirancang khusus untuk peran **Owner** (Pemilik Kos).
 
-### Masalah yang harus diperbaiki:
+## Open Questions
 
-**A. Hapus panel kanan yang mengambang (Estimasi Pendapatan + Tingkat Hunian)**
-Panel gelap navy yang menimpa konten utama harus dihilangkan. Ganti dengan layout grid proper di bawah stat cards:
+> [!NOTE]
+> - **Format Warna Event**: Apakah kode warna (Hijau/Kuning/Merah) akan dihitung secara dinamis di backend dan dikirim dalam properti JSON `color_status`, atau dihitung sepenuhnya di frontend? *(Rekomendasi: Dihitung di backend agar konsisten dan efisien)*.
+> - **Navigasi Bulan di FullCalendar**: Saat pengguna mengganti bulan di UI FullCalendar (tombol Prev/Next), frontend akan melakukan fetch ulang ke backend untuk bulan & tahun yang sesuai menggunakan endpoint query parameters `?month=X&year=Y`.
 
-```tsx
-// Layout baru dashboard (bawah stat cards):
-<div className="grid grid-cols-3 gap-4">
-  <div className="col-span-2">
-    {/* Kamar Terbaru — tabel seperti sekarang */}
-  </div>
-  <div className="flex flex-col gap-4">
-    {/* Card 1: Revenue mini chart */}
-    {/* Card 2: Occupancy donut */}
-  </div>
-</div>
-```
-
-**B. Perbaikan Stat Cards (4 kartu)**
-
-Ganti badge "AKTIF" yang seragam dengan informasi yang berarti:
-
-| Card | Badge Baru | Progress Bar |
-|------|-----------|-------------|
-| Total Kamar | `Total: N` (neutral) | 100% penuh selalu |
-| Kamar Terisi | `X%` hunian (amber jika <50%, teal jika ≥50%) | proporsional: `(terisi/total)*100%` |
-| Total Penghuni | `Aktif` (green) | proporsional terhadap kamar |
-| Pendapatan | `X% target` (amber/green/red) | proporsional terhadap target |
-
-Tambahkan ikon berwarna di pojok kiri atas setiap card:
-```tsx
-// Contoh card dengan ikon
-<div className="stat-card">
-  <div className="flex items-start justify-between mb-3">
-    <div className="icon-box bg-teal-50 text-teal-700 rounded-lg p-2">
-      <BuildingIcon size={18} />
-    </div>
-    <span className="badge">{occupancyPercent}%</span>
-  </div>
-  <p className="label">Kamar Terisi</p>
-  <p className="value">{occupied}<span>/{total}</span></p>
-  <div className="progress-bar">
-    <div style={{ width: `${(occupied/total)*100}%` }} />
-  </div>
-  <p className="sub">{total - occupied} kamar masih kosong</p>
-</div>
-```
+## Proposed Changes
 
 ---
 
-## HALAMAN 2 — Manajemen Kamar (`/rooms`)
+### Backend
 
-### Perbaikan Room Card
+Akan dibuat endpoint baru pada backend Go untuk menarik data event kalender berdasarkan bulan dan tahun tertentu.
 
-Setiap room card harus menampilkan informasi lebih lengkap:
+#### [NEW] [calendar.go](file:///d:/project_yosua/lapor-kos/backend/internal/model/calendar.go)
+- Mendefinisikan struct `CalendarEvent` dan `EventDetails` untuk format respons API.
 
-**Jika kamar KOSONG:**
-```tsx
-<div className="room-card" style={{ borderLeft: '3px solid #f59e0b' }}>
-  <div className="flex justify-between items-start mb-2">
-    <div>
-      <h3>Kamar {number}</h3>
-      <p className="text-muted">Lantai {floor}</p>
-    </div>
-    <Badge variant="amber">Kosong</Badge>
-  </div>
+#### [NEW] [calendar_repository.go](file:///d:/project_yosua/lapor-kos/backend/internal/repository/calendar_repository.go)
+- Menjalankan kueri SQL menggunakan `pgxpool` untuk mengambil:
+  1. Kontrak yang berakhir pada bulan/tahun yang dipilih milik `owner_id`.
+  2. Pembayaran yang jatuh tempo pada bulan/tahun yang dipilih milik `owner_id`.
+- Menghitung kode warna (`green`, `yellow`, `red`) secara dinamis berdasarkan aturan:
+  - **Hijau**: Kontrak dengan status `active` (> 30 hari tersisa), atau Pembayaran dengan status `paid`.
+  - **Kuning**: Kontrak dengan status `active` yang habis dalam $\le 30$ hari, atau Pembayaran belum lunas (`unpaid`, `pending`, `partial`) yang jatuh tempo dalam $\le 7$ hari ke depan.
+  - **Merah**: Kontrak dengan status `expired` atau `cancelled`, atau Pembayaran belum lunas yang sudah melewati tanggal jatuh tempo (`overdue` atau lewat hari ini).
 
-  {/* Tombol cepat */}
-  <button className="btn-ghost w-full mt-3">
-    + Tambah Penghuni
-  </button>
+#### [NEW] [calendar_handler.go](file:///d:/project_yosua/lapor-kos/backend/internal/handler/calendar_handler.go)
+- Handler untuk `GET /api/calendar/events`.
+- Menerima query parameter `month` dan `year`. Jika kosong, default ke bulan dan tahun saat ini.
+- Melakukan verifikasi token JWT dan peran pengguna sebagai `owner`.
 
-  <div className="flex justify-between items-center mt-2">
-    <span className="price">Rp {price.toLocaleString('id')}/bln</span>
-    <div className="facilities">
-      {facilities.slice(0, 2).map(f => <Tag>{f}</Tag>)}
-    </div>
-  </div>
-</div>
-```
-
-**Jika kamar TERISI:**
-```tsx
-<div className="room-card" style={{ borderLeft: '3px solid #0e8a7a' }}>
-  <div className="flex justify-between items-start mb-2">
-    <div>
-      <h3>Kamar {number}</h3>
-      <p className="text-muted">Lantai {floor}</p>
-    </div>
-    <Badge variant="green">Terisi</Badge>
-  </div>
-
-  {/* Info penghuni — INI YANG KURANG SEKARANG */}
-  <div className="tenant-info bg-gray-50 rounded-lg p-2 mb-3 flex items-center gap-2">
-    <Avatar src={tenant.selfie_photo_url} fallback={tenant.name[0]} size="sm" />
-    <div>
-      <p className="font-medium text-sm">{tenant.name}</p>
-      <p className="text-xs text-muted">s/d {formatDate(contract.end_date)}</p>
-    </div>
-  </div>
-
-  <div className="flex justify-between items-center">
-    <span className="price">Rp {price.toLocaleString('id')}/bln</span>
-    <div className="facilities">
-      {facilities.slice(0, 2).map(f => <Tag>{f}</Tag>)}
-    </div>
-  </div>
-</div>
-```
-
-**Data yang perlu di-fetch:**
-Pastikan `GET /api/rooms` mengembalikan data penghuni aktif jika kamar terisi:
-```json
-{
-  "id": "uuid",
-  "room_number": "5",
-  "status": "occupied",
-  "price": 450000,
-  "facilities": ["Peralatan Mandi"],
-  "active_tenant": {
-    "name": "Keziaa",
-    "selfie_photo_url": "https://..."
-  },
-  "active_contract": {
-    "end_date": "2026-12-01"
-  }
-}
-```
+#### [MODIFY] [main.go](file:///d:/project_yosua/lapor-kos/backend/main.go)
+- Menginstansiasi `CalendarRepository` and `CalendarHandler`.
+- Mendaftarkan rute `GET /api/calendar/events` dengan middleware otentikasi `AuthMiddleware()` dan otorisasi `RoleMiddleware(dbPool, "owner")`.
 
 ---
 
-## HALAMAN 3 — Data Penghuni (`/tenants`)
+### Frontend
 
-### Perbaikan Stat Cards
+Akan di-install pustaka FullCalendar, ditambahkan menu navigasi, dan dibangun halaman kalender yang interaktif.
 
-Ganti "BELUM BAYAR" yang labelnya kurang jelas dengan label yang lebih informatif:
+#### Dependensi Baru
+- Menjalankan perintah instalasi berikut di folder `frontend`:
+  ```bash
+  npm install @fullcalendar/react @fullcalendar/daygrid @fullcalendar/core
+  ```
 
-```
-Card 4: Bukan "BELUM BAYAR" tapi "Tagihan Jatuh Tempo"
-Badge: "N tagihan" dengan warna merah jika > 0, hijau jika 0
-```
+#### [MODIFY] [layout.tsx](file:///d:/project_yosua/lapor-kos/frontend/src/app/(dashboard)/layout.tsx)
+- Mengimpor icon `Calendar` dari `lucide-react`.
+- Menambahkan item navigasi `"Kalender"` dengan rute `/calendar` pada sidebar Owner (di bawah menu "Dashboard" atau di dalam kelompok "MENU UTAMA").
 
-### Perbaikan Tenant Card
+#### [NEW] [page.tsx](file:///d:/project_yosua/lapor-kos/frontend/src/app/(dashboard)/calendar/page.tsx)
+- Halaman kalender berbasis klien (`'use client'`).
+- Menggunakan komponen `<FullCalendar>` dari `@fullcalendar/react` dengan plugin `@fullcalendar/daygrid`.
+- Menyediakan komponen filter di bagian atas halaman:
+  - **Semua Event** (default)
+  - **Kontrak Habis**
+  - **Jatuh Tempo**
+- Melakukan pemanggilan `apiFetch('/api/calendar/events?month=X&year=Y')` saat inisialisasi dan setiap kali navigasi kalender berubah bulan/tahun.
+- Mengatur warna event berdasarkan nilai `color_status` dari API:
+  - `green`: background hijau, teks putih.
+  - `yellow`: background kuning, teks gelap.
+  - `red`: background merah, teks putih.
+- Menampilkan modal popup kustom saat event diklik:
+  - Menampilkan judul event, deskripsi, tanggal, nama penghuni, nomor kamar, status, dan nominal tagihan (khusus jatuh tempo).
+  - Menyediakan tombol pintas seperti "Lihat Kontrak" (mengarahkan ke `/contracts/[id]`) atau "Lihat Pembayaran" (mengarahkan ke `/payments`).
 
-Tambahkan payment status yang lebih visual:
+## Verification Plan
 
-```tsx
-// Tambahkan di bagian bawah status badges:
-<div className="payment-progress mt-2 p-2 bg-gray-50 rounded-lg">
-  <div className="flex justify-between text-xs mb-1">
-    <span className="text-muted">Tagihan bulan ini</span>
-    <span className={isPaid ? 'text-green' : 'text-red'}>
-      {isPaid ? 'Lunas' : `Belum - Rp ${billAmount.toLocaleString('id')}`}
-    </span>
-  </div>
-</div>
-```
+### Automated Tests
+- Menjalankan unit tests jika ada, atau memverifikasi respons JSON dari `/api/calendar/events?month=5&year=2026` via browser/Postman/cURL untuk memastikan format output dan kode warna terhitung dengan benar.
 
----
-
-## HALAMAN 4 — Manajemen Kontrak (`/contracts`)
-
-### Perbaikan Contract Card
-
-Ini perubahan terbesar — tambahkan visual timeline/progress kontrak:
-
-```tsx
-// Hitung progress kontrak
-const startDate = new Date(contract.start_date)
-const endDate = new Date(contract.end_date)
-const today = new Date()
-const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24)
-const elapsedDays = (today - startDate) / (1000 * 60 * 60 * 24)
-const progressPercent = Math.min(Math.round((elapsedDays / totalDays) * 100), 100)
-const remainingDays = Math.max(Math.round((endDate - today) / (1000 * 60 * 60 * 24)), 0)
-
-// Warna progress berdasarkan sisa waktu
-const progressColor = remainingDays > 60 ? '#0e8a7a' : remainingDays > 30 ? '#d97706' : '#dc2626'
-```
-
-```tsx
-<div className="contract-card">
-  <div className="flex justify-between items-start mb-3">
-    <div>
-      <p className="text-xs text-muted">Kamar {room.room_number} · Lantai {room.floor}</p>
-      <h3 className="font-semibold">{tenant.name}</h3>
-    </div>
-    <Badge variant={contract.status === 'active' ? 'green' : 'gray'}>
-      {contract.status === 'active' ? 'Aktif' : 'Berakhir'}
-    </Badge>
-  </div>
-
-  {/* Timeline row — TAMBAHAN BARU */}
-  <div className="flex items-center gap-3 mb-3">
-    <div>
-      <p className="text-xs text-muted">Mulai</p>
-      <p className="text-sm font-medium">{formatDate(contract.start_date)}</p>
-    </div>
-    <div className="flex-1 px-2">
-      <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-        <div style={{ width: `${progressPercent}%`, background: progressColor }} className="h-full rounded-full transition-all" />
-      </div>
-      <p className="text-xs text-muted text-center mt-1">{progressPercent}%</p>
-    </div>
-    <div className="text-right">
-      <p className="text-xs text-muted">Berakhir</p>
-      <p className="text-sm font-medium">{formatDate(contract.end_date)}</p>
-    </div>
-  </div>
-
-  {/* Footer row */}
-  <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-    <div>
-      <p className="text-xs text-muted">Jatuh tempo tagihan</p>
-      <p className="text-sm font-medium">Tanggal {contract.payment_due_day} setiap bulan</p>
-    </div>
-    <div className="text-right">
-      <p className="text-xs text-muted">Sisa</p>
-      <p className={`text-sm font-semibold ${remainingDays <= 30 ? 'text-red-600' : 'text-teal-600'}`}>
-        {remainingDays} hari
-      </p>
-    </div>
-  </div>
-</div>
-```
-
----
-
-## Perubahan Global (Berlaku di Semua Halaman)
-
-### Badge consistency
-Buat komponen `<StatusBadge>` yang konsisten:
-
-```tsx
-// components/StatusBadge.tsx
-type StatusType = 'active' | 'vacant' | 'occupied' | 'paid' | 'unpaid' | 'overdue' | 'partial' | 'expiring'
-
-const statusMap: Record<StatusType, { label: string; className: string }> = {
-  active:     { label: 'Aktif',        className: 'bg-green-50 text-green-800' },
-  vacant:     { label: 'Kosong',       className: 'bg-amber-50 text-amber-800' },
-  occupied:   { label: 'Terisi',       className: 'bg-teal-50 text-teal-800' },
-  paid:       { label: 'Lunas',        className: 'bg-green-50 text-green-800' },
-  unpaid:     { label: 'Belum Bayar',  className: 'bg-gray-100 text-gray-600' },
-  overdue:    { label: 'Terlambat',    className: 'bg-red-50 text-red-800' },
-  partial:    { label: 'Sebagian',     className: 'bg-amber-50 text-amber-800' },
-  expiring:   { label: 'Segera Habis', className: 'bg-orange-50 text-orange-800' },
-}
-
-export function StatusBadge({ status }: { status: StatusType }) {
-  const { label, className } = statusMap[status]
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${className}`}>
-      {label}
-    </span>
-  )
-}
-```
-
-### Progress Bar komponen
-```tsx
-// components/ProgressBar.tsx
-export function ProgressBar({ value, max, colorClass = 'bg-teal-500' }: {
-  value: number; max: number; colorClass?: string
-}) {
-  const percent = Math.min(Math.round((value / max) * 100), 100)
-  return (
-    <div className="h-1 bg-gray-100 rounded-full overflow-hidden mt-2">
-      <div
-        className={`h-full rounded-full transition-all duration-700 ${colorClass}`}
-        style={{ width: `${percent}%` }}
-      />
-    </div>
-  )
-}
-```
-
----
-
-## Yang TIDAK Boleh Diubah
-- Semua API call dan endpoint tetap sama
-- Struktur routing Next.js tidak berubah
-- Sidebar navigation tidak berubah
-- Warna tema utama tidak berubah
-- Tidak perlu tambah library baru — cukup Tailwind + komponen yang sudah ada
+### Manual Verification
+1. Masuk sebagai **Owner** dan navigasi ke menu **Kalender**.
+2. Pastikan kalender menampilkan event kontrak dan pembayaran sesuai data di database.
+3. Ubah filter menjadi "Kontrak Habis" dan pastikan event jatuh tempo tersembunyi.
+4. Ubah filter menjadi "Jatuh Tempo" dan pastikan event kontrak tersembunyi.
+5. Klik salah satu event dan verifikasi detail popup muncul dengan benar.
+6. Klik tombol "Lihat Detail" di popup untuk memastikan navigasi mengarah ke halaman yang tepat (misal halaman kontrak atau pembayaran).
+7. Ganti bulan menggunakan tombol navigasi FullCalendar (Prev/Next) dan pastikan data terupdate sesuai bulan yang baru dipilih.

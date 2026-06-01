@@ -54,6 +54,7 @@ func main() {
 	tenantRepo := repository.NewTenantRepository(dbPool)
 	contractRepo := repository.NewContractRepository(dbPool)
 	paymentRepo := repository.NewPaymentRepository(dbPool)
+	calendarRepo := repository.NewCalendarRepository(dbPool)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(userRepo, emailServ)
@@ -61,6 +62,7 @@ func main() {
 	tenantHandler := handler.NewTenantHandler(tenantRepo)
 	contractHandler := handler.NewContractHandler(contractRepo)
 	paymentHandler := handler.NewPaymentHandler(paymentRepo, tenantRepo)
+	calendarHandler := handler.NewCalendarHandler(calendarRepo)
 
 	router := gin.Default()
 
@@ -151,6 +153,12 @@ func main() {
 			// Tenant only access
 			payments.GET("/my", middleware.RoleMiddleware(dbPool, "tenant"), paymentHandler.GetTenantPayments)
 			payments.POST("/:id/submit", middleware.RoleMiddleware(dbPool, "tenant"), paymentHandler.SubmitPaymentProof)
+		}
+
+		// Calendar routes (Protected)
+		calendar := api.Group("/calendar", middleware.AuthMiddleware())
+		{
+			calendar.GET("/events", middleware.RoleMiddleware(dbPool, "owner"), calendarHandler.GetEvents)
 		}
 	}
 

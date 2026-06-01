@@ -17,7 +17,8 @@ import {
   Settings,
   CreditCard,
   MessageSquare,
-  FileText
+  FileText,
+  Calendar
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { removeToken } from '@/lib/auth';
@@ -83,6 +84,7 @@ export default function DashboardLayout({
     : [
         { section: 'MENU UTAMA', items: [
           { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+          { name: 'Kalender', href: '/calendar', icon: Calendar },
           { name: 'Manajemen Kamar', href: '/rooms', icon: DoorOpen },
           { name: 'Data Penghuni', href: '/tenants', icon: Users },
           { name: 'Manajemen Kontrak', href: '/contracts', icon: FileText },
