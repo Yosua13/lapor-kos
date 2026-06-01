@@ -47,6 +47,8 @@ func main() {
 
 	// Initialize services
 	emailServ := service.NewEmailService()
+	aiServ := service.NewAIService()
+	waServ := service.NewWhatsAppService()
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(dbPool)
@@ -55,6 +57,7 @@ func main() {
 	contractRepo := repository.NewContractRepository(dbPool)
 	paymentRepo := repository.NewPaymentRepository(dbPool)
 	calendarRepo := repository.NewCalendarRepository(dbPool)
+	complaintRepo := repository.NewComplaintRepository(dbPool)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(userRepo, emailServ)
@@ -63,6 +66,7 @@ func main() {
 	contractHandler := handler.NewContractHandler(contractRepo)
 	paymentHandler := handler.NewPaymentHandler(paymentRepo, tenantRepo)
 	calendarHandler := handler.NewCalendarHandler(calendarRepo)
+	complaintHandler := handler.NewComplaintHandler(complaintRepo, userRepo, aiServ, waServ)
 
 	router := gin.Default()
 
@@ -159,6 +163,17 @@ func main() {
 		calendar := api.Group("/calendar", middleware.AuthMiddleware())
 		{
 			calendar.GET("/events", middleware.RoleMiddleware(dbPool, "owner"), calendarHandler.GetEvents)
+		}
+
+		// Complaint routes (Protected)
+		complaints := api.Group("/complaints", middleware.AuthMiddleware())
+		{
+			complaints.POST("", middleware.RoleMiddleware(dbPool, "tenant"), complaintHandler.CreateComplaint)
+			complaints.POST("/upload", middleware.RoleMiddleware(dbPool, "tenant"), complaintHandler.UploadPhoto)
+			complaints.GET("/my", middleware.RoleMiddleware(dbPool, "tenant"), complaintHandler.GetTenantComplaints)
+			complaints.GET("", middleware.RoleMiddleware(dbPool, "owner"), complaintHandler.GetOwnerComplaints)
+			complaints.PUT("/:id/status", middleware.RoleMiddleware(dbPool, "owner"), complaintHandler.UpdateComplaintStatus)
+			complaints.PUT("/whatsapp-group", middleware.RoleMiddleware(dbPool, "owner"), complaintHandler.UpdateWhatsAppGroup)
 		}
 	}
 

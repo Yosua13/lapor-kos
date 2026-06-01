@@ -16,6 +16,7 @@ type User struct {
 	VerificationToken *string    `json:"-" db:"verification_token"`
 	OTPCode           *string    `json:"-" db:"otp_code"`
 	OTPExpiresAt      *time.Time `json:"-" db:"otp_expires_at"`
+	WhatsAppGroupLink *string    `json:"whatsapp_group_link,omitempty" db:"whatsapp_group_link"`
 	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
 }
 
