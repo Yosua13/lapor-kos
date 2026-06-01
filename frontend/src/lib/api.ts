@@ -2,6 +2,18 @@ import { getToken, removeToken } from './auth';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
+/**
+ * Returns the correct absolute URL for an image stored either on the backend
+ * (old /uploads/... paths) or on Supabase Storage (full https:// URLs).
+ */
+export const getImageUrl = (url: string | null | undefined): string => {
+  if (!url) return '';
+  // If it's already an absolute URL (Supabase Storage), return as-is
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  // Otherwise it's a legacy local path — prepend the API base URL
+  return `${API_URL}${url}`;
+};
+
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
 }
