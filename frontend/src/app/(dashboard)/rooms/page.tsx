@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   Search,
@@ -32,11 +33,19 @@ interface Room {
   price_per_month: number;
   description: string;
   status: string;
+  activeContract?: {
+    end_date: string;
+    tenant?: {
+      name: string;
+    };
+  };
 }
 
 export default function RoomsPage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -81,13 +90,22 @@ export default function RoomsPage() {
   const fetchRooms = async () => {
     setIsLoading(true);
     try {
-      const data = await apiFetch('/api/rooms');
-      setRooms(data || []);
+      const [roomsData, tenantsData] = await Promise.all([
+        apiFetch('/api/rooms'),
+        apiFetch('/api/tenants')
+      ]);
+      setRooms(roomsData || []);
+      setTenants(tenantsData || []);
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data kamar');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Helper to find tenant for a room
+  const getTenantForRoom = (roomId: string) => {
+    return tenants.find(t => t.room_id === roomId || t.room?.id === roomId);
   };
 
   useEffect(() => {
@@ -122,6 +140,10 @@ export default function RoomsPage() {
 
     return result;
   }, [rooms, activeTab, searchQuery, sortBy]);
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
 
   const handleOpenModal = (room?: Room) => {
     setStep(1);
@@ -342,43 +364,58 @@ export default function RoomsPage() {
       {/* STAT CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-brand-navy transition-colors"></div>
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-brand-navy"><Home className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-md">Total</span>
+          <div className="flex justify-between items-start mb-3">
+            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 group-hover:scale-110 transition-transform"><Home className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">Total: {stats.total}</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TOTAL KAMAR</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.total}</p>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+            <div className="h-full bg-slate-400 rounded-full" style={{ width: '100%' }} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">{stats.total} terdaftar</p>
         </div>
 
         <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-brand-teal transition-colors"></div>
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 bg-brand-teal/10 rounded-xl flex items-center justify-center text-brand-teal"><Users className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-brand-teal bg-brand-teal/10 px-2 py-1 rounded-md">Berpenghuni</span>
+          <div className="flex justify-between items-start mb-3">
+            <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600 group-hover:scale-110 transition-transform"><Users className="w-5 h-5" /></div>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${stats.occupancyRate >= 50 ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700'}`}>{stats.occupancyRate}%</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">KAMAR TERISI</p>
-          <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupied}</p>
+          <div className="flex items-baseline gap-1">
+            <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupied}</p>
+            <span className="text-brand-navy/20 font-bold text-lg">/{stats.total}</span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+            <div className={`h-full rounded-full transition-all duration-700 ${stats.occupancyRate >= 50 ? 'bg-brand-teal' : 'bg-amber-500'}`} style={{ width: `${stats.occupancyRate}%` }} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">{stats.available} kamar kosong</p>
         </div>
 
         <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-amber-500 transition-colors"></div>
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-500"><Key className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">Siap Huni</span>
+          <div className="flex justify-between items-start mb-3">
+            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform"><Key className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">Siap Huni</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">KAMAR KOSONG</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.available}</p>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+            <div className="h-full bg-amber-400 rounded-full transition-all duration-700" style={{ width: `${stats.total > 0 ? (stats.available / stats.total) * 100 : 0}%` }} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">Menunggu penghuni</p>
         </div>
 
         <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-blue-500 transition-colors"></div>
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500"><TrendingUp className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md">Efisiensi</span>
+          <div className="flex justify-between items-start mb-3">
+            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform"><TrendingUp className="w-5 h-5" /></div>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${stats.occupancyRate >= 70 ? 'bg-emerald-50 text-emerald-700' : stats.occupancyRate >= 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>Efisiensi</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TINGKAT HUNIAN</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupancyRate}%</p>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+            <div className={`h-full rounded-full transition-all duration-700 ${stats.occupancyRate >= 70 ? 'bg-emerald-500' : stats.occupancyRate >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${stats.occupancyRate}%` }} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">Rasio kamar terisi</p>
         </div>
       </div>
 
@@ -445,49 +482,69 @@ export default function RoomsPage() {
       ) : viewMode === 'grid' ? (
         // GRID VIEW
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredAndSortedRooms.map(room => (
-            <div key={room.id} className="bg-white border-[1.5px] border-gray-200 rounded-[24px] shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative group">
-              <div className={`h-1.5 w-full ${room.status === 'occupied' ? 'bg-brand-teal' : 'bg-amber-500'}`}></div>
+          {filteredAndSortedRooms.map(room => {
+            const tenant = getTenantForRoom(room.id);
+            const isOccupied = room.status === 'occupied';
+            return (
+            <div key={room.id} className="bg-white border-[1.5px] border-gray-200 rounded-[20px] shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative group" style={{ borderLeft: `3px solid ${isOccupied ? '#0e8a7a' : '#f59e0b'}` }}>
               <div className="p-5 flex-1">
-                <div className="flex justify-between items-start mb-5">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center font-bold text-lg ${room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'}`}>
-                      {room.room_number.slice(-2)}
-                    </div>
-                    <div>
-                      <h3 className="font-display font-bold text-brand-navy text-lg leading-tight">Kamar {room.room_number}</h3>
-                      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-bold mt-1 ${
-                        room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'
-                      }`}>
-                        {room.status === 'occupied' ? 'TERISI' : 'KOSONG'}
-                      </div>
-                    </div>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="font-display font-bold text-brand-navy text-lg leading-tight">Kamar {room.room_number}</h3>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Lantai {room.room_number.length > 1 ? room.room_number[0] : '1'}</p>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => handleOpenModal(room)} className="p-1.5 text-gray-400 hover:text-brand-teal hover:bg-brand-teal/10 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => handleDeleteClick(room)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                      isOccupied ? 'bg-teal-50 text-teal-700 ring-1 ring-teal-200' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${isOccupied ? 'bg-teal-500' : 'bg-amber-500'}`} />
+                      {isOccupied ? 'Terisi' : 'Kosong'}
+                    </span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => handleOpenModal(room)} className="p-1.5 text-gray-400 hover:text-brand-teal hover:bg-brand-teal/10 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteClick(room)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="mb-4">
-                  <p className="text-xl font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')} <span className="text-xs font-medium text-gray-400 font-sans">/ bulan</span></p>
-                </div>
+                {/* Tenant Info (for occupied rooms) */}
+                {isOccupied && tenant ? (
+                  <div className="bg-gray-50 rounded-xl p-3 mb-4 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-brand-teal/10 overflow-hidden flex items-center justify-center shrink-0">
+                      {tenant.selfie_url ? (
+                        <img src={`http://localhost:8081${tenant.selfie_url}`} alt={tenant.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-brand-teal font-bold text-xs">{tenant.name?.substring(0, 2).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-brand-navy truncate">{tenant.name}</p>
+                      <p className="text-[10px] text-gray-400">s/d {tenant.contract?.end_date ? new Date(tenant.contract.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</p>
+                    </div>
+                  </div>
+                ) : !isOccupied ? (
+                  <button 
+                    onClick={() => router.push('/tenants')}
+                    className="w-full py-2.5 mb-4 border-[1.5px] border-dashed border-gray-300 hover:border-brand-teal text-gray-400 hover:text-brand-teal rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Tambah Penghuni
+                  </button>
+                ) : null}
 
-                <div className="flex flex-wrap gap-1.5">
-                  {(room.description ? room.description.split(',') : []).slice(0, 4).map((facility, idx) => (
-                    <span key={idx} className="px-2 py-1 rounded bg-gray-50 text-gray-600 text-[10px] font-medium border border-gray-100">
-                      {facility.trim()}
-                    </span>
-                  ))}
-                  {room.description && room.description.split(',').length > 4 && (
-                    <span className="px-2 py-1 rounded bg-gray-50 text-gray-400 text-[10px] font-medium border border-gray-100">
-                      +{room.description.split(',').length - 4}
-                    </span>
-                  )}
+                <div className="flex justify-between items-center">
+                  <p className="text-sm font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')}<span className="text-[10px] font-medium text-gray-400 font-sans">/bln</span></p>
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {(room.description ? room.description.split(',') : []).slice(0, 2).map((facility, idx) => (
+                      <span key={idx} className="px-2 py-0.5 rounded bg-gray-50 text-gray-500 text-[9px] font-medium border border-gray-100">
+                        {facility.trim()}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         // LIST VIEW
@@ -497,9 +554,8 @@ export default function RoomsPage() {
               <thead className="bg-gray-50 border-b border-gray-200 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
                 <tr>
                   <th className="px-6 py-4">Nomor Kamar</th>
+                  <th className="px-6 py-4">Penghuni & Status</th>
                   <th className="px-6 py-4">Harga/Bulan</th>
-                  <th className="px-6 py-4">Deskripsi</th>
-                  <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
               </thead>
@@ -513,26 +569,57 @@ export default function RoomsPage() {
                         </div>
                         <div>
                           <p className="font-bold text-brand-navy">Kamar {room.room_number}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5 truncate max-w-[150px]">{room.description || '-'}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 font-bold text-brand-navy">
-                      Rp {room.price_per_month.toLocaleString('id-ID')}
-                    </td>
-                    <td className="px-6 py-4 text-xs text-gray-500 max-w-[200px] truncate">
-                      {room.description || '-'}
+                    <td className="px-6 py-4">
+                      {room.status === 'occupied' && room.activeContract && room.activeContract.tenant ? (
+                        <div>
+                          <p className="font-bold text-brand-navy flex items-center gap-1.5">
+                             {room.activeContract.tenant.name}
+                          </p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">S/d {formatDate(room.activeContract.end_date)}</p>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-600 ring-1 ring-amber-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> KOSONG
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${
-                        room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'
-                      }`}>
-                        {room.status === 'occupied' ? 'TERISI' : 'KOSONG'}
-                      </span>
+                      <p className="font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')}</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(room.description ? room.description.split(',') : []).slice(0, 1).map((facility, idx) => (
+                          <span key={idx} className="px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 text-[9px] font-medium border border-gray-100">
+                            {facility.trim()}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleOpenModal(room)} className="p-1.5 text-gray-400 hover:text-brand-teal hover:bg-brand-teal/10 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => handleDeleteClick(room)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                      <div className="flex items-center justify-end gap-2">
+                        {room.status !== 'occupied' && (
+                          <button 
+                            onClick={() => router.push(`/contracts/new?roomId=${room.id}`)}
+                            className="px-2.5 py-1.5 text-[10px] font-bold text-brand-teal bg-brand-teal/10 hover:bg-brand-teal/20 rounded-lg transition-colors inline-flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" /> Tambah Penghuni
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleOpenModal(room)} 
+                          className="px-2.5 py-1.5 text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors inline-flex items-center gap-1"
+                        >
+                          <Edit2 className="w-3 h-3" /> Edit
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteClick(room)} 
+                          className="px-2.5 py-1.5 text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                          title="Hapus"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -780,22 +867,32 @@ export default function RoomsPage() {
                       <div className="space-y-1">
                         <div className="relative">
                           <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'ktp')} className="hidden" id="ktp-upload-room" />
-                          <label htmlFor="ktp-upload-room" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${files.ktp ? 'border-green-500 bg-[#f0faf8]' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'}`}>
-                            {files.ktp && <span className="absolute top-2 right-2 bg-green-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Terupload</span>}
-                            <div className="text-2xl mb-1">{files.ktp ? '✅' : '🪪'}</div>
-                            <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">Dokumen KTP <span className="text-red-500">*</span></p>
-                            <p className={`text-[9px] text-center ${files.ktp ? 'text-green-600 font-semibold truncate max-w-[140px]' : 'text-gray-500 font-medium'}`}>{files.ktp ? files.ktp.name : 'Klik untuk pilih foto'}</p>
+                          <label htmlFor="ktp-upload-room" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] cursor-pointer transition-all shadow-sm overflow-hidden min-h-[120px] ${files.ktp ? 'border-brand-teal' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white p-3.5'}`}>
+                            {files.ktp ? (
+                              <img src={URL.createObjectURL(files.ktp)} alt="KTP Preview" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : (
+                              <>
+                                <div className="text-2xl mb-1">🪪</div>
+                                <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">Dokumen KTP <span className="text-red-500">*</span></p>
+                                <p className="text-[9px] text-gray-500 font-medium text-center">Klik untuk pilih foto</p>
+                              </>
+                            )}
                           </label>
                         </div>
                       </div>
                       <div className="space-y-1">
                         <div className="relative">
                           <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'selfie')} className="hidden" id="selfie-upload-room" />
-                          <label htmlFor="selfie-upload-room" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${files.selfie ? 'border-green-500 bg-[#f0faf8]' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'}`}>
-                            {files.selfie && <span className="absolute top-2 right-2 bg-green-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Terupload</span>}
-                            <div className="text-2xl mb-1">{files.selfie ? '✅' : '🤳'}</div>
-                            <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">Foto Selfie <span className="text-red-500">*</span></p>
-                            <p className={`text-[9px] text-center ${files.selfie ? 'text-green-600 font-semibold truncate max-w-[140px]' : 'text-gray-500 font-medium'}`}>{files.selfie ? files.selfie.name : 'Klik untuk pilih foto'}</p>
+                          <label htmlFor="selfie-upload-room" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] cursor-pointer transition-all shadow-sm overflow-hidden min-h-[120px] ${files.selfie ? 'border-brand-teal' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white p-3.5'}`}>
+                            {files.selfie ? (
+                              <img src={URL.createObjectURL(files.selfie)} alt="Selfie Preview" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : (
+                              <>
+                                <div className="text-2xl mb-1">🤳</div>
+                                <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">Foto Selfie <span className="text-red-500">*</span></p>
+                                <p className="text-[9px] text-gray-500 font-medium text-center">Klik untuk pilih foto</p>
+                              </>
+                            )}
                           </label>
                         </div>
                       </div>

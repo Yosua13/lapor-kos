@@ -192,14 +192,6 @@ export default function DashboardLayout({
             >
               <Menu className="w-6 h-6" />
             </button>
-            <div className="hidden md:flex items-center gap-3 bg-brand-navy/5 px-4 py-2.5 rounded-2xl w-full max-w-md border border-brand-navy/5 focus-within:bg-white focus-within:shadow-xl focus-within:shadow-brand-teal/5 transition-all">
-              <Search className="w-4 h-4 text-brand-navy/30" />
-              <input 
-                type="text" 
-                placeholder="Cari kamar, penghuni, atau pembayaran..." 
-                className="bg-transparent border-none text-sm focus:outline-none w-full text-brand-navy placeholder:text-brand-navy/30"
-              />
-            </div>
           </div>
 
           <div className="flex items-center gap-4">

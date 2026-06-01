@@ -330,11 +330,11 @@ export default function TenantsPage() {
           <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-red-500 transition-colors"></div>
           <div className="flex justify-between items-start mb-4">
             <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-500"><AlertTriangle className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-md">Urgent</span>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${stats.unpaid > 0 ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50'}`}>{stats.unpaid} tagihan</span>
           </div>
-          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">BELUM BAYAR</p>
+          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TAGIHAN JATUH TEMPO</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.unpaid}</p>
-          <p className="text-xs text-gray-500 mt-1">Tagihan bulan ini</p>
+          <p className="text-xs text-gray-500 mt-1">{stats.unpaid > 0 ? 'Perlu tindak lanjut' : 'Semua lunas'}</p>
         </div>
       </div>
 
@@ -446,9 +446,25 @@ export default function TenantsPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mb-4">
+                <div className="flex flex-wrap gap-2 mb-3">
                   <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${tenant.statusColor}`}>• {tenant.contractStatus}</span>
                   <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${tenant.paymentColor}`}>• {tenant.paymentStatus}</span>
+                </div>
+
+                {/* Payment status visual */}
+                <div className="bg-gray-50 rounded-xl p-3 mb-3">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-400 font-medium">Tagihan periode ini</span>
+                    <span className={`font-bold ${
+                      tenant.paymentStatus === 'Lunas' || tenant.paymentStatus === 'Tepat Waktu' 
+                        ? 'text-emerald-600' 
+                        : 'text-red-600'
+                    }`}>
+                      {tenant.paymentStatus === 'Lunas' || tenant.paymentStatus === 'Tepat Waktu' 
+                        ? '✓ Lunas' 
+                        : `Belum — Rp ${(tenant.room?.price_per_month || 0).toLocaleString('id-ID')}`}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-[10px] font-bold border-t border-dashed border-gray-200 pt-4">
@@ -684,13 +700,9 @@ export default function TenantsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-2">
                     <div className="space-y-1">
                       <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'ktp')} className="hidden" id="ktp-upload" />
-                      <label htmlFor="ktp-upload" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${files.ktp ? 'border-green-500 bg-[#f0faf8]' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'}`}>
+                      <label htmlFor="ktp-upload" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] cursor-pointer transition-all shadow-sm overflow-hidden min-h-[120px] ${files.ktp ? 'border-brand-teal' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white p-3.5'}`}>
                         {files.ktp ? (
-                          <>
-                            <CheckCircle2 className="w-5 h-5 text-green-500 mb-1" />
-                            <span className="text-[10px] font-bold text-brand-navy">{files.ktp.name}</span>
-                            <span className="text-[9px] text-gray-500 font-medium">Klik untuk ganti file</span>
-                          </>
+                          <img src={URL.createObjectURL(files.ktp)} alt="KTP Preview" className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
                           <>
                             <div className="w-8 h-8 rounded-full bg-brand-teal/10 flex items-center justify-center mb-2"><FileText className="w-4 h-4 text-brand-teal" /></div>
@@ -702,13 +714,9 @@ export default function TenantsPage() {
                     </div>
                     <div className="space-y-1">
                       <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'selfie')} className="hidden" id="selfie-upload" />
-                      <label htmlFor="selfie-upload" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${files.selfie ? 'border-green-500 bg-[#f0faf8]' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'}`}>
+                      <label htmlFor="selfie-upload" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] cursor-pointer transition-all shadow-sm overflow-hidden min-h-[120px] ${files.selfie ? 'border-brand-teal' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white p-3.5'}`}>
                         {files.selfie ? (
-                          <>
-                            <CheckCircle2 className="w-5 h-5 text-green-500 mb-1" />
-                            <span className="text-[10px] font-bold text-brand-navy">{files.selfie.name}</span>
-                            <span className="text-[9px] text-gray-500 font-medium">Klik untuk ganti file</span>
-                          </>
+                          <img src={URL.createObjectURL(files.selfie)} alt="Selfie Preview" className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
                           <>
                             <div className="w-8 h-8 rounded-full bg-brand-teal/10 flex items-center justify-center mb-2"><ImageIcon className="w-4 h-4 text-brand-teal" /></div>

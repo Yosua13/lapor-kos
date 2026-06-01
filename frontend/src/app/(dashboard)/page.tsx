@@ -23,7 +23,9 @@ import {
   FileText,
   Copy,
   Check,
-  X
+  X,
+  Building2,
+  UserCheck
 } from 'lucide-react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
@@ -81,11 +83,59 @@ export default function DashboardPage() {
   const monthlyRevenue = occupiedRooms * 1.5; // Assuming 1.5jt per room avg
   const revenueTarget = 16.0;
 
+  const occupancyPercent = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
+  const revenuePercent = revenueTarget > 0 ? Math.round((monthlyRevenue / revenueTarget) * 100) : 0;
+
   const stats = [
-    { label: 'Total Kamar', value: totalRooms, target: totalRooms, sub: 'Semua kamar terdaftar', icon: DoorOpen, color: 'emerald' },
-    { label: 'Kamar Terisi', value: occupiedRooms, target: totalRooms, sub: `${vacantRooms} kamar masih kosong`, icon: Users, color: 'brand-teal' },
-    { label: 'Total Penghuni', value: totalTenants, target: totalTenants, sub: 'Aktif menghuni', icon: TrendingUp, color: 'purple' },
-    { label: 'Pendapatan (Bln)', value: monthlyRevenue, target: revenueTarget, sub: `Target Rp ${revenueTarget.toFixed(1)}jt (${((monthlyRevenue/revenueTarget)*100).toFixed(0)}%)`, icon: Wallet, color: 'orange', isCurrency: true },
+    { 
+      label: 'Total Kamar', 
+      value: totalRooms, 
+      target: totalRooms, 
+      sub: `${totalRooms} terdaftar`, 
+      icon: Building2, 
+      iconBg: 'bg-slate-100', 
+      iconColor: 'text-slate-600',
+      badge: `Total: ${totalRooms}`, 
+      badgeClass: 'bg-gray-100 text-gray-600',
+      barColor: 'bg-slate-400',
+    },
+    { 
+      label: 'Kamar Terisi', 
+      value: occupiedRooms, 
+      target: totalRooms, 
+      sub: `${vacantRooms} kamar kosong`, 
+      icon: Users, 
+      iconBg: 'bg-teal-50', 
+      iconColor: 'text-teal-600',
+      badge: `${occupancyPercent}%`, 
+      badgeClass: occupancyPercent >= 50 ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700',
+      barColor: occupancyPercent >= 50 ? 'bg-brand-teal' : 'bg-amber-500',
+    },
+    { 
+      label: 'Total Penghuni', 
+      value: totalTenants, 
+      target: totalRooms, 
+      sub: 'Aktif menghuni', 
+      icon: UserCheck, 
+      iconBg: 'bg-emerald-50', 
+      iconColor: 'text-emerald-600',
+      badge: 'Aktif', 
+      badgeClass: 'bg-emerald-50 text-emerald-700',
+      barColor: 'bg-emerald-500',
+    },
+    { 
+      label: 'Pendapatan (Bln)', 
+      value: monthlyRevenue, 
+      target: revenueTarget, 
+      sub: `Target Rp ${revenueTarget.toFixed(1)}jt`, 
+      icon: Wallet, 
+      iconBg: 'bg-orange-50', 
+      iconColor: 'text-orange-600',
+      badge: `${revenuePercent}% target`, 
+      badgeClass: revenuePercent >= 80 ? 'bg-emerald-50 text-emerald-700' : revenuePercent >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700',
+      barColor: revenuePercent >= 80 ? 'bg-emerald-500' : revenuePercent >= 50 ? 'bg-amber-500' : 'bg-red-500',
+      isCurrency: true 
+    },
   ];
 
   if (isLoading) {
@@ -119,7 +169,7 @@ export default function DashboardPage() {
     const activeBill = unpaidPayments[0];
 
     const copyToClipboard = () => {
-      navigator.clipboard.writeText("1234567890");
+      navigator.clipboard.writeText("459801035222531");
       setCopiedText(true);
       setTimeout(() => setCopiedText(false), 2000);
     };
@@ -169,7 +219,7 @@ export default function DashboardPage() {
                 <div className="bg-brand-navy/5 p-5 rounded-2xl border border-brand-navy/5">
                   <p className="text-[10px] font-bold text-brand-navy/30 uppercase tracking-widest mb-1">Harga Sewa / Bln</p>
                   <p className="text-sm font-bold text-brand-teal">
-                    Rp {contract?.monthly_rent ? contract.monthly_rent.toLocaleString('id-ID') : '-'}
+                    Rp {(contract?.monthly_rent || tenantProfile?.room?.price_per_month) ? (contract?.monthly_rent || tenantProfile?.room?.price_per_month).toLocaleString('id-ID') : '-'}
                   </p>
                 </div>
               </div>
@@ -274,7 +324,7 @@ export default function DashboardPage() {
                   <span className="text-[10px] font-bold uppercase tracking-widest text-brand-teal">BANK TRANSFER</span>
                 </div>
                 <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-1">Rekening Pembayaran Kos</h4>
-                <h3 className="text-2xl font-display font-bold mb-2">BCA • 1234567890</h3>
+                <h3 className="text-2xl font-display font-bold mb-2">BRI • 459801035222531</h3>
                 <p className="text-xs text-white/50 mb-6">Atas Nama: Pemilik Properti Kos</p>
                 
                 <button 
@@ -400,13 +450,12 @@ export default function DashboardPage() {
           <p className="text-brand-navy/40 text-sm mt-1">Pantau status kos Anda dalam satu tampilan • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/tenants" className="bg-white hover:bg-brand-cream text-brand-navy text-sm font-bold px-6 py-3.5 rounded-2xl border border-brand-navy/10 transition-all flex items-center gap-2 shadow-sm">
+          <Link href="/tenants" className="px-4 py-2 bg-white hover:bg-gray-50 text-brand-navy text-sm font-bold rounded-xl border-[1.5px] border-gray-200 transition-all flex items-center gap-2 shadow-sm">
              <Users className="w-4 h-4 text-brand-teal" />
-             <span>Data Penghuni</span>
+             Data Penghuni
           </Link>
-          <Link href="/rooms" className="bg-brand-teal hover:bg-brand-teal-light text-white text-sm font-bold px-6 py-3.5 rounded-2xl shadow-lg shadow-brand-teal/30 transition-all flex items-center gap-2 group">
-            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" />
-            <span>Manajemen Kamar</span>
+          <Link href="/rooms" className="px-4 py-2 bg-brand-teal hover:bg-brand-teal-light text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm group">
+            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" /> Manajemen Kamar
           </Link>
         </div>
       </header>
@@ -422,43 +471,43 @@ export default function DashboardPage() {
                <span className="font-bold">Sistem Penagihan Aktif</span> — Pastikan semua penghuni telah menerima invoice untuk bulan ini.
              </p>
           </div>
-          <button className="text-amber-700 text-xs font-bold uppercase tracking-widest flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+          <Link href="/payments" className="text-amber-700 text-xs font-bold uppercase tracking-widest flex items-center gap-1 group-hover:translate-x-1 transition-transform">
              Lihat Pembayaran <ArrowRight className="w-4 h-4" />
-          </button>
+          </Link>
         </div>
       )}
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {stats.map((stat, i) => (
           <div 
             key={i} 
-            className="glass-panel glass-panel-hover p-6 rounded-[32px] animate-slide-up"
+            className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-lg transition-all duration-300 animate-slide-up relative overflow-hidden group"
             style={{ animationDelay: `${200 + i * 100}ms` }}
           >
-            <div className="flex justify-between items-start mb-6">
-               <div className={`w-12 h-12 bg-brand-teal/10 rounded-2xl flex items-center justify-center text-brand-teal`}>
-                  <stat.icon className="w-6 h-6" />
+            <div className="flex justify-between items-start mb-3">
+               <div className={`w-11 h-11 ${stat.iconBg} rounded-xl flex items-center justify-center ${stat.iconColor} group-hover:scale-110 transition-transform duration-300`}>
+                  <stat.icon className="w-5 h-5" />
                </div>
-               <div className="bg-emerald-500/10 text-emerald-600 text-[10px] font-bold px-2 py-1 rounded-lg">
-                  AKTIF
-               </div>
+               <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${stat.badgeClass}`}>
+                   {stat.badge}
+               </span>
             </div>
-            <p className="text-xs font-bold text-brand-navy/30 uppercase tracking-widest mb-1">{stat.label}</p>
-            <div className="flex items-baseline gap-1 mb-4">
+            <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">{stat.label}</p>
+            <div className="flex items-baseline gap-1.5 mb-3">
                <h3 className="text-3xl font-display font-bold text-brand-navy">
                  {stat.isCurrency ? `Rp ${stat.value.toFixed(1)}jt` : stat.value}
                </h3>
-               {!stat.isCurrency && <span className="text-brand-navy/20 font-bold">/{stat.target || 0}</span>}
+               {!stat.isCurrency && <span className="text-brand-navy/20 font-bold text-lg">/{stat.target || 0}</span>}
             </div>
             
-            <div className="relative h-1.5 bg-brand-navy/5 rounded-full overflow-hidden">
+            <div className="relative h-1.5 bg-gray-100 rounded-full overflow-hidden">
                <div 
-                 className="absolute inset-y-0 left-0 bg-brand-teal rounded-full animate-grow-width"
+                 className={`absolute inset-y-0 left-0 rounded-full animate-grow-width ${stat.barColor}`}
                  style={{ '--final-width': `${stat.target ? (stat.value / stat.target) * 100 : 0}%` } as any}
                />
             </div>
-            <p className="text-[11px] text-brand-navy/40 font-medium mt-3">{stat.sub}</p>
+            <p className="text-[11px] text-gray-400 font-medium mt-2.5">{stat.sub}</p>
           </div>
         ))}
       </div>
@@ -534,77 +583,76 @@ export default function DashboardPage() {
         </div>
 
         {/* Right Sidebar Area */}
-        <div className="space-y-8 animate-slide-up [animation-delay:900ms]">
-          {/* Mini Chart Card */}
-          <div className="glass-dark p-8 rounded-[40px] text-white relative overflow-hidden group shadow-2xl shadow-brand-navy/30">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-brand-teal/20 blur-[60px] rounded-full group-hover:scale-150 transition-transform duration-1000" />
-            <div className="relative z-10">
-              <div className="flex items-center justify-between mb-6">
-                <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-brand-teal border border-white/10">
+        <div className="space-y-6 animate-slide-up [animation-delay:900ms]">
+          {/* Revenue Mini Card */}
+          <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-6 shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-500">
                   <Activity className="w-5 h-5" />
                 </div>
-                <button className="text-[10px] font-bold uppercase tracking-widest text-white/40 hover:text-white transition-colors">DETAIL</button>
+                <div>
+                  <h4 className="text-xs font-bold text-brand-navy">Estimasi Pendapatan</h4>
+                  <p className="text-[10px] text-gray-400">6 bulan terakhir</p>
+                </div>
               </div>
-              <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-1">Estimasi Pendapatan</h4>
-              <div className="flex items-baseline gap-2 mb-8">
-                 <h3 className="text-4xl font-display font-bold">Rp {monthlyRevenue.toFixed(1)}<span className="text-lg text-white/40 italic">jt</span></h3>
-              </div>
-              
-              <div className="h-24 flex items-end gap-2">
-                 {[40, 25, 60, 45, 80, 55].map((h, i) => (
-                   <div key={i} className="flex-1 group/bar relative h-full flex items-end">
-                      <div 
-                        className="w-full bg-brand-teal/30 rounded-t-lg transition-all duration-500 group-hover/bar:bg-brand-teal animate-grow-height origin-bottom" 
-                        style={{ height: `${h}%`, animationDelay: `${1100 + i * 100}ms` } as any}
-                      />
-                   </div>
-                 ))}
-              </div>
-              <div className="flex justify-between mt-4 text-[9px] font-bold text-white/20 tracking-[0.2em]">
-                 <span>DES</span><span>JAN</span><span>FEB</span><span>MAR</span><span>APR</span><span>MEI</span>
-              </div>
+              <span className="text-lg font-display font-bold text-brand-navy">Rp {monthlyRevenue.toFixed(1)}<span className="text-xs text-gray-400 font-normal">jt</span></span>
+            </div>
+            <div className="h-20 flex items-end gap-1.5">
+               {[40, 25, 60, 45, 80, 55].map((h, i) => (
+                 <div key={i} className="flex-1 group/bar relative h-full flex items-end">
+                    <div 
+                      className="w-full bg-brand-teal/20 hover:bg-brand-teal rounded-t-md transition-all duration-300 animate-grow-height origin-bottom" 
+                      style={{ height: `${h}%`, animationDelay: `${1100 + i * 100}ms` } as any}
+                    />
+                 </div>
+               ))}
+            </div>
+            <div className="flex justify-between mt-2 text-[9px] font-bold text-gray-300 tracking-wider">
+               <span>Des</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>Mei</span>
             </div>
           </div>
 
-          {/* Occupancy Card */}
-          <div className="glass-panel p-8 rounded-[40px] flex flex-col items-center text-center">
-             <h4 className="text-[10px] font-bold text-brand-navy/30 uppercase tracking-widest mb-8">Tingkat Hunian</h4>
-             <div className="relative w-44 h-44 mb-8">
-                <svg className="w-full h-full -rotate-90 drop-shadow-xl" viewBox="0 0 36 36">
-                  <path
-                    className="text-brand-navy/5"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                  />
-                  <path
-                    className="text-brand-teal animate-stroke-fill"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeDasharray="0, 100"
-                    strokeLinecap="round"
-                    fill="none"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    style={{ '--final-stroke': totalRooms ? (occupiedRooms / totalRooms) * 100 : 0, animationDelay: '1500ms' } as any}
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                   <h3 className="text-4xl font-display font-bold text-brand-navy leading-none">
-                     {totalRooms ? Math.round((occupiedRooms / totalRooms) * 100) : 0}<span className="text-xl">%</span>
-                   </h3>
-                   <p className="text-[9px] font-bold text-brand-navy/30 uppercase tracking-widest mt-2">OKUPANSI</p>
-                </div>
-             </div>
-             <div className="w-full space-y-3">
-                <div className="flex justify-between items-center text-xs p-3 rounded-2xl bg-brand-teal/5 border border-brand-teal/10">
-                   <div className="flex items-center gap-2"><div className="w-2 h-2 bg-brand-teal rounded-full" /> <span className="font-semibold text-brand-navy/60">Terisi</span></div>
-                   <span className="font-bold text-brand-teal">{occupiedRooms} Unit</span>
-                </div>
-                <div className="flex justify-between items-center text-xs p-3 rounded-2xl border border-brand-navy/5">
-                   <div className="flex items-center gap-2"><div className="w-2 h-2 bg-brand-navy/10 rounded-full" /> <span className="font-semibold text-brand-navy/60">Kosong</span></div>
-                   <span className="font-bold text-brand-navy/30">{vacantRooms} Unit</span>
-                </div>
+          {/* Occupancy Donut Card */}
+          <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-6 shadow-sm hover:shadow-md transition-all">
+             <h4 className="text-xs font-bold text-brand-navy mb-5">Tingkat Hunian</h4>
+             <div className="flex items-center gap-6">
+               <div className="relative w-24 h-24 shrink-0">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                    <path
+                      className="text-gray-100"
+                      stroke="currentColor"
+                      strokeWidth="3.5"
+                      fill="none"
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    />
+                    <path
+                      className="text-brand-teal animate-stroke-fill"
+                      stroke="currentColor"
+                      strokeWidth="3.5"
+                      strokeDasharray="0, 100"
+                      strokeLinecap="round"
+                      fill="none"
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      style={{ '--final-stroke': totalRooms ? (occupiedRooms / totalRooms) * 100 : 0, animationDelay: '1500ms' } as any}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                     <h3 className="text-xl font-display font-bold text-brand-navy leading-none">
+                       {occupancyPercent}<span className="text-sm">%</span>
+                     </h3>
+                  </div>
+               </div>
+               <div className="flex-1 space-y-2.5">
+                  <div className="flex justify-between items-center text-xs p-2.5 rounded-xl bg-teal-50/60 border border-teal-100">
+                     <div className="flex items-center gap-2"><div className="w-2 h-2 bg-brand-teal rounded-full" /> <span className="font-medium text-gray-600">Terisi</span></div>
+                     <span className="font-bold text-brand-teal">{occupiedRooms}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs p-2.5 rounded-xl border border-gray-100">
+                     <div className="flex items-center gap-2"><div className="w-2 h-2 bg-gray-200 rounded-full" /> <span className="font-medium text-gray-600">Kosong</span></div>
+                     <span className="font-bold text-gray-400">{vacantRooms}</span>
+                  </div>
+               </div>
              </div>
           </div>
         </div>

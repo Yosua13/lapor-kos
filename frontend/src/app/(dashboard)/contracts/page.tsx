@@ -247,80 +247,149 @@ export default function ContractsPage() {
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredAndSortedContracts.map(contract => (
-            <div key={contract.id} className="bg-white border-[1.5px] border-gray-200 rounded-[24px] shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative group">
-              <div className={`h-1.5 w-full ${contract.status === 'active' ? 'bg-brand-teal' : 'bg-red-500'}`}></div>
+          {filteredAndSortedContracts.map(contract => {
+            // Calculate contract progress
+            const startDate = new Date(contract.start_date);
+            const endDate = new Date(contract.end_date);
+            const today = new Date();
+            const totalDays = Math.max((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24), 1);
+            const elapsedDays = (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+            const progressPercent = Math.min(Math.max(Math.round((elapsedDays / totalDays) * 100), 0), 100);
+            const remainingDays = Math.max(Math.round((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)), 0);
+            const progressColor = contract.status !== 'active' ? '#9ca3af' : remainingDays > 60 ? '#0e8a7a' : remainingDays > 30 ? '#d97706' : '#dc2626';
+
+            return (
+            <div key={contract.id} className="bg-white border-[1.5px] border-gray-200 rounded-[20px] shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative group">
               <div className="p-5 flex-1">
-                <div className="flex justify-between items-start mb-5">
+                {/* Header */}
+                <div className="flex justify-between items-start mb-4">
                   <div>
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Kamar {contract.room?.room_number || '-'}</p>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Kamar {contract.room?.room_number || '-'} · Lantai {(contract.room?.room_number || '1')[0]}</p>
                     <h3 className="text-lg font-bold text-brand-navy line-clamp-1">{contract.tenant?.name || '-'}</h3>
                   </div>
-                  <div className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 ${
-                    contract.status === 'active' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                    contract.status === 'active' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-gray-100 text-gray-500 ring-1 ring-gray-200'
                   }`}>
-                    {contract.status === 'active' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-                    {contract.status === 'active' ? 'Aktif' : 'Expired'}
-                  </div>
+                    <span className={`w-1.5 h-1.5 rounded-full ${contract.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                    {contract.status === 'active' ? 'Aktif' : 'Berakhir'}
+                  </span>
                 </div>
                 
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500 font-medium">Periode</span>
-                    <span className="font-bold text-brand-navy">{formatDate(contract.start_date)} - {formatDate(contract.end_date)}</span>
+                {/* Timeline Row */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="shrink-0">
+                    <p className="text-[9px] text-gray-400 font-medium">Mulai</p>
+                    <p className="text-xs font-bold text-brand-navy">{formatDate(contract.start_date)}</p>
                   </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500 font-medium">Tarif Sewa</span>
-                    <span className="font-bold text-brand-teal">{formatCurrency(contract.monthly_rent)}<span className="text-[10px] text-gray-400 font-normal">/bln</span></span>
+                  <div className="flex-1 px-1">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[9px] text-gray-400">→</span>
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${progressPercent}%`, backgroundColor: progressColor }}
+                        />
+                      </div>
+                      <span className="text-[9px] text-gray-400">→</span>
+                    </div>
+                    <p className="text-[9px] text-gray-400 text-center font-medium">Progress {progressPercent}%</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-[9px] text-gray-400 font-medium">Berakhir</p>
+                    <p className="text-xs font-bold text-brand-navy">{formatDate(contract.end_date)}</p>
                   </div>
                 </div>
               </div>
-              <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-between items-center group-hover:bg-brand-teal/5 transition-colors">
-                <span className="text-xs font-medium text-gray-500">Jatuh tempo: Tanggal {contract.payment_due_day}</span>
-                <Link href={`/contracts/${contract.id}`} className="p-2 bg-white rounded-lg border border-gray-200 text-brand-navy hover:text-brand-teal hover:border-brand-teal transition-colors">
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
+
+              {/* Footer */}
+              <div className="px-5 py-3.5 border-t border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                <div>
+                  <p className="text-[9px] text-gray-400 font-medium">Jatuh tempo tgl <span className="font-bold text-brand-navy">{contract.payment_due_day}</span> setiap bulan</p>
+                  <p className="text-xs font-bold text-brand-teal mt-0.5">Rp {contract.monthly_rent?.toLocaleString('id-ID')}<span className="text-[9px] text-gray-400 font-normal">/bln</span></p>
+                </div>
+                <div className="text-right flex items-center gap-3">
+                  <div>
+                    <p className="text-[9px] text-gray-400 font-medium">Sisa</p>
+                    <p className={`text-sm font-bold ${remainingDays <= 30 ? 'text-red-600' : remainingDays <= 60 ? 'text-amber-600' : 'text-teal-600'}`}>
+                      {remainingDays} hari
+                    </p>
+                  </div>
+                  <Link href={`/contracts/${contract.id}`} className="p-2 bg-white rounded-lg border border-gray-200 text-brand-navy hover:text-brand-teal hover:border-brand-teal transition-colors">
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="bg-white border-[1.5px] border-gray-200 rounded-[24px] overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-50 border-b border-gray-200 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
                 <tr>
-                  <th className="px-6 py-4 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Penyewa</th>
-                  <th className="px-6 py-4 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Kamar</th>
-                  <th className="px-6 py-4 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Periode</th>
-                  <th className="px-6 py-4 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Sewa /Bulan</th>
-                  <th className="px-6 py-4 font-bold text-gray-500 uppercase tracking-wider text-[10px]">Status</th>
-                  <th className="px-6 py-4 font-bold text-gray-500 uppercase tracking-wider text-[10px] text-right">Aksi</th>
+                  <th className="px-6 py-4">Penyewa & Kamar</th>
+                  <th className="px-6 py-4">Periode & Progress</th>
+                  <th className="px-6 py-4">Tarif & Jatuh Tempo</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredAndSortedContracts.map(contract => (
-                  <tr key={contract.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-brand-navy">{contract.tenant?.name || '-'}</td>
-                    <td className="px-6 py-4 font-bold text-brand-teal">Kamar {contract.room?.room_number || '-'}</td>
-                    <td className="px-6 py-4 text-gray-600 font-medium">
-                      {formatDate(contract.start_date)} - {formatDate(contract.end_date)}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-brand-navy">{formatCurrency(contract.monthly_rent)}</td>
+                {filteredAndSortedContracts.map(contract => {
+                  const startDate = new Date(contract.start_date);
+                  const endDate = new Date(contract.end_date);
+                  const today = new Date();
+                  const totalDays = Math.max((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24), 1);
+                  const elapsedDays = (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+                  const progressPercent = Math.min(Math.max(Math.round((elapsedDays / totalDays) * 100), 0), 100);
+                  const remainingDays = Math.max(Math.round((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)), 0);
+                  const progressColor = contract.status !== 'active' ? '#9ca3af' : remainingDays > 60 ? '#0e8a7a' : remainingDays > 30 ? '#d97706' : '#dc2626';
+
+                  return (
+                  <tr key={contract.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
-                      <div className={`inline-flex px-2 py-1 rounded-md text-[10px] font-bold ${
-                        contract.status === 'active' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
-                      }`}>
-                        {contract.status === 'active' ? 'Aktif' : 'Expired'}
+                      <p className="font-bold text-brand-navy">{contract.tenant?.name || '-'}</p>
+                      <p className="text-[10px] font-bold text-brand-teal mt-0.5">Kamar {contract.room?.room_number || '-'}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
+                        <span>{formatDate(contract.start_date)}</span>
+                        <span>{formatDate(contract.end_date)}</span>
                       </div>
+                      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${progressPercent}%`, backgroundColor: progressColor }}
+                        />
+                      </div>
+                      <p className={`text-[9px] font-bold mt-1 text-right ${remainingDays <= 30 ? 'text-red-600' : remainingDays <= 60 ? 'text-amber-600' : 'text-teal-600'}`}>
+                        Sisa {remainingDays} hari
+                      </p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="font-bold text-brand-navy">{formatCurrency(contract.monthly_rent)}</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">Jatuh tempo tgl {contract.payment_due_day}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                        contract.status === 'active' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-gray-100 text-gray-500 ring-1 ring-gray-200'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${contract.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                        {contract.status === 'active' ? 'Aktif' : 'Berakhir'}
+                      </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link href={`/contracts/${contract.id}`} className="p-2 hover:bg-white rounded-lg text-gray-400 hover:text-brand-teal transition-all inline-block">
-                        <ArrowRight className="w-4 h-4" />
+                      <Link 
+                        href={`/contracts/${contract.id}`} 
+                        className="px-3 py-1.5 text-xs font-bold text-brand-teal bg-brand-teal/10 hover:bg-brand-teal/20 rounded-lg transition-colors inline-flex items-center gap-1.5"
+                      >
+                        Detail Kontrak <ArrowRight className="w-3.5 h-3.5" />
                       </Link>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
