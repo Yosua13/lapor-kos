@@ -15,6 +15,7 @@
   --color-brand-teal: #14B8A6;
   --color-brand-teal-light: #2DD4BF;
   --color-brand-cream: #F8FAFC;
+  --color-white-fixed: #ffffff;
   
   /* Fonts */
   --font-serif: var(--font-dm-serif);
@@ -125,3 +126,84 @@
     90% { transform: translate(-10%, 10%); }
   }
 }
+
+.dark {
+  --color-brand-cream: #070C1E;
+  --color-brand-navy: #F8FAFC;
+  --color-white: #0F172A;
+  --color-navy: #F8FAFC;
+  --color-navy-mid: #E2E8F0;
+  --color-cream: #070C1E;
+  --color-text-mid: #CBD5E1;
+  --color-text-muted: #94A3B8;
+
+  /* Overrides for gray and slate components in dark mode */
+  --color-gray-50: #0B0F19;
+  --color-gray-100: #131A2E;
+  --color-gray-200: #1E293B;
+  --color-gray-300: #334155;
+  --color-gray-400: #64748B;
+  --color-gray-500: #94A3B8;
+  --color-gray-900: #F8FAFC;
+  
+  --color-slate-50: #0B0F19;
+  --color-slate-100: #131A2E;
+  --color-slate-200: #1E293B;
+  --color-slate-300: #334155;
+  --color-slate-400: #64748B;
+  --color-slate-500: #94A3B8;
+  --color-slate-900: #F8FAFC;
+
+  /* Overrides for utility color states to keep icons and badges dark in dark mode */
+  --color-green-50: rgba(16, 185, 129, 0.1);
+  --color-green-100: rgba(16, 185, 129, 0.2);
+  --color-green-500: #10b981;
+  --color-green-600: #34d399;
+  --color-green-700: #a7f3d0;
+
+  --color-emerald-50: rgba(16, 185, 129, 0.1);
+  --color-emerald-100: rgba(16, 185, 129, 0.2);
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #34d399;
+  --color-emerald-700: #a7f3d0;
+
+  --color-amber-50: rgba(245, 158, 11, 0.1);
+  --color-amber-100: rgba(245, 158, 11, 0.2);
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fde68a;
+
+  --color-red-50: rgba(239, 68, 68, 0.1);
+  --color-red-100: rgba(239, 68, 68, 0.2);
+  --color-red-500: #ef4444;
+  --color-red-600: #f87171;
+  --color-red-700: #fca5a5;
+
+  --color-rose-50: rgba(244, 63, 94, 0.1);
+  --color-rose-100: rgba(244, 63, 94, 0.2);
+  --color-rose-500: #f43f5e;
+  --color-rose-600: #fb7185;
+  --color-rose-700: #fecdd3;
+
+  --color-teal-50: rgba(20, 184, 166, 0.1);
+  --color-teal-100: rgba(20, 184, 166, 0.2);
+  --color-teal-500: #14b8a6;
+  --color-teal-600: #2dd4bf;
+  --color-teal-700: #99f6e4;
+
+  --color-orange-50: rgba(249, 115, 22, 0.1);
+  --color-orange-100: rgba(249, 115, 22, 0.2);
+  --color-orange-500: #f97316;
+  --color-orange-600: #fb923c;
+  --color-orange-700: #fed7aa;
+  
+  /* Additional glass dark adjustments */
+  color: #F8FAFC;
+
+  /* Style native select options in dark mode */
+  select option {
+    background-color: #1E293B !important;
+    color: #F8FAFC !important;
+  }
+}
+

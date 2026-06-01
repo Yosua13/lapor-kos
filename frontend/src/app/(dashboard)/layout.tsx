@@ -46,6 +46,15 @@ export default function DashboardLayout({
   }, [router]);
 
   useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  useEffect(() => {
     if (userData && userData.role === 'tenant') {
       const ownerOnlyPaths = ['/rooms', '/tenants', '/contracts', '/reports'];
       const isOwnerPath = ownerOnlyPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
@@ -118,18 +127,18 @@ export default function DashboardLayout({
       <div className="noise-bg" />
 
       {/* Sidebar Desktop */}
-      <aside className="hidden lg:flex flex-col w-64 bg-brand-navy text-white h-full z-40 flex-shrink-0">
+      <aside className="hidden lg:flex flex-col w-64 bg-[#0F172A] dark:bg-[#070C1E] text-white-fixed h-full z-40 flex-shrink-0">
         <div className="p-6 flex items-center gap-3">
           <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center shadow-lg shadow-brand-teal/20">
-            <Home className="text-white w-5 h-5" />
+            <Home className="text-white-fixed w-5 h-5" />
           </div>
-          <span className="font-display text-2xl font-bold tracking-tight">Lapor <span className="text-brand-teal italic">Kos</span></span>
+          <span className="font-display text-2xl font-bold tracking-tight text-white-fixed">Lapor <span className="text-brand-teal italic">Kos</span></span>
         </div>
 
         <nav className="flex-1 px-3 mt-2 space-y-6">
           {navItems.map((section) => (
             <div key={section.section}>
-              <p className="text-[10px] font-bold text-white/30 tracking-[0.2em] px-3 mb-2">{section.section}</p>
+              <p className="text-[10px] font-bold text-white-fixed/30 tracking-[0.2em] px-3 mb-2">{section.section}</p>
               <div className="space-y-1">
                 {section.items.map((item) => {
                   const isActive = pathname === item.href;
@@ -141,7 +150,7 @@ export default function DashboardLayout({
                       className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-300 group ${
                         isActive 
                           ? 'bg-brand-teal/10 text-brand-teal sidebar-glow' 
-                          : 'text-white/50 hover:text-white hover:bg-white/5'
+                          : 'text-white-fixed/50 hover:text-white-fixed hover:bg-white-fixed/5'
                       }`}
                     >
                       <div className="flex items-center gap-3">
@@ -149,7 +158,7 @@ export default function DashboardLayout({
                         <span className="text-sm font-semibold">{item.name}</span>
                       </div>
                       {item.badge && (
-                        <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-red-500/20">
+                        <span className="bg-red-500 text-white-fixed text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-red-500/20">
                           {item.badge}
                         </span>
                       )}
@@ -161,21 +170,21 @@ export default function DashboardLayout({
           ))}
         </nav>
 
-        <div className="p-5 border-t border-white/5">
+        <div className="p-5 border-t border-white-fixed/5">
           <div className="flex items-center gap-3 mb-4 px-3">
-             <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center border border-white/5">
+             <div className="w-10 h-10 bg-white-fixed/10 rounded-full flex items-center justify-center border border-white-fixed/5">
                 <User className="text-brand-teal w-5 h-5" />
              </div>
              <div className="overflow-hidden">
-                <p className="text-sm font-bold truncate">{userData?.name || 'Yosua R.'}</p>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest">
+                <p className="text-sm font-bold truncate text-white-fixed">{userData?.name || 'Yosua R.'}</p>
+                <p className="text-[10px] text-white-fixed/40 uppercase tracking-widest">
                   {userData?.role === 'tenant' ? 'Penghuni Kamar' : 'Property Owner'}
                 </p>
              </div>
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2 w-full text-white/40 hover:text-red-400 transition-colors text-sm font-bold group"
+            className="flex items-center gap-3 px-3 py-2 w-full text-white-fixed/40 hover:text-red-400 transition-colors text-sm font-bold group cursor-pointer"
           >
             <LogOut className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
             <span>Keluar</span>
@@ -186,7 +195,7 @@ export default function DashboardLayout({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 relative z-10 h-full overflow-y-auto no-scrollbar scroll-smooth">
         {/* Header */}
-        <header className="h-20 bg-white/70 backdrop-blur-md flex items-center justify-between px-6 lg:px-10 sticky top-0 z-40 border-b border-brand-navy/5 flex-shrink-0">
+        <header className="h-20 bg-white/70 dark:bg-[#070C1E]/80 backdrop-blur-md flex items-center justify-between px-6 lg:px-10 sticky top-0 z-40 border-b border-brand-navy/5 dark:border-white-fixed/5 flex-shrink-0">
           <div className="flex items-center gap-4 flex-1">
             <button 
               className="lg:hidden p-2 text-brand-navy"
@@ -198,22 +207,22 @@ export default function DashboardLayout({
 
           <div className="flex items-center gap-4">
              <div className="flex items-center gap-2">
-                <button className="p-2.5 text-brand-navy/40 hover:text-brand-teal hover:bg-brand-teal/5 rounded-xl transition-all">
+                <button className="p-2.5 text-brand-navy/40 dark:text-white-fixed/60 hover:text-brand-teal dark:hover:text-brand-teal hover:bg-brand-teal/5 dark:hover:bg-brand-teal/10 rounded-xl transition-all">
                   <Bell className="w-5 h-5" />
                 </button>
-                <button className="p-2.5 text-brand-navy/40 hover:text-brand-teal hover:bg-brand-teal/5 rounded-xl transition-all">
-                   <Settings className="w-5 h-5" />
+                <button className="p-2.5 text-brand-navy/40 dark:text-white-fixed/60 hover:text-brand-teal dark:hover:text-brand-teal hover:bg-brand-teal/5 dark:hover:bg-brand-teal/10 rounded-xl transition-all">
+                    <Settings className="w-5 h-5" />
                 </button>
              </div>
              <div className="w-[1px] h-6 bg-brand-navy/10 mx-2" />
              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-brand-teal/10">
+                 <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center text-white-fixed font-bold text-sm shadow-lg shadow-brand-teal/10">
                    {userData?.name ? userData.name.substring(0, 2).toUpperCase() : 'YR'}
                  </div>
                  <div className="hidden sm:block">
                     <p className="text-xs font-bold leading-none mb-1">{userData?.name || 'User'}</p>
                     <p className="text-[10px] text-brand-teal font-bold uppercase tracking-widest">
-                      {userData?.role === 'tenant' ? 'Penghuni' : 'Owner'}
+                       {userData?.role === 'tenant' ? 'Penghuni' : 'Owner'}
                     </p>
                  </div>
              </div>
@@ -229,17 +238,17 @@ export default function DashboardLayout({
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-brand-navy/60 backdrop-blur-sm z-50 lg:hidden"
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
         >
           <div 
-            className="w-72 bg-brand-navy h-full"
+            className="w-72 bg-[#0F172A] dark:bg-[#070C1E] h-full"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Mobile Nav Content (simplified) */}
             <div className="p-8 flex items-center justify-between">
-               <span className="font-display text-2xl font-bold text-white">Lapor <span className="text-brand-teal">Kos</span></span>
-               <button onClick={() => setIsSidebarOpen(false)} className="text-white/40"><X className="w-6 h-6" /></button>
+               <span className="font-display text-2xl font-bold text-white-fixed">Lapor <span className="text-brand-teal">Kos</span></span>
+               <button onClick={() => setIsSidebarOpen(false)} className="text-white-fixed/40"><X className="w-6 h-6" /></button>
             </div>
           </div>
         </div>
