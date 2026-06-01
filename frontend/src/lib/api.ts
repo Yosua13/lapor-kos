@@ -31,14 +31,15 @@ export const apiFetch = async (endpoint: string, options: RequestOptions = {}) =
     headers,
   });
 
-  if (response.status === 401) {
+  const data = await response.json();
+
+  if (response.status === 401 || (response.status === 404 && data.error === 'User not found')) {
     removeToken();
     if (typeof window !== 'undefined') {
       window.location.href = '/login';
     }
+    throw new Error('Session expired. Please log in again.');
   }
-
-  const data = await response.json();
 
   if (!response.ok) {
     throw new Error(data.error || 'Something went wrong');
