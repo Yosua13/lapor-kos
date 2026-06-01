@@ -33,6 +33,12 @@ interface Room {
   price_per_month: number;
   description: string;
   status: string;
+  activeContract?: {
+    end_date: string;
+    tenant?: {
+      name: string;
+    };
+  };
 }
 
 export default function RoomsPage() {
@@ -134,6 +140,10 @@ export default function RoomsPage() {
 
     return result;
   }, [rooms, activeTab, searchQuery, sortBy]);
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
 
   const handleOpenModal = (room?: Room) => {
     setStep(1);
@@ -544,9 +554,8 @@ export default function RoomsPage() {
               <thead className="bg-gray-50 border-b border-gray-200 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
                 <tr>
                   <th className="px-6 py-4">Nomor Kamar</th>
+                  <th className="px-6 py-4">Penghuni & Status</th>
                   <th className="px-6 py-4">Harga/Bulan</th>
-                  <th className="px-6 py-4">Deskripsi</th>
-                  <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4 text-right">Aksi</th>
                 </tr>
               </thead>
@@ -560,26 +569,57 @@ export default function RoomsPage() {
                         </div>
                         <div>
                           <p className="font-bold text-brand-navy">Kamar {room.room_number}</p>
+                          <p className="text-[10px] text-gray-500 mt-0.5 truncate max-w-[150px]">{room.description || '-'}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 font-bold text-brand-navy">
-                      Rp {room.price_per_month.toLocaleString('id-ID')}
-                    </td>
-                    <td className="px-6 py-4 text-xs text-gray-500 max-w-[200px] truncate">
-                      {room.description || '-'}
+                    <td className="px-6 py-4">
+                      {room.status === 'occupied' && room.activeContract && room.activeContract.tenant ? (
+                        <div>
+                          <p className="font-bold text-brand-navy flex items-center gap-1.5">
+                             {room.activeContract.tenant.name}
+                          </p>
+                          <p className="text-[10px] text-gray-500 mt-0.5">S/d {formatDate(room.activeContract.end_date)}</p>
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-600 ring-1 ring-amber-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> KOSONG
+                        </span>
+                      )}
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${
-                        room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'
-                      }`}>
-                        {room.status === 'occupied' ? 'TERISI' : 'KOSONG'}
-                      </span>
+                      <p className="font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')}</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(room.description ? room.description.split(',') : []).slice(0, 1).map((facility, idx) => (
+                          <span key={idx} className="px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 text-[9px] font-medium border border-gray-100">
+                            {facility.trim()}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleOpenModal(room)} className="p-1.5 text-gray-400 hover:text-brand-teal hover:bg-brand-teal/10 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => handleDeleteClick(room)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                      <div className="flex items-center justify-end gap-2">
+                        {room.status !== 'occupied' && (
+                          <button 
+                            onClick={() => router.push(`/contracts/new?roomId=${room.id}`)}
+                            className="px-2.5 py-1.5 text-[10px] font-bold text-brand-teal bg-brand-teal/10 hover:bg-brand-teal/20 rounded-lg transition-colors inline-flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" /> Tambah Penghuni
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleOpenModal(room)} 
+                          className="px-2.5 py-1.5 text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors inline-flex items-center gap-1"
+                        >
+                          <Edit2 className="w-3 h-3" /> Edit
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteClick(room)} 
+                          className="px-2.5 py-1.5 text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                          title="Hapus"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -827,22 +867,32 @@ export default function RoomsPage() {
                       <div className="space-y-1">
                         <div className="relative">
                           <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'ktp')} className="hidden" id="ktp-upload-room" />
-                          <label htmlFor="ktp-upload-room" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${files.ktp ? 'border-green-500 bg-[#f0faf8]' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'}`}>
-                            {files.ktp && <span className="absolute top-2 right-2 bg-green-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Terupload</span>}
-                            <div className="text-2xl mb-1">{files.ktp ? '✅' : '🪪'}</div>
-                            <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">Dokumen KTP <span className="text-red-500">*</span></p>
-                            <p className={`text-[9px] text-center ${files.ktp ? 'text-green-600 font-semibold truncate max-w-[140px]' : 'text-gray-500 font-medium'}`}>{files.ktp ? files.ktp.name : 'Klik untuk pilih foto'}</p>
+                          <label htmlFor="ktp-upload-room" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] cursor-pointer transition-all shadow-sm overflow-hidden min-h-[120px] ${files.ktp ? 'border-brand-teal' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white p-3.5'}`}>
+                            {files.ktp ? (
+                              <img src={URL.createObjectURL(files.ktp)} alt="KTP Preview" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : (
+                              <>
+                                <div className="text-2xl mb-1">🪪</div>
+                                <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">Dokumen KTP <span className="text-red-500">*</span></p>
+                                <p className="text-[9px] text-gray-500 font-medium text-center">Klik untuk pilih foto</p>
+                              </>
+                            )}
                           </label>
                         </div>
                       </div>
                       <div className="space-y-1">
                         <div className="relative">
                           <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'selfie')} className="hidden" id="selfie-upload-room" />
-                          <label htmlFor="selfie-upload-room" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${files.selfie ? 'border-green-500 bg-[#f0faf8]' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'}`}>
-                            {files.selfie && <span className="absolute top-2 right-2 bg-green-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Terupload</span>}
-                            <div className="text-2xl mb-1">{files.selfie ? '✅' : '🤳'}</div>
-                            <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">Foto Selfie <span className="text-red-500">*</span></p>
-                            <p className={`text-[9px] text-center ${files.selfie ? 'text-green-600 font-semibold truncate max-w-[140px]' : 'text-gray-500 font-medium'}`}>{files.selfie ? files.selfie.name : 'Klik untuk pilih foto'}</p>
+                          <label htmlFor="selfie-upload-room" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] cursor-pointer transition-all shadow-sm overflow-hidden min-h-[120px] ${files.selfie ? 'border-brand-teal' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white p-3.5'}`}>
+                            {files.selfie ? (
+                              <img src={URL.createObjectURL(files.selfie)} alt="Selfie Preview" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : (
+                              <>
+                                <div className="text-2xl mb-1">🤳</div>
+                                <p className="text-xs font-bold text-brand-navy mb-0.5 text-center">Foto Selfie <span className="text-red-500">*</span></p>
+                                <p className="text-[9px] text-gray-500 font-medium text-center">Klik untuk pilih foto</p>
+                              </>
+                            )}
                           </label>
                         </div>
                       </div>

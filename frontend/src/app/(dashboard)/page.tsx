@@ -169,7 +169,7 @@ export default function DashboardPage() {
     const activeBill = unpaidPayments[0];
 
     const copyToClipboard = () => {
-      navigator.clipboard.writeText("1234567890");
+      navigator.clipboard.writeText("459801035222531");
       setCopiedText(true);
       setTimeout(() => setCopiedText(false), 2000);
     };
@@ -219,7 +219,7 @@ export default function DashboardPage() {
                 <div className="bg-brand-navy/5 p-5 rounded-2xl border border-brand-navy/5">
                   <p className="text-[10px] font-bold text-brand-navy/30 uppercase tracking-widest mb-1">Harga Sewa / Bln</p>
                   <p className="text-sm font-bold text-brand-teal">
-                    Rp {contract?.monthly_rent ? contract.monthly_rent.toLocaleString('id-ID') : '-'}
+                    Rp {(contract?.monthly_rent || tenantProfile?.room?.price_per_month) ? (contract?.monthly_rent || tenantProfile?.room?.price_per_month).toLocaleString('id-ID') : '-'}
                   </p>
                 </div>
               </div>
@@ -324,7 +324,7 @@ export default function DashboardPage() {
                   <span className="text-[10px] font-bold uppercase tracking-widest text-brand-teal">BANK TRANSFER</span>
                 </div>
                 <h4 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-1">Rekening Pembayaran Kos</h4>
-                <h3 className="text-2xl font-display font-bold mb-2">BCA • 1234567890</h3>
+                <h3 className="text-2xl font-display font-bold mb-2">BRI • 459801035222531</h3>
                 <p className="text-xs text-white/50 mb-6">Atas Nama: Pemilik Properti Kos</p>
                 
                 <button 
@@ -450,13 +450,12 @@ export default function DashboardPage() {
           <p className="text-brand-navy/40 text-sm mt-1">Pantau status kos Anda dalam satu tampilan • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
         <div className="flex items-center gap-3">
-          <Link href="/tenants" className="bg-white hover:bg-brand-cream text-brand-navy text-sm font-bold px-6 py-3.5 rounded-2xl border border-brand-navy/10 transition-all flex items-center gap-2 shadow-sm">
+          <Link href="/tenants" className="px-4 py-2 bg-white hover:bg-gray-50 text-brand-navy text-sm font-bold rounded-xl border-[1.5px] border-gray-200 transition-all flex items-center gap-2 shadow-sm">
              <Users className="w-4 h-4 text-brand-teal" />
-             <span>Data Penghuni</span>
+             Data Penghuni
           </Link>
-          <Link href="/rooms" className="bg-brand-teal hover:bg-brand-teal-light text-white text-sm font-bold px-6 py-3.5 rounded-2xl shadow-lg shadow-brand-teal/30 transition-all flex items-center gap-2 group">
-            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" />
-            <span>Manajemen Kamar</span>
+          <Link href="/rooms" className="px-4 py-2 bg-brand-teal hover:bg-brand-teal-light text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm group">
+            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" /> Manajemen Kamar
           </Link>
         </div>
       </header>
@@ -472,9 +471,9 @@ export default function DashboardPage() {
                <span className="font-bold">Sistem Penagihan Aktif</span> — Pastikan semua penghuni telah menerima invoice untuk bulan ini.
              </p>
           </div>
-          <button className="text-amber-700 text-xs font-bold uppercase tracking-widest flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+          <Link href="/payments" className="text-amber-700 text-xs font-bold uppercase tracking-widest flex items-center gap-1 group-hover:translate-x-1 transition-transform">
              Lihat Pembayaran <ArrowRight className="w-4 h-4" />
-          </button>
+          </Link>
         </div>
       )}
 

@@ -454,7 +454,7 @@ export default function TenantsPage() {
                 {/* Payment status visual */}
                 <div className="bg-gray-50 rounded-xl p-3 mb-3">
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-400 font-medium">Tagihan bulan ini</span>
+                    <span className="text-gray-400 font-medium">Tagihan periode ini</span>
                     <span className={`font-bold ${
                       tenant.paymentStatus === 'Lunas' || tenant.paymentStatus === 'Tepat Waktu' 
                         ? 'text-emerald-600' 
@@ -700,13 +700,9 @@ export default function TenantsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-2">
                     <div className="space-y-1">
                       <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'ktp')} className="hidden" id="ktp-upload" />
-                      <label htmlFor="ktp-upload" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${files.ktp ? 'border-green-500 bg-[#f0faf8]' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'}`}>
+                      <label htmlFor="ktp-upload" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] cursor-pointer transition-all shadow-sm overflow-hidden min-h-[120px] ${files.ktp ? 'border-brand-teal' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white p-3.5'}`}>
                         {files.ktp ? (
-                          <>
-                            <CheckCircle2 className="w-5 h-5 text-green-500 mb-1" />
-                            <span className="text-[10px] font-bold text-brand-navy">{files.ktp.name}</span>
-                            <span className="text-[9px] text-gray-500 font-medium">Klik untuk ganti file</span>
-                          </>
+                          <img src={URL.createObjectURL(files.ktp)} alt="KTP Preview" className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
                           <>
                             <div className="w-8 h-8 rounded-full bg-brand-teal/10 flex items-center justify-center mb-2"><FileText className="w-4 h-4 text-brand-teal" /></div>
@@ -718,13 +714,9 @@ export default function TenantsPage() {
                     </div>
                     <div className="space-y-1">
                       <input type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'selfie')} className="hidden" id="selfie-upload" />
-                      <label htmlFor="selfie-upload" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] p-3.5 cursor-pointer transition-all shadow-sm ${files.selfie ? 'border-green-500 bg-[#f0faf8]' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white'}`}>
+                      <label htmlFor="selfie-upload" className={`relative flex flex-col items-center justify-center border-[1.5px] rounded-[9px] cursor-pointer transition-all shadow-sm overflow-hidden min-h-[120px] ${files.selfie ? 'border-brand-teal' : 'border-dashed border-gray-300 hover:border-brand-teal bg-white p-3.5'}`}>
                         {files.selfie ? (
-                          <>
-                            <CheckCircle2 className="w-5 h-5 text-green-500 mb-1" />
-                            <span className="text-[10px] font-bold text-brand-navy">{files.selfie.name}</span>
-                            <span className="text-[9px] text-gray-500 font-medium">Klik untuk ganti file</span>
-                          </>
+                          <img src={URL.createObjectURL(files.selfie)} alt="Selfie Preview" className="absolute inset-0 w-full h-full object-cover" />
                         ) : (
                           <>
                             <div className="w-8 h-8 rounded-full bg-brand-teal/10 flex items-center justify-center mb-2"><ImageIcon className="w-4 h-4 text-brand-teal" /></div>
