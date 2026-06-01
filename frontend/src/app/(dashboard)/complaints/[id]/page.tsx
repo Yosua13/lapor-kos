@@ -21,7 +21,7 @@ import {
   Loader2,
   RefreshCw
 } from 'lucide-react';
-import { apiFetch, API_URL } from '@/lib/api';
+import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
 
 interface Complaint {
   id: string;
@@ -296,7 +296,7 @@ export default function ComplaintDetailPage() {
                   </span>
                   <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 aspect-video max-h-[360px] bg-slate-50 dark:bg-slate-900 flex items-center justify-center relative group">
                     <img 
-                      src={`${API_URL}${complaint.photo_url}`} 
+                      src={getImageUrl(complaint.photo_url)} 
                       alt="Bukti foto komplain" 
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
                     />
