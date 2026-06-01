@@ -130,17 +130,24 @@ func (s *AIService) GenerateGroupWarning(ctx context.Context, description string
 	prompt := fmt.Sprintf(`Seorang penghuni kos mengadukan masalah keributan di jam malam/istirahat:
 Detail Laporan: "%s"
 
+Kamu adalah Asisten AI "Sistem Lapor Kos". Tugasmu adalah merangkum laporan keluhan dari penghuni menjadi satu pesan teguran/himbauan umum untuk dikirimkan secara otomatis ke Grup WhatsApp kos-kosan.
+
 Tugas Anda:
 Generate satu pesan teguran untuk dikirim ke Grup WhatsApp kos-kosan. 
 Aturan:
-1. Harus menggunakan bahasa Indonesia yang sopan, santun, tetapi tegas.
-2. Harus singkat (cukup 1-2 kalimat).
-3. JANGAN PERNAH menyebutkan nama pelapor atau nomor kamar pelapor demi keamanan (anonimitas total).
-4. Buat agar terkesan sebagai himbauan umum/notifikasi dari sistem Lapor Kos untuk kenyamanan bersama.
-5. JANGAN gunakan tanda petik atau markdown tebal (*). Berikan teks polos untuk chat WhatsApp.
+1. Ekstraksi Inti Masalah: Identifikasi jenis masalah dari input pelapor (misal: kebersihan, kebisingan, parkir) dan ubah menjadi bahasa himbauan umum. JANGAN menyalin mentah-mentah kalimat pelapor.
+2. Anonimitas Total: JANGAN PERNAH menyebutkan nama pelapor, nomor kamar pelapor, nama pelanggar, atau nomor kamar pelanggar. Gunakan sudut pandang kolektif ("rekan-rekan penghuni").
+3. Gaya Bahasa: Gunakan bahasa Indonesia yang sopan, santun, tetapi tegas. Hindari nada menuduh; gunakan kalimat pasif atau ajakan (persuasif).
+4. Batas Panjang: Harus sangat singkat, padat, dan jelas (maksimal 1-2 kalimat saja).
+5. Format WhatsApp Murni: JANGAN gunakan markdown tebal (*), miring (_), coret (~), atau tanda petik ("") pada hasil akhir. Berikan teks polos murni agar langsung rapi saat dikirim ke WhatsApp. Boleh menggunakan maksimal 1-2 emoji profesional (seperti 📢 atau 🙏) di awal/akhir kalimat jika dirasa perlu.
+6. Persona: Pesan harus selalu diawali dengan identitas sistem untuk menegaskan ini adalah notifikasi otomatis, misalnya: Himbauan Sistem Lapor Kos:
 
 Contoh yang baik:
-"Himbauan Sistem Lapor Kos: Mohon perhatian rekan-rekan penghuni kos untuk bersama-sama menjaga ketenangan, terutama di atas jam 10 malam agar tidak mengganggu penghuni lain yang sedang beristirahat. Terima kasih atas pengertiannya."`, description)
+Input:
+Tolong dong bilangin kamar 04, dari tadi malam setel musik kenceng banget sampai jam 2 pagi, saya nggak bisa tidur nih besok ada meeting.
+
+Output:
+📢 Himbauan Sistem Lapor Kos: Mohon perhatian rekan-rekan penghuni untuk bersama-sama menjaga ketenangan, terutama di atas jam 10 malam agar tidak mengganggu waktu istirahat penghuni lainnya. Terima kasih atas kerja samanya 🙏`, description)
 
 	res, err := s.callGemini(ctx, prompt)
 	if err == nil && res != "" {
