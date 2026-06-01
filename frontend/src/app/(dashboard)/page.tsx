@@ -98,6 +98,7 @@ export default function DashboardPage() {
       badge: `Total: ${totalRooms}`, 
       badgeClass: 'bg-gray-100 text-gray-600',
       barColor: 'bg-slate-400',
+      barBgColor: 'group-hover:bg-slate-400',
     },
     { 
       label: 'Kamar Terisi', 
@@ -110,6 +111,7 @@ export default function DashboardPage() {
       badge: `${occupancyPercent}%`, 
       badgeClass: occupancyPercent >= 50 ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700',
       barColor: occupancyPercent >= 50 ? 'bg-brand-teal' : 'bg-amber-500',
+      barBgColor: 'group-hover:bg-brand-teal',
     },
     { 
       label: 'Total Penghuni', 
@@ -122,6 +124,7 @@ export default function DashboardPage() {
       badge: 'Aktif', 
       badgeClass: 'bg-emerald-50 text-emerald-700',
       barColor: 'bg-emerald-500',
+      barBgColor: 'group-hover:bg-emerald-500',
     },
     { 
       label: 'Pendapatan (Bln)', 
@@ -134,6 +137,7 @@ export default function DashboardPage() {
       badge: `${revenuePercent}% target`, 
       badgeClass: revenuePercent >= 80 ? 'bg-emerald-50 text-emerald-700' : revenuePercent >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700',
       barColor: revenuePercent >= 80 ? 'bg-emerald-500' : revenuePercent >= 50 ? 'bg-amber-500' : 'bg-red-500',
+      barBgColor: 'group-hover:bg-amber-500',
       isCurrency: true 
     },
   ];
@@ -175,14 +179,14 @@ export default function DashboardPage() {
     };
 
     return (
-      <div className="space-y-8 max-w-[1400px] mx-auto animate-slide-up">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="space-y-6 animate-slide-up pb-10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold text-brand-teal uppercase tracking-[0.3em] mb-1">PORTAL PENGHUNI KOS</p>
-            <h1 className="text-4xl font-display font-bold text-brand-navy">Halo, {tenantProfile?.name || user?.name || 'Penghuni'}! 👋</h1>
-            <p className="text-brand-navy/40 text-sm mt-1">Kamar {tenantProfile?.room?.room_number || '-'} • Selamat datang kembali di portal kos Anda • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">PORTAL PENGHUNI KOS</p>
+            <h1 className="text-3xl font-display font-bold text-brand-navy">Halo, {tenantProfile?.name || user?.name || 'Penghuni'}! 👋</h1>
+            <p className="text-sm text-gray-500 mt-1">Kamar {tenantProfile?.room?.room_number || '-'} • Selamat datang kembali di portal kos Anda • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
           </div>
-        </header>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
@@ -441,13 +445,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-[1400px] mx-auto animate-slide-up">
+    <div className="space-y-6 animate-slide-up pb-10">
       {/* Header Section */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-bold text-brand-teal uppercase tracking-[0.3em] mb-1">RINGKASAN PROPERTI</p>
-          <h1 className="text-4xl font-display font-bold text-brand-navy">Dashboard</h1>
-          <p className="text-brand-navy/40 text-sm mt-1">Pantau status kos Anda dalam satu tampilan • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">RINGKASAN PROPERTI</p>
+          <h1 className="text-3xl font-display font-bold text-brand-navy">Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-1">Pantau status kos Anda dalam satu tampilan • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
         <div className="flex items-center gap-3">
           <Link href="/tenants" className="px-4 py-2 bg-white hover:bg-gray-50 text-brand-navy text-sm font-bold rounded-xl border-[1.5px] border-gray-200 transition-all flex items-center gap-2 shadow-sm">
@@ -458,7 +462,7 @@ export default function DashboardPage() {
             <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" /> Manajemen Kamar
           </Link>
         </div>
-      </header>
+      </div>
 
       {/* Alert Banner (Only if any rooms occupied) */}
       {occupiedRooms > 0 && (
@@ -478,36 +482,39 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, i) => (
           <div 
             key={i} 
             className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-lg transition-all duration-300 animate-slide-up relative overflow-hidden group"
             style={{ animationDelay: `${200 + i * 100}ms` }}
           >
-            <div className="flex justify-between items-start mb-3">
-               <div className={`w-11 h-11 ${stat.iconBg} rounded-xl flex items-center justify-center ${stat.iconColor} group-hover:scale-110 transition-transform duration-300`}>
+            {/* Top Accent Bar */}
+            <div className={`absolute top-0 left-0 w-full h-[3px] bg-gray-200 ${stat.barBgColor} transition-colors duration-300`} />
+            
+            <div className="flex justify-between items-start mb-4">
+               <div className={`w-10 h-10 ${stat.iconBg} rounded-xl flex items-center justify-center ${stat.iconColor} group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300`}>
                   <stat.icon className="w-5 h-5" />
                </div>
-               <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${stat.badgeClass}`}>
+               <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${stat.badgeClass}`}>
                    {stat.badge}
                </span>
             </div>
             <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">{stat.label}</p>
-            <div className="flex items-baseline gap-1.5 mb-3">
+            <div className="flex items-baseline gap-1.5">
                <h3 className="text-3xl font-display font-bold text-brand-navy">
                  {stat.isCurrency ? `Rp ${stat.value.toFixed(1)}jt` : stat.value}
                </h3>
                {!stat.isCurrency && <span className="text-brand-navy/20 font-bold text-lg">/{stat.target || 0}</span>}
             </div>
             
-            <div className="relative h-1.5 bg-gray-100 rounded-full overflow-hidden">
+            <div className="relative h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3.5">
                <div 
                  className={`absolute inset-y-0 left-0 rounded-full animate-grow-width ${stat.barColor}`}
                  style={{ '--final-width': `${stat.target ? (stat.value / stat.target) * 100 : 0}%` } as any}
                />
             </div>
-            <p className="text-[11px] text-gray-400 font-medium mt-2.5">{stat.sub}</p>
+            <p className="text-[11px] text-gray-400 font-medium mt-3">{stat.sub}</p>
           </div>
         ))}
       </div>

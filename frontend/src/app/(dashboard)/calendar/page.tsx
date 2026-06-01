@@ -92,39 +92,38 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-brand-cream/30">
-      <div className="p-8 pb-4 flex items-center justify-between z-10 relative">
+    <div className="space-y-6 animate-slide-up pb-10">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-brand-navy mb-2">Kalender</h1>
-          <p className="text-brand-navy/60 font-medium text-sm flex items-center gap-2">
-            <CalendarIcon className="w-4 h-4" /> Pantau jatuh tempo dan masa sewa
-          </p>
+          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">PETA AKTIVITAS</p>
+          <h1 className="text-3xl font-display font-bold text-brand-navy">Kalender</h1>
+          <p className="text-sm text-gray-500 mt-1">Pantau jatuh tempo dan masa sewa</p>
+        </div>
+        
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'all' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
+          >
+            Semua Event
+          </button>
+          <button 
+            onClick={() => setFilter('contract')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'contract' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
+          >
+            Kontrak Habis
+          </button>
+          <button 
+            onClick={() => setFilter('payment')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'payment' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
+          >
+            Jatuh Tempo Pembayaran
+          </button>
         </div>
       </div>
 
-      <div className="px-8 pb-4 z-10 relative flex gap-2">
-        <button 
-          onClick={() => setFilter('all')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'all' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
-        >
-          Semua Event
-        </button>
-        <button 
-          onClick={() => setFilter('contract')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'contract' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
-        >
-          Kontrak Habis
-        </button>
-        <button 
-          onClick={() => setFilter('payment')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'payment' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
-        >
-          Jatuh Tempo Pembayaran
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-8 pt-0 z-10 relative">
-        <div className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-3xl p-6 shadow-xl shadow-brand-navy/5">
+      <div className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-3xl p-6 shadow-xl shadow-brand-navy/5">
           <style dangerouslySetInnerHTML={{__html: `
             .fc .fc-toolbar-title {
               font-family: 'Outfit', sans-serif;
@@ -204,7 +203,6 @@ export default function CalendarPage() {
             }}
           />
         </div>
-      </div>
 
       {/* Event Details Modal */}
       {selectedEvent && (

@@ -281,16 +281,16 @@ export default function ComplaintsPage() {
   });
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-brand-cream/30">
+    <div className="space-y-6 animate-slide-up pb-10">
       
       {/* Header */}
-      <div className="p-8 pb-4 flex items-center justify-between z-10 relative">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-brand-navy mb-2">
+          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">LAYANAN ADUAN</p>
+          <h1 className="text-3xl font-display font-bold text-brand-navy">
             {isTenant ? 'Komplain & Pengaduan' : 'Manajemen Komplain'}
           </h1>
-          <p className="text-brand-navy/60 font-medium text-sm flex items-center gap-2">
-            <MessageSquare className="w-4 h-4" /> 
+          <p className="text-sm text-gray-500 mt-1">
             {isTenant ? 'Laporkan ketidaknyamanan kos secara instan dan tanggap' : 'Kelola aduan kenyamanan kosan dari para penghuni'}
           </p>
         </div>
@@ -298,7 +298,7 @@ export default function ComplaintsPage() {
 
       {isTenant ? (
         /* TENANT VIEW */
-        <div className="flex-1 overflow-y-auto px-8 pb-8 grid grid-cols-1 lg:grid-cols-12 gap-8 z-10 relative">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 z-10 relative">
           
           {/* Left: Complaint Form */}
           <div className="lg:col-span-7 space-y-6">
@@ -480,11 +480,11 @@ export default function ComplaintsPage() {
           </div>
 
           {/* Right: History Complaints */}
-          <div className="lg:col-span-5 flex flex-col h-full overflow-hidden min-h-[400px]">
-            <div className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-3xl p-6 shadow-xl shadow-brand-navy/5 flex-1 flex flex-col overflow-hidden">
+          <div className="lg:col-span-5 flex flex-col min-h-[400px]">
+            <div className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-3xl p-6 shadow-xl shadow-brand-navy/5 flex-1 flex flex-col">
               <h2 className="text-xl font-display font-bold text-brand-navy mb-4">Riwayat Komplain Anda</h2>
               
-              <div className="flex-1 overflow-y-auto space-y-3 no-scrollbar">
+              <div className="space-y-3">
                 {complaints.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
                     <MessageSquare className="w-12 h-12 text-slate-300 mb-2" />
@@ -541,7 +541,7 @@ export default function ComplaintsPage() {
         </div>
       ) : (
         /* OWNER VIEW */
-        <div className="flex-1 overflow-y-auto px-8 pb-8 z-10 relative space-y-6">
+        <div className="z-10 relative space-y-6">
           
           {/* Top Metric Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -561,25 +561,31 @@ export default function ComplaintsPage() {
                 <button 
                   key={i} 
                   onClick={() => setStatusFilter(stat.id)}
-                  className={`bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden text-left ${
+                  className={`bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-lg transition-all duration-300 group relative overflow-hidden text-left ${
                     isActive ? 'ring-2 ring-brand-navy/10 border-brand-navy/30 scale-[1.02]' : 'hover:scale-[1.02]'
                   }`}
                 >
-                  <div className={`absolute top-0 left-0 w-full h-1 transition-colors ${isActive ? activeBarColor : 'bg-gray-200 ' + stat.hoverColor}`}></div>
+                  {/* Top Accent Bar */}
+                  <div className={`absolute top-0 left-0 w-full h-[3px] transition-colors duration-300 ${isActive ? activeBarColor : 'bg-gray-200 ' + stat.hoverColor}`}></div>
                   
                   <div className="flex justify-between items-start mb-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stat.bgColor} ${stat.iconColor}`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${stat.bgColor} ${stat.iconColor} group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300`}>
                       <StatIcon className="w-5 h-5" />
                     </div>
-                    {isActive && (
-                      <span className="text-[10px] font-bold text-brand-navy bg-brand-navy/10 px-2 py-1 rounded-md animate-in fade-in zoom-in duration-300">
+                    {isActive ? (
+                      <span className="text-[10px] font-bold text-brand-navy bg-brand-navy/10 px-2.5 py-0.5 rounded-full animate-in fade-in zoom-in duration-300">
                         Difilter
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2.5 py-0.5 rounded-full">
+                        Status
                       </span>
                     )}
                   </div>
                   
                   <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">{stat.label}</p>
                   <p className="text-3xl font-display font-bold text-brand-navy">{stat.value}</p>
+                  <p className="text-[11px] text-gray-400 font-medium mt-3">Laporan {stat.id === 'all' ? 'seluruh aduan' : stat.id === 'pending' ? 'menunggu respon' : stat.id === 'processed' ? 'dalam penanganan' : 'telah diselesaikan'}</p>
                 </button>
               );
             })}

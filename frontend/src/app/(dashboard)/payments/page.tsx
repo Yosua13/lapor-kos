@@ -251,15 +251,15 @@ export default function PaymentsPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-[1400px] mx-auto animate-slide-up">
+    <div className="space-y-6 animate-slide-up pb-10">
       {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-bold text-brand-teal uppercase tracking-[0.3em] mb-1">PENGELOLAAN KEUANGAN</p>
-          <h1 className="text-4xl font-display font-bold text-brand-navy">
+          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">PENGELOLAAN KEUANGAN</p>
+          <h1 className="text-3xl font-display font-bold text-brand-navy">
             {role === 'tenant' ? 'Tagihan & Pembayaran Saya' : 'Manajemen Pembayaran'}
           </h1>
-          <p className="text-brand-navy/40 text-sm mt-1">
+          <p className="text-sm text-gray-500 mt-1">
             {role === 'tenant' 
               ? 'Tinjau tagihan bulanan kos Anda dan laporkan pembayaran di sini' 
               : 'Verifikasi bukti transfer penghuni kos dan kelola histori keuangan'}
@@ -274,7 +274,7 @@ export default function PaymentsPage() {
             <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" /> Buat Tagihan Baru
           </button>
         )}
-      </header>
+      </div>
 
       {/* Filters (Owner Only) */}
       {role === 'owner' && (

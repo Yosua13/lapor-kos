@@ -118,18 +118,18 @@ export default function DashboardLayout({
       <div className="noise-bg" />
 
       {/* Sidebar Desktop */}
-      <aside className="hidden lg:flex flex-col w-72 bg-brand-navy text-white h-full z-40 flex-shrink-0">
-        <div className="p-8 flex items-center gap-3">
+      <aside className="hidden lg:flex flex-col w-64 bg-brand-navy text-white h-full z-40 flex-shrink-0">
+        <div className="p-6 flex items-center gap-3">
           <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center shadow-lg shadow-brand-teal/20">
             <Home className="text-white w-5 h-5" />
           </div>
           <span className="font-display text-2xl font-bold tracking-tight">Lapor <span className="text-brand-teal italic">Kos</span></span>
         </div>
 
-        <nav className="flex-1 px-4 mt-4 space-y-8">
+        <nav className="flex-1 px-3 mt-2 space-y-6">
           {navItems.map((section) => (
             <div key={section.section}>
-              <p className="text-[10px] font-bold text-white/30 tracking-[0.2em] px-4 mb-4">{section.section}</p>
+              <p className="text-[10px] font-bold text-white/30 tracking-[0.2em] px-3 mb-2">{section.section}</p>
               <div className="space-y-1">
                 {section.items.map((item) => {
                   const isActive = pathname === item.href;
@@ -138,7 +138,7 @@ export default function DashboardLayout({
                     <Link
                       key={item.name}
                       href={item.href}
-                      className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-300 group ${
+                      className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all duration-300 group ${
                         isActive 
                           ? 'bg-brand-teal/10 text-brand-teal sidebar-glow' 
                           : 'text-white/50 hover:text-white hover:bg-white/5'
@@ -161,8 +161,8 @@ export default function DashboardLayout({
           ))}
         </nav>
 
-        <div className="p-6 border-t border-white/5">
-          <div className="flex items-center gap-3 mb-6 px-4">
+        <div className="p-5 border-t border-white/5">
+          <div className="flex items-center gap-3 mb-4 px-3">
              <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center border border-white/5">
                 <User className="text-brand-teal w-5 h-5" />
              </div>
@@ -175,7 +175,7 @@ export default function DashboardLayout({
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 w-full text-white/40 hover:text-red-400 transition-colors text-sm font-bold group"
+            className="flex items-center gap-3 px-3 py-2 w-full text-white/40 hover:text-red-400 transition-colors text-sm font-bold group"
           >
             <LogOut className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
             <span>Keluar</span>
