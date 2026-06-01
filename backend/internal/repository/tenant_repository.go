@@ -44,9 +44,9 @@ func (r *TenantRepository) Create(ctx context.Context, tenant *model.Tenant, own
 				return err
 			}
 			newUserID := uuid.New()
-			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified) 
-			              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
-			err = tx.QueryRow(ctx, userQuery, newUserID, tenant.Name, tenant.Email, string(hashedPassword), "tenant", true).Scan(&newUserID)
+			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone) 
+			              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`
+			err = tx.QueryRow(ctx, userQuery, newUserID, tenant.Name, tenant.Email, string(hashedPassword), "tenant", true, tenant.Phone).Scan(&newUserID)
 			if err != nil {
 				return err
 			}
@@ -223,17 +223,17 @@ func (r *TenantRepository) Update(ctx context.Context, tenant *model.Tenant) err
 					return err
 				}
 				newUserID := uuid.New()
-				userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified) 
-				              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
-				err = tx.QueryRow(ctx, userQuery, newUserID, tenant.Name, tenant.Email, string(hashedPassword), "tenant", true).Scan(&newUserID)
+				userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone) 
+				              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`
+				err = tx.QueryRow(ctx, userQuery, newUserID, tenant.Name, tenant.Email, string(hashedPassword), "tenant", true, tenant.Phone).Scan(&newUserID)
 				if err != nil {
 					return err
 				}
 				userIDPtr = &newUserID
 			}
 		} else {
-			userQuery := `UPDATE users SET name = $1, email = $2 WHERE id = $3`
-			_, err = tx.Exec(ctx, userQuery, tenant.Name, tenant.Email, *userIDPtr)
+			userQuery := `UPDATE users SET name = $1, email = $2, phone = $3 WHERE id = $4`
+			_, err = tx.Exec(ctx, userQuery, tenant.Name, tenant.Email, tenant.Phone, *userIDPtr)
 			if err != nil {
 				return err
 			}

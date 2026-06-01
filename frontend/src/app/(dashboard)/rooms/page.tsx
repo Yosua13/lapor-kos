@@ -363,59 +363,71 @@ export default function RoomsPage() {
 
       {/* STAT CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 group-hover:scale-110 transition-transform"><Home className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">Total: {stats.total}</span>
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-lg transition-all duration-300 relative overflow-hidden group">
+          {/* Top Accent Bar */}
+          <div className="absolute top-0 left-0 w-full h-[3px] bg-gray-200 group-hover:bg-slate-400 transition-colors duration-300" />
+          
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"><Home className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2.5 py-0.5 rounded-full">Total: {stats.total}</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TOTAL KAMAR</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.total}</p>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3.5">
             <div className="h-full bg-slate-400 rounded-full" style={{ width: '100%' }} />
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">{stats.total} terdaftar</p>
+          <p className="text-[11px] text-gray-400 font-medium mt-3">{stats.total} terdaftar</p>
         </div>
 
-        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600 group-hover:scale-110 transition-transform"><Users className="w-5 h-5" /></div>
-            <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${stats.occupancyRate >= 50 ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700'}`}>{stats.occupancyRate}%</span>
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-lg transition-all duration-300 relative overflow-hidden group">
+          {/* Top Accent Bar */}
+          <div className="absolute top-0 left-0 w-full h-[3px] bg-gray-200 group-hover:bg-brand-teal transition-colors duration-300" />
+          
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"><Users className="w-5 h-5" /></div>
+            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${stats.occupancyRate >= 50 ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700'}`}>{stats.occupancyRate}%</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">KAMAR TERISI</p>
-          <div className="flex items-baseline gap-1">
+          <div className="flex items-baseline gap-1.5">
             <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupied}</p>
             <span className="text-brand-navy/20 font-bold text-lg">/{stats.total}</span>
           </div>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3.5">
             <div className={`h-full rounded-full transition-all duration-700 ${stats.occupancyRate >= 50 ? 'bg-brand-teal' : 'bg-amber-500'}`} style={{ width: `${stats.occupancyRate}%` }} />
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">{stats.available} kamar kosong</p>
+          <p className="text-[11px] text-gray-400 font-medium mt-3">{stats.available} kamar kosong</p>
         </div>
 
-        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform"><Key className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">Siap Huni</span>
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-lg transition-all duration-300 relative overflow-hidden group">
+          {/* Top Accent Bar */}
+          <div className="absolute top-0 left-0 w-full h-[3px] bg-gray-200 group-hover:bg-amber-500 transition-colors duration-300" />
+          
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-500 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"><Key className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-full">Siap Huni</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">KAMAR KOSONG</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.available}</p>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3.5">
             <div className="h-full bg-amber-400 rounded-full transition-all duration-700" style={{ width: `${stats.total > 0 ? (stats.available / stats.total) * 100 : 0}%` }} />
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">Menunggu penghuni</p>
+          <p className="text-[11px] text-gray-400 font-medium mt-3">Menunggu penghuni</p>
         </div>
 
-        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform"><TrendingUp className="w-5 h-5" /></div>
-            <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${stats.occupancyRate >= 70 ? 'bg-emerald-50 text-emerald-700' : stats.occupancyRate >= 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>Efisiensi</span>
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-lg transition-all duration-300 relative overflow-hidden group">
+          {/* Top Accent Bar */}
+          <div className="absolute top-0 left-0 w-full h-[3px] bg-gray-200 group-hover:bg-emerald-500 transition-colors duration-300" />
+          
+          <div className="flex justify-between items-start mb-4">
+            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300"><TrendingUp className="w-5 h-5" /></div>
+            <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${stats.occupancyRate >= 70 ? 'bg-emerald-50 text-emerald-700' : stats.occupancyRate >= 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>Efisiensi</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TINGKAT HUNIAN</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupancyRate}%</p>
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3.5">
             <div className={`h-full rounded-full transition-all duration-700 ${stats.occupancyRate >= 70 ? 'bg-emerald-500' : stats.occupancyRate >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${stats.occupancyRate}%` }} />
           </div>
-          <p className="text-[10px] text-gray-400 mt-2">Rasio kamar terisi</p>
+          <p className="text-[11px] text-gray-400 font-medium mt-3">Rasio kamar terisi</p>
         </div>
       </div>
 
@@ -751,13 +763,13 @@ export default function RoomsPage() {
                   </div>
                 </div>
 
-                <div className="bg-[#faf8f5] border-t border-gray-200 px-8 py-4 -mx-8 mb-0 rounded-b-[32px] flex items-center justify-between mt-4 shrink-0">
-                  <span className="text-[10px] text-gray-500 font-medium"><span className="text-red-500">*</span> Field wajib diisi</span>
+                <div className="border-t border-gray-200 dark:border-slate-800 px-8 py-4 -mx-8 mb-0 rounded-b-[32px] flex items-center justify-between mt-4 shrink-0">
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium"><span className="text-red-500">*</span> Field wajib diisi</span>
                   <div className="flex gap-3">
                     <button
                       type="button"
                       onClick={() => setIsModalOpen(false)}
-                      className="px-4 py-2 border-[1.5px] border-gray-300 hover:border-gray-400 text-brand-navy font-bold rounded-[9px] transition-all text-xs bg-white shadow-sm"
+                      className="px-4 py-2 border-[1.5px] border-gray-300 dark:border-slate-700 hover:border-gray-400 dark:hover:border-slate-600 text-brand-navy dark:text-slate-300 font-bold rounded-[9px] transition-all text-xs bg-white dark:bg-slate-800 shadow-sm"
                     >
                       Batal
                     </button>
@@ -900,13 +912,13 @@ export default function RoomsPage() {
                   </div>
                 </div>
 
-                <div className="bg-[#faf8f5] border-t border-gray-200 px-8 py-4 -mx-8 mb-0 rounded-b-[32px] flex items-center justify-between mt-4 shrink-0">
-                  <span className="text-[10px] text-gray-500 font-medium"><span className="text-red-500">*</span> Field wajib diisi</span>
+                <div className="border-t border-gray-200 dark:border-slate-800 px-8 py-4 -mx-8 mb-0 rounded-b-[32px] flex items-center justify-between mt-4 shrink-0">
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium"><span className="text-red-500">*</span> Field wajib diisi</span>
                   <div className="flex gap-3">
                     <button
                       type="button"
                       onClick={() => setStep(1)}
-                      className="px-4 py-2 border-[1.5px] border-gray-300 hover:border-gray-400 text-brand-navy font-bold rounded-[9px] transition-all text-xs bg-white shadow-sm"
+                      className="px-4 py-2 border-[1.5px] border-gray-300 dark:border-slate-700 hover:border-gray-400 dark:hover:border-slate-600 text-brand-navy dark:text-slate-300 font-bold rounded-[9px] transition-all text-xs bg-white dark:bg-slate-800 shadow-sm"
                     >
                       Kembali
                     </button>

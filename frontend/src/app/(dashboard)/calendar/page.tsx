@@ -92,77 +92,88 @@ export default function CalendarPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-brand-cream/30">
-      <div className="p-8 pb-4 flex items-center justify-between z-10 relative">
+    <div className="space-y-6 animate-slide-up pb-10">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-brand-navy mb-2">Kalender</h1>
-          <p className="text-brand-navy/60 font-medium text-sm flex items-center gap-2">
-            <CalendarIcon className="w-4 h-4" /> Pantau jatuh tempo dan masa sewa
-          </p>
+          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">PETA AKTIVITAS</p>
+          <h1 className="text-3xl font-display font-bold text-brand-navy">Kalender</h1>
+          <p className="text-sm text-gray-500 mt-1">Pantau jatuh tempo dan masa sewa</p>
+        </div>
+        
+        <div className="flex gap-2">
+          <button 
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'all' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
+          >
+            Semua Event
+          </button>
+          <button 
+            onClick={() => setFilter('contract')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'contract' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
+          >
+            Kontrak Habis
+          </button>
+          <button 
+            onClick={() => setFilter('payment')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'payment' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
+          >
+            Jatuh Tempo Pembayaran
+          </button>
         </div>
       </div>
 
-      <div className="px-8 pb-4 z-10 relative flex gap-2">
-        <button 
-          onClick={() => setFilter('all')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'all' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
-        >
-          Semua Event
-        </button>
-        <button 
-          onClick={() => setFilter('contract')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'contract' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
-        >
-          Kontrak Habis
-        </button>
-        <button 
-          onClick={() => setFilter('payment')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${filter === 'payment' ? 'bg-brand-navy text-white shadow-md' : 'bg-white text-brand-navy/60 hover:bg-white/80 border border-brand-navy/10'}`}
-        >
-          Jatuh Tempo Pembayaran
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-8 pt-0 z-10 relative">
-        <div className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-3xl p-6 shadow-xl shadow-brand-navy/5">
+      <div className="bg-white dark:bg-[#0F172A] border-[1.5px] border-gray-200 dark:border-[#1E293B] rounded-3xl p-6 shadow-sm">
           <style dangerouslySetInnerHTML={{__html: `
             .fc .fc-toolbar-title {
               font-family: 'Outfit', sans-serif;
               font-weight: 700;
-              color: #0f172a;
+              color: var(--color-brand-navy);
               font-size: 1.5rem;
             }
             .fc .fc-button-primary {
-              background-color: #1e293b !important;
-              border-color: #1e293b !important;
+              background-color: var(--color-gray-100) !important;
+              border-color: var(--color-gray-200) !important;
+              color: var(--color-brand-navy) !important;
               border-radius: 0.75rem;
               font-family: 'Plus Jakarta Sans', sans-serif;
               font-weight: 600;
               text-transform: capitalize;
             }
             .fc .fc-button-primary:hover {
-              background-color: #334155 !important;
+              background-color: var(--color-gray-200) !important;
             }
             .fc .fc-button-primary:not(:disabled).fc-button-active,
             .fc .fc-button-primary:not(:disabled):active {
-              background-color: #0f172a !important;
+              background-color: var(--color-brand-teal) !important;
+              border-color: var(--color-brand-teal) !important;
+              color: #ffffff !important;
             }
             .fc-theme-standard th {
               border: none;
               padding: 12px 0;
               font-family: 'Plus Jakarta Sans', sans-serif;
               font-weight: 700;
-              color: #64748b;
+              color: var(--color-gray-500);
               text-transform: uppercase;
               font-size: 0.75rem;
+              background-color: transparent !important;
             }
             .fc-theme-standard td, .fc-theme-standard th {
-              border-color: #f1f5f9;
+              border-color: var(--color-gray-200) !important;
             }
-            .fc-daygrid-day-number {
+            .fc-daygrid-day-number,
+            .fc-col-header-cell-cushion,
+            .fc-multimonth-day {
               font-family: 'Outfit', sans-serif;
               font-weight: 600;
-              color: #334155;
+              color: var(--color-brand-navy) !important;
+              text-decoration: none !important;
+            }
+            .fc-multimonth-title {
+              font-family: 'Outfit', sans-serif;
+              font-weight: 700;
+              color: var(--color-brand-navy) !important;
             }
             .fc-event {
               cursor: pointer;
@@ -179,8 +190,27 @@ export default function CalendarPage() {
               overflow: hidden;
               text-overflow: ellipsis;
             }
+            .fc-day,
+            .fc-multimonth-day,
+            .fc-multimonth-month,
+            .fc-multimonth,
+            .fc-multimonth-daygrid,
+            .fc-multimonth-header,
+            .fc-scrollgrid,
+            .fc-view,
+            .fc-view-harness,
+            .fc-theme-standard {
+              background-color: transparent !important;
+              background: transparent !important;
+            }
             .fc-day-today {
-              background-color: #f0fdfa !important;
+              background-color: rgba(20, 184, 166, 0.15) !important;
+            }
+            .fc-day-other {
+              opacity: 0.4;
+            }
+            .fc-col-header {
+              background-color: transparent !important;
             }
           `}} />
           <FullCalendar
@@ -204,7 +234,6 @@ export default function CalendarPage() {
             }}
           />
         </div>
-      </div>
 
       {/* Event Details Modal */}
       {selectedEvent && (
