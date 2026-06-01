@@ -58,9 +58,15 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 		rentalDuration = 1 // default to 1 month
 	}
 
+	email := req.Email
+	if email == "" {
+		email = req.Phone + "@tenant.com"
+	}
+
 	tenant := &model.Tenant{
 		RoomID:    roomIDPtr,
 		Name:      req.Name,
+		Email:     email,
 		Phone:     req.Phone,
 		KTPURL:    ktpPath,
 		SelfieURL: selfiePath,
