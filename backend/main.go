@@ -57,6 +57,7 @@ func main() {
 	emailServ := service.NewEmailService()
 	aiServ := service.NewAIService()
 	waServ := service.NewWhatsAppService()
+	storageServ := service.NewStorageService()
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(dbPool)
@@ -69,17 +70,16 @@ func main() {
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(userRepo, emailServ)
-	roomHandler := handler.NewRoomHandler(roomRepo)
-	tenantHandler := handler.NewTenantHandler(tenantRepo)
+	roomHandler := handler.NewRoomHandler(roomRepo, storageServ)
+	tenantHandler := handler.NewTenantHandler(tenantRepo, storageServ)
 	contractHandler := handler.NewContractHandler(contractRepo)
-	paymentHandler := handler.NewPaymentHandler(paymentRepo, tenantRepo)
+	paymentHandler := handler.NewPaymentHandler(paymentRepo, tenantRepo, storageServ)
 	calendarHandler := handler.NewCalendarHandler(calendarRepo)
-	complaintHandler := handler.NewComplaintHandler(complaintRepo, userRepo, aiServ, waServ)
+	complaintHandler := handler.NewComplaintHandler(complaintRepo, userRepo, aiServ, waServ, storageServ)
 
 	router := gin.Default()
 
-	// Static files for uploads served from shared frontend folder
-	router.Static("/uploads", "../frontend/public/uploads")
+	// Note: /uploads route removed - files are now served from Supabase Storage CDN.
 
 	// CORS middleware
 	router.Use(func(c *gin.Context) {
