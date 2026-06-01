@@ -330,11 +330,11 @@ export default function TenantsPage() {
           <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-red-500 transition-colors"></div>
           <div className="flex justify-between items-start mb-4">
             <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-500"><AlertTriangle className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-1 rounded-md">Urgent</span>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-md ${stats.unpaid > 0 ? 'text-red-600 bg-red-50' : 'text-emerald-600 bg-emerald-50'}`}>{stats.unpaid} tagihan</span>
           </div>
-          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">BELUM BAYAR</p>
+          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TAGIHAN JATUH TEMPO</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.unpaid}</p>
-          <p className="text-xs text-gray-500 mt-1">Tagihan bulan ini</p>
+          <p className="text-xs text-gray-500 mt-1">{stats.unpaid > 0 ? 'Perlu tindak lanjut' : 'Semua lunas'}</p>
         </div>
       </div>
 
@@ -446,9 +446,25 @@ export default function TenantsPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mb-4">
+                <div className="flex flex-wrap gap-2 mb-3">
                   <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${tenant.statusColor}`}>• {tenant.contractStatus}</span>
                   <span className={`px-2 py-1 rounded-md text-[10px] font-bold ${tenant.paymentColor}`}>• {tenant.paymentStatus}</span>
+                </div>
+
+                {/* Payment status visual */}
+                <div className="bg-gray-50 rounded-xl p-3 mb-3">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-400 font-medium">Tagihan bulan ini</span>
+                    <span className={`font-bold ${
+                      tenant.paymentStatus === 'Lunas' || tenant.paymentStatus === 'Tepat Waktu' 
+                        ? 'text-emerald-600' 
+                        : 'text-red-600'
+                    }`}>
+                      {tenant.paymentStatus === 'Lunas' || tenant.paymentStatus === 'Tepat Waktu' 
+                        ? '✓ Lunas' 
+                        : `Belum — Rp ${(tenant.room?.price_per_month || 0).toLocaleString('id-ID')}`}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-4 text-[10px] font-bold border-t border-dashed border-gray-200 pt-4">

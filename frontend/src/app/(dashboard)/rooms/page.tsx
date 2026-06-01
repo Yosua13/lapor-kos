@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import {
   Plus,
   Search,
@@ -35,8 +36,10 @@ interface Room {
 }
 
 export default function RoomsPage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [tenants, setTenants] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -81,13 +84,22 @@ export default function RoomsPage() {
   const fetchRooms = async () => {
     setIsLoading(true);
     try {
-      const data = await apiFetch('/api/rooms');
-      setRooms(data || []);
+      const [roomsData, tenantsData] = await Promise.all([
+        apiFetch('/api/rooms'),
+        apiFetch('/api/tenants')
+      ]);
+      setRooms(roomsData || []);
+      setTenants(tenantsData || []);
     } catch (err: any) {
       setError(err.message || 'Gagal memuat data kamar');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Helper to find tenant for a room
+  const getTenantForRoom = (roomId: string) => {
+    return tenants.find(t => t.room_id === roomId || t.room?.id === roomId);
   };
 
   useEffect(() => {
@@ -342,43 +354,58 @@ export default function RoomsPage() {
       {/* STAT CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-brand-navy transition-colors"></div>
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center text-brand-navy"><Home className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-md">Total</span>
+          <div className="flex justify-between items-start mb-3">
+            <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 group-hover:scale-110 transition-transform"><Home className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">Total: {stats.total}</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TOTAL KAMAR</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.total}</p>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+            <div className="h-full bg-slate-400 rounded-full" style={{ width: '100%' }} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">{stats.total} terdaftar</p>
         </div>
 
         <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-brand-teal transition-colors"></div>
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 bg-brand-teal/10 rounded-xl flex items-center justify-center text-brand-teal"><Users className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-brand-teal bg-brand-teal/10 px-2 py-1 rounded-md">Berpenghuni</span>
+          <div className="flex justify-between items-start mb-3">
+            <div className="w-10 h-10 bg-teal-50 rounded-xl flex items-center justify-center text-teal-600 group-hover:scale-110 transition-transform"><Users className="w-5 h-5" /></div>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${stats.occupancyRate >= 50 ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700'}`}>{stats.occupancyRate}%</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">KAMAR TERISI</p>
-          <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupied}</p>
+          <div className="flex items-baseline gap-1">
+            <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupied}</p>
+            <span className="text-brand-navy/20 font-bold text-lg">/{stats.total}</span>
+          </div>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+            <div className={`h-full rounded-full transition-all duration-700 ${stats.occupancyRate >= 50 ? 'bg-brand-teal' : 'bg-amber-500'}`} style={{ width: `${stats.occupancyRate}%` }} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">{stats.available} kamar kosong</p>
         </div>
 
         <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-amber-500 transition-colors"></div>
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-500"><Key className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">Siap Huni</span>
+          <div className="flex justify-between items-start mb-3">
+            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform"><Key className="w-5 h-5" /></div>
+            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">Siap Huni</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">KAMAR KOSONG</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.available}</p>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+            <div className="h-full bg-amber-400 rounded-full transition-all duration-700" style={{ width: `${stats.total > 0 ? (stats.available / stats.total) * 100 : 0}%` }} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">Menunggu penghuni</p>
         </div>
 
         <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gray-200 group-hover:bg-blue-500 transition-colors"></div>
-          <div className="flex justify-between items-start mb-4">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500"><TrendingUp className="w-5 h-5" /></div>
-            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md">Efisiensi</span>
+          <div className="flex justify-between items-start mb-3">
+            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform"><TrendingUp className="w-5 h-5" /></div>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${stats.occupancyRate >= 70 ? 'bg-emerald-50 text-emerald-700' : stats.occupancyRate >= 40 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700'}`}>Efisiensi</span>
           </div>
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">TINGKAT HUNIAN</p>
           <p className="text-3xl font-display font-bold text-brand-navy">{stats.occupancyRate}%</p>
+          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+            <div className={`h-full rounded-full transition-all duration-700 ${stats.occupancyRate >= 70 ? 'bg-emerald-500' : stats.occupancyRate >= 40 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${stats.occupancyRate}%` }} />
+          </div>
+          <p className="text-[10px] text-gray-400 mt-2">Rasio kamar terisi</p>
         </div>
       </div>
 
@@ -445,49 +472,69 @@ export default function RoomsPage() {
       ) : viewMode === 'grid' ? (
         // GRID VIEW
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredAndSortedRooms.map(room => (
-            <div key={room.id} className="bg-white border-[1.5px] border-gray-200 rounded-[24px] shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative group">
-              <div className={`h-1.5 w-full ${room.status === 'occupied' ? 'bg-brand-teal' : 'bg-amber-500'}`}></div>
+          {filteredAndSortedRooms.map(room => {
+            const tenant = getTenantForRoom(room.id);
+            const isOccupied = room.status === 'occupied';
+            return (
+            <div key={room.id} className="bg-white border-[1.5px] border-gray-200 rounded-[20px] shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative group" style={{ borderLeft: `3px solid ${isOccupied ? '#0e8a7a' : '#f59e0b'}` }}>
               <div className="p-5 flex-1">
-                <div className="flex justify-between items-start mb-5">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center font-bold text-lg ${room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'}`}>
-                      {room.room_number.slice(-2)}
-                    </div>
-                    <div>
-                      <h3 className="font-display font-bold text-brand-navy text-lg leading-tight">Kamar {room.room_number}</h3>
-                      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-bold mt-1 ${
-                        room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'
-                      }`}>
-                        {room.status === 'occupied' ? 'TERISI' : 'KOSONG'}
-                      </div>
-                    </div>
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="font-display font-bold text-brand-navy text-lg leading-tight">Kamar {room.room_number}</h3>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Lantai {room.room_number.length > 1 ? room.room_number[0] : '1'}</p>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => handleOpenModal(room)} className="p-1.5 text-gray-400 hover:text-brand-teal hover:bg-brand-teal/10 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => handleDeleteClick(room)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
+                      isOccupied ? 'bg-teal-50 text-teal-700 ring-1 ring-teal-200' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${isOccupied ? 'bg-teal-500' : 'bg-amber-500'}`} />
+                      {isOccupied ? 'Terisi' : 'Kosong'}
+                    </span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => handleOpenModal(room)} className="p-1.5 text-gray-400 hover:text-brand-teal hover:bg-brand-teal/10 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => handleDeleteClick(room)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="mb-4">
-                  <p className="text-xl font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')} <span className="text-xs font-medium text-gray-400 font-sans">/ bulan</span></p>
-                </div>
+                {/* Tenant Info (for occupied rooms) */}
+                {isOccupied && tenant ? (
+                  <div className="bg-gray-50 rounded-xl p-3 mb-4 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-brand-teal/10 overflow-hidden flex items-center justify-center shrink-0">
+                      {tenant.selfie_url ? (
+                        <img src={`http://localhost:8081${tenant.selfie_url}`} alt={tenant.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-brand-teal font-bold text-xs">{tenant.name?.substring(0, 2).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-brand-navy truncate">{tenant.name}</p>
+                      <p className="text-[10px] text-gray-400">s/d {tenant.contract?.end_date ? new Date(tenant.contract.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</p>
+                    </div>
+                  </div>
+                ) : !isOccupied ? (
+                  <button 
+                    onClick={() => router.push('/tenants')}
+                    className="w-full py-2.5 mb-4 border-[1.5px] border-dashed border-gray-300 hover:border-brand-teal text-gray-400 hover:text-brand-teal rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Tambah Penghuni
+                  </button>
+                ) : null}
 
-                <div className="flex flex-wrap gap-1.5">
-                  {(room.description ? room.description.split(',') : []).slice(0, 4).map((facility, idx) => (
-                    <span key={idx} className="px-2 py-1 rounded bg-gray-50 text-gray-600 text-[10px] font-medium border border-gray-100">
-                      {facility.trim()}
-                    </span>
-                  ))}
-                  {room.description && room.description.split(',').length > 4 && (
-                    <span className="px-2 py-1 rounded bg-gray-50 text-gray-400 text-[10px] font-medium border border-gray-100">
-                      +{room.description.split(',').length - 4}
-                    </span>
-                  )}
+                <div className="flex justify-between items-center">
+                  <p className="text-sm font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')}<span className="text-[10px] font-medium text-gray-400 font-sans">/bln</span></p>
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {(room.description ? room.description.split(',') : []).slice(0, 2).map((facility, idx) => (
+                      <span key={idx} className="px-2 py-0.5 rounded bg-gray-50 text-gray-500 text-[9px] font-medium border border-gray-100">
+                        {facility.trim()}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         // LIST VIEW
