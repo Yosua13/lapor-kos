@@ -69,8 +69,8 @@ Modul ini mencakup pembuatan fitur pengaturan aplikasi yang dapat digunakan oleh
 
 ## 4. Kriteria Keberhasilan (Acceptance Criteria)
 
-- [ ] Pengguna (Owner & Penghuni) dapat memperbarui Nama, Email, dan No HP mereka dan perubahan tersimpan di database.
-- [ ] Pengguna dapat mengubah kata sandi mereka dengan memverifikasi kata sandi lama terlebih dahulu.
-- [ ] Pengguna dapat berganti tema dari Terang ke Gelap dan sebaliknya secara instan di layar.
-- [ ] Pilihan tema pengguna tidak hilang setelah halaman di-refresh.
-- [ ] Tampilan antarmuka (UI) halaman pengaturan rapi, ramah pengguna, dan responsif di perangkat mobile maupun desktop.
+- [x] Pengguna (Owner & Penghuni) dapat memperbarui Nama, Email, dan No HP mereka dan perubahan tersimpan di database.
+- [x] Pengguna dapat mengubah kata sandi mereka dengan memverifikasi kata sandi lama terlebih dahulu.
+- [x] Pengguna dapat berganti tema dari Terang ke Gelap dan sebaliknya secara instan di layar.
+- [x] Pilihan tema pengguna tidak hilang setelah halaman di-refresh.
+- [x] Tampilan antarmuka (UI) halaman pengaturan rapi, ramah pengguna, dan responsif di perangkat mobile maupun desktop.
