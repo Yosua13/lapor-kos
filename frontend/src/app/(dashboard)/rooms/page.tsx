@@ -25,7 +25,7 @@ import {
   Key,
   Home
 } from 'lucide-react';
-import { apiFetch, API_URL } from '@/lib/api';
+import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
 
 interface Room {
   id: string;
@@ -524,7 +524,7 @@ export default function RoomsPage() {
                   <div className="bg-gray-50 rounded-xl p-3 mb-4 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-brand-teal/10 overflow-hidden flex items-center justify-center shrink-0">
                       {tenant.selfie_url ? (
-                        <img src={`${API_URL}${tenant.selfie_url}`} alt={tenant.name} className="w-full h-full object-cover" />
+                        <img src={getImageUrl(tenant.selfie_url)} alt={tenant.name} className="w-full h-full object-cover" />
                       ) : (
                         <span className="text-brand-teal font-bold text-xs">{tenant.name?.substring(0, 2).toUpperCase()}</span>
                       )}
