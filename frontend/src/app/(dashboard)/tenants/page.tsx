@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { apiFetch, API_URL } from '@/lib/api';
+import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
 import { 
   Users, CheckCircle2, Calendar, AlertTriangle, 
   Search, Plus, LayoutGrid, List as ListIcon, 
@@ -419,9 +419,9 @@ export default function TenantsPage() {
                     <div className="relative">
                       <div className="w-12 h-12 rounded-[14px] bg-gray-100 overflow-hidden shadow-sm">
                         {tenant.selfie_url ? (
-                          <img src={`${API_URL}${tenant.selfie_url}`} alt={tenant.name} className="w-full h-full object-cover" />
+                          <img src={getImageUrl(tenant.selfie_url)} alt={tenant.name} className="w-full h-full object-cover" />
                         ) : tenant.ktp_url ? (
-                          <img src={`${API_URL}${tenant.ktp_url}`} alt="KTP" className="w-full h-full object-cover grayscale opacity-50" />
+                          <img src={getImageUrl(tenant.ktp_url)} alt="KTP" className="w-full h-full object-cover grayscale opacity-50" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-brand-teal text-white font-display font-bold text-lg">
                             {tenant.name.substring(0,2).toUpperCase()}
@@ -489,7 +489,7 @@ export default function TenantsPage() {
 
               <div className="p-3 bg-gray-50 border-t border-gray-100 flex gap-2">
                 <button 
-                  onClick={() => tenant.ktp_url && window.open(`${API_URL}${tenant.ktp_url}`, '_blank')}
+                  onClick={() => tenant.ktp_url && window.open(getImageUrl(tenant.ktp_url), '_blank')}
                   className="flex-1 py-2 text-xs font-bold text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
                 >
                   <FileText className="w-3.5 h-3.5" /> Dok. KTP
@@ -527,7 +527,7 @@ export default function TenantsPage() {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-[10px] bg-brand-teal/10 overflow-hidden flex items-center justify-center">
                           {tenant.selfie_url ? (
-                            <img src={`${API_URL}${tenant.selfie_url}`} alt={tenant.name} className="w-full h-full object-cover" />
+                            <img src={getImageUrl(tenant.selfie_url)} alt={tenant.name} className="w-full h-full object-cover" />
                           ) : <User className="w-5 h-5 text-brand-teal" />}
                         </div>
                         <div>
