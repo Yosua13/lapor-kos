@@ -17,6 +17,7 @@ type UserRepo interface {
 	VerifyUser(ctx context.Context, id uuid.UUID) error
 	SetOTP(ctx context.Context, email string, code string, expiresAt time.Time) error
 	ResetPassword(ctx context.Context, email string, newPasswordHash string) error
+	UpdateWhatsAppGroupLink(ctx context.Context, id uuid.UUID, link string) error
 }
 
 type UserRepository struct {
@@ -33,11 +34,11 @@ func (r *UserRepository) Create(ctx context.Context, user *model.User) error {
 }
 
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
-	query := `SELECT id, name, email, password_hash, role, is_verified, verification_token, otp_code, otp_expires_at, created_at FROM users WHERE email = $1`
+	query := `SELECT id, name, email, password_hash, role, is_verified, verification_token, otp_code, otp_expires_at, whatsapp_group_link, created_at FROM users WHERE email = $1`
 	user := &model.User{}
 	err := r.db.QueryRow(ctx, query, email).Scan(
 		&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Role,
-		&user.IsVerified, &user.VerificationToken, &user.OTPCode, &user.OTPExpiresAt, &user.CreatedAt,
+		&user.IsVerified, &user.VerificationToken, &user.OTPCode, &user.OTPExpiresAt, &user.WhatsAppGroupLink, &user.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -46,10 +47,10 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.
 }
 
 func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
-	query := `SELECT id, name, email, password_hash, role, is_verified, created_at FROM users WHERE id = $1`
+	query := `SELECT id, name, email, password_hash, role, is_verified, whatsapp_group_link, created_at FROM users WHERE id = $1`
 	user := &model.User{}
 	err := r.db.QueryRow(ctx, query, id).Scan(
-		&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.IsVerified, &user.CreatedAt,
+		&user.ID, &user.Name, &user.Email, &user.PasswordHash, &user.Role, &user.IsVerified, &user.WhatsAppGroupLink, &user.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -84,5 +85,11 @@ func (r *UserRepository) SetOTP(ctx context.Context, email string, code string, 
 func (r *UserRepository) ResetPassword(ctx context.Context, email string, newPasswordHash string) error {
 	query := `UPDATE users SET password_hash = $1, otp_code = NULL, otp_expires_at = NULL WHERE email = $2`
 	_, err := r.db.Exec(ctx, query, newPasswordHash, email)
+	return err
+}
+
+func (r *UserRepository) UpdateWhatsAppGroupLink(ctx context.Context, id uuid.UUID, link string) error {
+	query := `UPDATE users SET whatsapp_group_link = $1 WHERE id = $2`
+	_, err := r.db.Exec(ctx, query, link, id)
 	return err
 }
