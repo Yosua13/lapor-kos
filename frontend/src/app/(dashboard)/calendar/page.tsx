@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
+import multiMonthPlugin from '@fullcalendar/multimonth';
 import { apiFetch } from '@/lib/api';
 import { 
   Calendar as CalendarIcon, 
@@ -184,7 +185,7 @@ export default function CalendarPage() {
           `}} />
           <FullCalendar
             ref={calendarRef}
-            plugins={[ dayGridPlugin ]}
+            plugins={[ dayGridPlugin, multiMonthPlugin ]}
             initialView="dayGridMonth"
             events={filteredEvents}
             datesSet={fetchEvents}
@@ -193,10 +194,11 @@ export default function CalendarPage() {
             headerToolbar={{
               left: 'prev,next today',
               center: 'title',
-              right: 'dayGridMonth,dayGridWeek'
+              right: 'multiMonthYear,dayGridMonth,dayGridWeek'
             }}
             buttonText={{
               today: 'Hari Ini',
+              year: 'Tahun',
               month: 'Bulan',
               week: 'Minggu'
             }}
