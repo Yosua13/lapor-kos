@@ -17,6 +17,7 @@ type User struct {
 	OTPCode           *string    `json:"-" db:"otp_code"`
 	OTPExpiresAt      *time.Time `json:"-" db:"otp_expires_at"`
 	WhatsAppGroupLink *string    `json:"whatsapp_group_link,omitempty" db:"whatsapp_group_link"`
+	Phone             string     `json:"phone" db:"phone"`
 	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
 }
 
@@ -49,4 +50,15 @@ type ResetPasswordRequest struct {
 	Email       string `json:"email" binding:"required,email"`
 	OTP         string `json:"otp" binding:"required,len=6"`
 	NewPassword string `json:"new_password" binding:"required,min=6"`
+}
+
+type UpdateProfileRequest struct {
+	Name  string `json:"name" binding:"required"`
+	Email string `json:"email" binding:"required,email"`
+	Phone string `json:"phone"`
+}
+
+type UpdatePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=6"`
 }

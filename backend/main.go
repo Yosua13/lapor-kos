@@ -45,6 +45,14 @@ func main() {
 	}
 	log.Println("Successfully connected to PostgreSQL via pgxpool")
 
+	// Run schema migrations/updates
+	_, err = dbPool.Exec(context.Background(), `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50) NOT NULL DEFAULT '';`)
+	if err != nil {
+		log.Printf("Warning: Failed to run inline migration to add phone to users: %v", err)
+	} else {
+		log.Println("Inline migration: users.phone column verified/created")
+	}
+
 	// Initialize services
 	emailServ := service.NewEmailService()
 	aiServ := service.NewAIService()
@@ -108,6 +116,8 @@ func main() {
 			auth.POST("/verify-otp", authHandler.VerifyOTP)
 			auth.POST("/reset-password", authHandler.ResetPassword)
 			auth.GET("/me", middleware.AuthMiddleware(), authHandler.Me)
+			auth.PUT("/profile", middleware.AuthMiddleware(), authHandler.UpdateProfile)
+			auth.PUT("/password", middleware.AuthMiddleware(), authHandler.UpdatePassword)
 		}
 
 		// Room routes (Protected)
