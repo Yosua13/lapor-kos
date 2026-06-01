@@ -1,25 +1,24 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
+	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type TenantHandler struct {
-	repo *repository.TenantRepository
+	repo           *repository.TenantRepository
+	storageService *service.StorageService
 }
 
-func NewTenantHandler(repo *repository.TenantRepository) *TenantHandler {
-	return &TenantHandler{repo: repo}
+func NewTenantHandler(repo *repository.TenantRepository, storageService *service.StorageService) *TenantHandler {
+	return &TenantHandler{repo: repo, storageService: storageService}
 }
 
 func (h *TenantHandler) CreateTenant(c *gin.Context) {
@@ -49,9 +48,9 @@ func (h *TenantHandler) CreateTenant(c *gin.Context) {
 		roomIDPtr = &parsedUUID
 	}
 
-	// Handle file uploads
-	ktpPath, _ := h.saveFile(c, "ktp")
-	selfiePath, _ := h.saveFile(c, "selfie")
+	// Handle file uploads to Supabase Storage
+	ktpPath, _ := h.uploadFile(c, "ktp")
+	selfiePath, _ := h.uploadFile(c, "selfie")
 
 	rentalDuration := req.RentalDuration
 	if rentalDuration <= 0 {
@@ -140,12 +139,12 @@ func (h *TenantHandler) UpdateTenant(c *gin.Context) {
 		roomIDPtr = existing.RoomID
 	}
 
-	ktpPath, _ := h.saveFile(c, "ktp")
+	ktpPath, _ := h.uploadFile(c, "ktp")
 	if ktpPath == "" {
 		ktpPath = existing.KTPURL
 	}
 
-	selfiePath, _ := h.saveFile(c, "selfie")
+	selfiePath, _ := h.uploadFile(c, "selfie")
 	if selfiePath == "" {
 		selfiePath = existing.SelfieURL
 	}
@@ -183,15 +182,7 @@ func (h *TenantHandler) DeleteTenant(c *gin.Context) {
 		return
 	}
 
-	// Find tenant to delete their associated image files from frontend folder
-	if tenant, err := h.repo.FindByID(c.Request.Context(), id); err == nil {
-		if tenant.KTPURL != "" {
-			os.Remove(filepath.Join("..", "frontend", "public", filepath.Clean(tenant.KTPURL)))
-		}
-		if tenant.SelfieURL != "" {
-			os.Remove(filepath.Join("..", "frontend", "public", filepath.Clean(tenant.SelfieURL)))
-		}
-	}
+	// Note: Files are stored in Supabase Storage; no local file deletion needed.
 
 	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete tenant"})
@@ -201,27 +192,13 @@ func (h *TenantHandler) DeleteTenant(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Tenant deleted successfully"})
 }
 
-func (h *TenantHandler) saveFile(c *gin.Context, fieldName string) (string, error) {
-	file, err := c.FormFile(fieldName)
+// uploadFile uploads a file from the multipart form to Supabase Storage and returns its public URL.
+func (h *TenantHandler) uploadFile(c *gin.Context, fieldName string) (string, error) {
+	fileHeader, err := c.FormFile(fieldName)
 	if err != nil {
 		return "", err
 	}
-
-	// Create uploads directory in frontend/public/uploads
-	uploadDir := filepath.Join("..", "frontend", "public", "uploads")
-	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		os.MkdirAll(uploadDir, 0755)
-	}
-
-	// Generate unique filename
-	filename := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), uuid.New().String(), filepath.Ext(file.Filename))
-	dst := filepath.Join(uploadDir, filename)
-
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		return "", err
-	}
-
-	return "/uploads/" + filename, nil
+	return h.storageService.UploadFile(fileHeader, fieldName)
 }
 
 func (h *TenantHandler) GetMyTenantProfile(c *gin.Context) {

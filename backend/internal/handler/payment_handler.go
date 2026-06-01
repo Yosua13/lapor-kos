@@ -3,24 +3,24 @@ package handler
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
+	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type PaymentHandler struct {
-	repo       *repository.PaymentRepository
-	tenantRepo *repository.TenantRepository
+	repo           *repository.PaymentRepository
+	tenantRepo     *repository.TenantRepository
+	storageService *service.StorageService
 }
 
-func NewPaymentHandler(repo *repository.PaymentRepository, tenantRepo *repository.TenantRepository) *PaymentHandler {
-	return &PaymentHandler{repo: repo, tenantRepo: tenantRepo}
+func NewPaymentHandler(repo *repository.PaymentRepository, tenantRepo *repository.TenantRepository, storageService *service.StorageService) *PaymentHandler {
+	return &PaymentHandler{repo: repo, tenantRepo: tenantRepo, storageService: storageService}
 }
 
 func (h *PaymentHandler) GetAllPayments(c *gin.Context) {
@@ -169,8 +169,8 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 		return
 	}
 
-	// Handle file upload
-	proofPath, err := h.saveFile(c, "proof")
+	// Handle file upload to Supabase Storage
+	proofPath, err := h.uploadFile(c, "proof")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to upload proof photo: " + err.Error()})
 		return
@@ -551,25 +551,11 @@ func formatRupiah(amount float64) string {
 	return "Rp " + res
 }
 
-func (h *PaymentHandler) saveFile(c *gin.Context, fieldName string) (string, error) {
-	file, err := c.FormFile(fieldName)
+// uploadFile uploads a file from the multipart form to Supabase Storage and returns its public URL.
+func (h *PaymentHandler) uploadFile(c *gin.Context, fieldName string) (string, error) {
+	fileHeader, err := c.FormFile(fieldName)
 	if err != nil {
 		return "", err
 	}
-
-	// Create uploads directory in frontend/public/uploads
-	uploadDir := filepath.Join("..", "frontend", "public", "uploads")
-	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		os.MkdirAll(uploadDir, 0755)
-	}
-
-	// Generate unique filename
-	filename := fmt.Sprintf("pay_%d_%s%s", time.Now().UnixNano(), uuid.New().String(), filepath.Ext(file.Filename))
-	dst := filepath.Join(uploadDir, filename)
-
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		return "", err
-	}
-
-	return "/uploads/" + filename, nil
+	return h.storageService.UploadFile(fileHeader, "payment_"+fieldName)
 }

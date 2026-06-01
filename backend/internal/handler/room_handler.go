@@ -1,25 +1,24 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
+	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type RoomHandler struct {
-	repo *repository.RoomRepository
+	repo           *repository.RoomRepository
+	storageService *service.StorageService
 }
 
-func NewRoomHandler(repo *repository.RoomRepository) *RoomHandler {
-	return &RoomHandler{repo: repo}
+func NewRoomHandler(repo *repository.RoomRepository, storageService *service.StorageService) *RoomHandler {
+	return &RoomHandler{repo: repo, storageService: storageService}
 }
 
 func (h *RoomHandler) CreateRoom(c *gin.Context) {
@@ -164,8 +163,8 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 		rentalDuration = 1
 	}
 
-	ktpPath, _ := h.saveFile(c, "ktp")
-	selfiePath, _ := h.saveFile(c, "selfie")
+	ktpPath, _ := h.uploadFile(c, "ktp")
+	selfiePath, _ := h.uploadFile(c, "selfie")
 
 	tenant := &model.Tenant{
 		Name:      name,
@@ -187,23 +186,11 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"room": room, "tenant": tenant})
 }
 
-func (h *RoomHandler) saveFile(c *gin.Context, fieldName string) (string, error) {
-	file, err := c.FormFile(fieldName)
+// uploadFile uploads a file from the multipart form to Supabase Storage and returns its public URL.
+func (h *RoomHandler) uploadFile(c *gin.Context, fieldName string) (string, error) {
+	fileHeader, err := c.FormFile(fieldName)
 	if err != nil {
 		return "", err
 	}
-
-	uploadDir := filepath.Join("..", "frontend", "public", "uploads")
-	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		os.MkdirAll(uploadDir, 0755)
-	}
-
-	filename := fmt.Sprintf("%d_%s%s", time.Now().UnixNano(), uuid.New().String(), filepath.Ext(file.Filename))
-	dst := filepath.Join(uploadDir, filename)
-
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		return "", err
-	}
-
-	return "/uploads/" + filename, nil
+	return h.storageService.UploadFile(fileHeader, fieldName)
 }

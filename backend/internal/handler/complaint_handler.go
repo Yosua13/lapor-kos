@@ -2,8 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
@@ -13,10 +11,11 @@ import (
 )
 
 type ComplaintHandler struct {
-	complaintRepo *repository.ComplaintRepository
-	userRepo      repository.UserRepo
-	aiService     service.AIServiceInterface
-	waService     service.WhatsAppServiceInterface
+	complaintRepo  *repository.ComplaintRepository
+	userRepo       repository.UserRepo
+	aiService      service.AIServiceInterface
+	waService      service.WhatsAppServiceInterface
+	storageService *service.StorageService
 }
 
 func NewComplaintHandler(
@@ -24,12 +23,14 @@ func NewComplaintHandler(
 	userRepo repository.UserRepo,
 	aiService service.AIServiceInterface,
 	waService service.WhatsAppServiceInterface,
+	storageService *service.StorageService,
 ) *ComplaintHandler {
 	return &ComplaintHandler{
-		complaintRepo: complaintRepo,
-		userRepo:      userRepo,
-		aiService:     aiService,
-		waService:     waService,
+		complaintRepo:  complaintRepo,
+		userRepo:       userRepo,
+		aiService:      aiService,
+		waService:      waService,
+		storageService: storageService,
 	}
 }
 
@@ -224,24 +225,17 @@ func (h *ComplaintHandler) UpdateWhatsAppGroup(c *gin.Context) {
 }
 
 func (h *ComplaintHandler) UploadPhoto(c *gin.Context) {
-	file, err := c.FormFile("photo")
+	fileHeader, err := c.FormFile("photo")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "File foto wajib diunggah"})
 		return
 	}
 
-	uploadDir := filepath.Join("..", "frontend", "public", "uploads")
-	if _, err := os.Stat(uploadDir); os.IsNotExist(err) {
-		os.MkdirAll(uploadDir, 0755)
-	}
-
-	filename := uuid.New().String() + filepath.Ext(file.Filename)
-	dst := filepath.Join(uploadDir, filename)
-
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan file foto"})
+	photoURL, err := h.storageService.UploadFile(fileHeader, "complaint")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan file foto: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"photo_url": "/uploads/" + filename})
+	c.JSON(http.StatusOK, gin.H{"photo_url": photoURL})
 }
