@@ -1,6 +1,6 @@
 import { getToken, removeToken } from './auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>;

@@ -20,7 +20,7 @@ import {
   AlertTriangle,
   UploadCloud
 } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_URL } from '@/lib/api';
 
 interface Tenant {
   id: string;
@@ -148,7 +148,7 @@ export default function TenantProfilePage() {
     setIsDeleting(true);
     try {
       const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-      const response = await fetch(`http://localhost:8081/api/tenants/${id}`, {
+      const response = await fetch(`${API_URL}/api/tenants/${id}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -178,7 +178,7 @@ export default function TenantProfilePage() {
       if (files.selfie) data.append('selfie', files.selfie);
 
       const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-      const response = await fetch(`http://localhost:8081/api/tenants/${id}`, {
+      const response = await fetch(`${API_URL}/api/tenants/${id}`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` },
         body: data
@@ -310,7 +310,7 @@ export default function TenantProfilePage() {
           <div className="relative">
             <div className="w-20 h-20 bg-brand-teal text-white rounded-full flex items-center justify-center text-3xl font-display font-bold shadow-md">
               {tenant.selfie_url ? (
-                <img src={`http://localhost:8081${tenant.selfie_url}`} alt={tenant.name} className="w-full h-full object-cover rounded-full" />
+                <img src={`${API_URL}${tenant.selfie_url}`} alt={tenant.name} className="w-full h-full object-cover rounded-full" />
               ) : initials}
             </div>
             <div className={`absolute bottom-0 right-0 w-5 h-5 border-4 border-white rounded-full ${isContractActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -428,8 +428,8 @@ export default function TenantProfilePage() {
                     <img src={URL.createObjectURL(files.ktp)} alt="New KTP" className="w-full h-full object-cover" />
                   ) : tenant.ktp_url ? (
                     <>
-                      <img src={`http://localhost:8081${tenant.ktp_url}`} alt="KTP" className="w-full h-full object-cover" />
-                      <a href={`http://localhost:8081${tenant.ktp_url}`} target="_blank" className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 text-white text-xs font-bold uppercase tracking-widest gap-2">
+                      <img src={`${API_URL}${tenant.ktp_url}`} alt="KTP" className="w-full h-full object-cover" />
+                      <a href={`${API_URL}${tenant.ktp_url}`} target="_blank" className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 text-white text-xs font-bold uppercase tracking-widest gap-2">
                         <ImageIcon className="w-4 h-4" /> Lihat
                       </a>
                     </>
@@ -456,8 +456,8 @@ export default function TenantProfilePage() {
                     <img src={URL.createObjectURL(files.selfie)} alt="New Selfie" className="w-full h-full object-cover" />
                   ) : tenant.selfie_url ? (
                     <>
-                      <img src={`http://localhost:8081${tenant.selfie_url}`} alt="Selfie" className="w-full h-full object-cover" />
-                      <a href={`http://localhost:8081${tenant.selfie_url}`} target="_blank" className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 text-white text-xs font-bold uppercase tracking-widest gap-2">
+                      <img src={`${API_URL}${tenant.selfie_url}`} alt="Selfie" className="w-full h-full object-cover" />
+                      <a href={`${API_URL}${tenant.selfie_url}`} target="_blank" className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10 text-white text-xs font-bold uppercase tracking-widest gap-2">
                         <ImageIcon className="w-4 h-4" /> Lihat
                       </a>
                     </>

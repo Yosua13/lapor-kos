@@ -22,7 +22,7 @@ import {
   ChevronRight,
   Info
 } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_URL } from '@/lib/api';
 import { getToken } from '@/lib/auth';
 
 export default function PaymentsPage() {
@@ -612,9 +612,9 @@ export default function PaymentsPage() {
               {/* Photo Proof */}
               <div className="bg-brand-navy/5 rounded-3xl border border-brand-navy/5 p-4 flex items-center justify-center min-h-[300px]">
                 {selectedPayment.proof_photo_url ? (
-                  <a href={`http://localhost:8081${selectedPayment.proof_photo_url}`} target="_blank" rel="noopener noreferrer">
+                  <a href={`${API_URL}${selectedPayment.proof_photo_url}`} target="_blank" rel="noopener noreferrer">
                     <img 
-                      src={`http://localhost:8081${selectedPayment.proof_photo_url}`} 
+                      src={`${API_URL}${selectedPayment.proof_photo_url}`} 
                       alt="Bukti Transfer" 
                       className="max-h-[350px] rounded-2xl object-contain shadow-lg"
                     />

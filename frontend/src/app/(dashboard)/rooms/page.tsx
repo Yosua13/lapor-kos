@@ -25,7 +25,7 @@ import {
   Key,
   Home
 } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_URL } from '@/lib/api';
 
 interface Room {
   id: string;
@@ -274,7 +274,7 @@ export default function RoomsPage() {
       if (files.selfie) data.append('selfie', files.selfie);
 
       const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-      const response = await fetch('http://localhost:8081/api/rooms/with-tenant', {
+      const response = await fetch(`${API_URL}/api/rooms/with-tenant`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -524,7 +524,7 @@ export default function RoomsPage() {
                   <div className="bg-gray-50 rounded-xl p-3 mb-4 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-brand-teal/10 overflow-hidden flex items-center justify-center shrink-0">
                       {tenant.selfie_url ? (
-                        <img src={`http://localhost:8081${tenant.selfie_url}`} alt={tenant.name} className="w-full h-full object-cover" />
+                        <img src={`${API_URL}${tenant.selfie_url}`} alt={tenant.name} className="w-full h-full object-cover" />
                       ) : (
                         <span className="text-brand-teal font-bold text-xs">{tenant.name?.substring(0, 2).toUpperCase()}</span>
                       )}

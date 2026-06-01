@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_URL } from '@/lib/api';
 import { 
   MessageSquare, 
   VolumeX, 
@@ -515,7 +515,7 @@ export default function ComplaintsPage() {
                         
                         {item.photo_url && (
                           <div className="mb-3 max-w-[120px] rounded-lg overflow-hidden border border-slate-200">
-                            <img src={`http://localhost:8081${item.photo_url}`} alt="Bukti" className="w-full h-16 object-cover" />
+                            <img src={`${API_URL}${item.photo_url}`} alt="Bukti" className="w-full h-16 object-cover" />
                           </div>
                         )}
 
