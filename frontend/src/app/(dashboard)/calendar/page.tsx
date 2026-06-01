@@ -123,45 +123,57 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      <div className="bg-white/80 backdrop-blur-xl border border-white/50 rounded-3xl p-6 shadow-xl shadow-brand-navy/5">
+      <div className="bg-white dark:bg-[#0F172A] border-[1.5px] border-gray-200 dark:border-[#1E293B] rounded-3xl p-6 shadow-sm">
           <style dangerouslySetInnerHTML={{__html: `
             .fc .fc-toolbar-title {
               font-family: 'Outfit', sans-serif;
               font-weight: 700;
-              color: #0f172a;
+              color: var(--color-brand-navy);
               font-size: 1.5rem;
             }
             .fc .fc-button-primary {
-              background-color: #1e293b !important;
-              border-color: #1e293b !important;
+              background-color: var(--color-gray-100) !important;
+              border-color: var(--color-gray-200) !important;
+              color: var(--color-brand-navy) !important;
               border-radius: 0.75rem;
               font-family: 'Plus Jakarta Sans', sans-serif;
               font-weight: 600;
               text-transform: capitalize;
             }
             .fc .fc-button-primary:hover {
-              background-color: #334155 !important;
+              background-color: var(--color-gray-200) !important;
             }
             .fc .fc-button-primary:not(:disabled).fc-button-active,
             .fc .fc-button-primary:not(:disabled):active {
-              background-color: #0f172a !important;
+              background-color: var(--color-brand-teal) !important;
+              border-color: var(--color-brand-teal) !important;
+              color: #ffffff !important;
             }
             .fc-theme-standard th {
               border: none;
               padding: 12px 0;
               font-family: 'Plus Jakarta Sans', sans-serif;
               font-weight: 700;
-              color: #64748b;
+              color: var(--color-gray-500);
               text-transform: uppercase;
               font-size: 0.75rem;
+              background-color: transparent !important;
             }
             .fc-theme-standard td, .fc-theme-standard th {
-              border-color: #f1f5f9;
+              border-color: var(--color-gray-200) !important;
             }
-            .fc-daygrid-day-number {
+            .fc-daygrid-day-number,
+            .fc-col-header-cell-cushion,
+            .fc-multimonth-day {
               font-family: 'Outfit', sans-serif;
               font-weight: 600;
-              color: #334155;
+              color: var(--color-brand-navy) !important;
+              text-decoration: none !important;
+            }
+            .fc-multimonth-title {
+              font-family: 'Outfit', sans-serif;
+              font-weight: 700;
+              color: var(--color-brand-navy) !important;
             }
             .fc-event {
               cursor: pointer;
@@ -178,8 +190,27 @@ export default function CalendarPage() {
               overflow: hidden;
               text-overflow: ellipsis;
             }
+            .fc-day,
+            .fc-multimonth-day,
+            .fc-multimonth-month,
+            .fc-multimonth,
+            .fc-multimonth-daygrid,
+            .fc-multimonth-header,
+            .fc-scrollgrid,
+            .fc-view,
+            .fc-view-harness,
+            .fc-theme-standard {
+              background-color: transparent !important;
+              background: transparent !important;
+            }
             .fc-day-today {
-              background-color: #f0fdfa !important;
+              background-color: rgba(20, 184, 166, 0.15) !important;
+            }
+            .fc-day-other {
+              opacity: 0.4;
+            }
+            .fc-col-header {
+              background-color: transparent !important;
             }
           `}} />
           <FullCalendar

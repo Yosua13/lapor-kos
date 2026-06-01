@@ -278,46 +278,46 @@ export default function PaymentsPage() {
 
       {/* Filters (Owner Only) */}
       {role === 'owner' && (
-        <div className="bg-white border-[1.5px] border-gray-200 p-6 rounded-[24px] shadow-sm flex flex-wrap gap-4 items-center justify-between">
+        <div className="bg-white dark:bg-[#0F172A] border-[1.5px] border-gray-200 dark:border-slate-800 p-6 rounded-[24px] shadow-sm flex flex-wrap gap-4 items-center justify-between">
           <div className="flex flex-wrap items-center gap-4 flex-1">
-            <div className="flex items-center gap-2 bg-gray-50 px-4 py-2.5 rounded-2xl border border-gray-200 focus-within:bg-white transition-all text-sm w-full sm:w-48">
+            <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800/50 px-4 py-2.5 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:bg-white dark:focus-within:bg-slate-800 transition-all text-sm w-full sm:w-48">
               <Filter className="w-4 h-4 text-gray-400" />
               <select 
                 value={filterStatus} 
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-transparent border-none focus:outline-none w-full font-semibold text-brand-navy"
+                className="bg-transparent border-none focus:outline-none w-full font-semibold text-brand-navy dark:text-slate-200 cursor-pointer"
               >
-                <option value="">Semua Status</option>
-                <option value="unpaid">Belum Bayar</option>
-                <option value="pending">Menunggu Verifikasi</option>
-                <option value="paid">Lunas</option>
-                <option value="partial">Bayar Sebagian</option>
-                <option value="overdue">Terlambat</option>
+                <option value="" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Semua Status</option>
+                <option value="unpaid" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Belum Bayar</option>
+                <option value="pending" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Menunggu Verifikasi</option>
+                <option value="paid" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Lunas</option>
+                <option value="partial" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Bayar Sebagian</option>
+                <option value="overdue" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Terlambat</option>
               </select>
             </div>
 
-            <div className="flex items-center gap-2 bg-gray-50 px-4 py-2.5 rounded-2xl border border-gray-200 focus-within:bg-white transition-all text-sm w-full sm:w-40">
+            <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800/50 px-4 py-2.5 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:bg-white dark:focus-within:bg-slate-800 transition-all text-sm w-full sm:w-40">
               <select 
                 value={filterMonth} 
                 onChange={(e) => setFilterMonth(e.target.value)}
-                className="bg-transparent border-none focus:outline-none w-full font-semibold text-brand-navy"
+                className="bg-transparent border-none focus:outline-none w-full font-semibold text-brand-navy dark:text-slate-200 cursor-pointer"
               >
-                <option value="">Semua Bulan</option>
+                <option value="" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Semua Bulan</option>
                 {Array.from({ length: 12 }, (_, i) => (
-                  <option key={i+1} value={i+1}>Bulan {i+1}</option>
+                  <option key={i+1} value={i+1} className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Bulan {i+1}</option>
                 ))}
               </select>
             </div>
 
-            <div className="flex items-center gap-2 bg-gray-50 px-4 py-2.5 rounded-2xl border border-gray-200 focus-within:bg-white transition-all text-sm w-full sm:w-32">
+            <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800/50 px-4 py-2.5 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:bg-white dark:focus-within:bg-slate-800 transition-all text-sm w-full sm:w-auto min-w-[140px]">
               <select 
                 value={filterYear} 
                 onChange={(e) => setFilterYear(e.target.value)}
-                className="bg-transparent border-none focus:outline-none w-full font-semibold text-brand-navy"
+                className="bg-transparent border-none focus:outline-none w-full font-semibold text-brand-navy dark:text-slate-200 cursor-pointer"
               >
-                <option value="">Semua Tahun</option>
-                <option value="2026">2026</option>
-                <option value="2027">2027</option>
+                <option value="" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Semua Tahun</option>
+                <option value="2026" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">2026</option>
+                <option value="2027" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">2027</option>
               </select>
             </div>
           </div>
@@ -436,7 +436,16 @@ export default function PaymentsPage() {
 
       {/* Modal: Create Bill (Owner Only) */}
       {showCreateBillModal && mounted && createPortal(
-        <div className="fixed inset-0 bg-brand-navy/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            backgroundColor: 'rgba(11, 31, 53, 0.45)'
+          }}
+        >
           <div className="bg-white rounded-[32px] w-full max-w-lg p-8 shadow-2xl relative animate-slide-up">
             <button 
               onClick={() => setShowCreateBillModal(false)}
@@ -579,7 +588,16 @@ export default function PaymentsPage() {
 
       {/* Modal: Verify Payment (Owner Only) */}
       {showVerifyModal && selectedPayment && mounted && createPortal(
-        <div className="fixed inset-0 bg-brand-navy/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            backgroundColor: 'rgba(11, 31, 53, 0.45)'
+          }}
+        >
           <div className="bg-white rounded-[32px] w-full max-w-3xl p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto animate-slide-up">
             <button 
               onClick={() => setShowVerifyModal(false)}
@@ -668,7 +686,16 @@ export default function PaymentsPage() {
 
       {/* Modal: Tenant Upload Payment (Tenant Only) */}
       {showPayModal && selectedPayment && mounted && createPortal(
-        <div className="fixed inset-0 bg-brand-navy/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-300"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            backgroundColor: 'rgba(11, 31, 53, 0.45)'
+          }}
+        >
           <div className="bg-white rounded-[32px] w-full max-w-xl p-8 shadow-2xl relative animate-slide-up">
             <button 
               onClick={() => setShowPayModal(false)}

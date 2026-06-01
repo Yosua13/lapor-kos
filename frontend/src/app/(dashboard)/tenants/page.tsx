@@ -738,10 +738,10 @@ export default function TenantsPage() {
                 </div>
 
               </div>
-              <div className="bg-[#faf8f5] border-t border-gray-200 px-8 py-4 -mx-8 mb-0 rounded-b-[32px] flex items-center justify-between mt-4 shrink-0">
-                <span className="text-[10px] text-gray-500 font-medium"><span className="text-red-500">*</span> Field wajib diisi</span>
+              <div className="border-t border-gray-200 dark:border-slate-800 px-8 py-4 -mx-8 mb-0 rounded-b-[32px] flex items-center justify-between mt-4 shrink-0">
+                <span className="text-[10px] text-gray-500 dark:text-gray-400 font-medium"><span className="text-red-500">*</span> Field wajib diisi</span>
                 <div className="flex gap-3">
-                  <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="px-4 py-2 border-[1.5px] border-gray-300 hover:border-gray-400 text-brand-navy font-bold rounded-[9px] transition-all text-xs bg-white shadow-sm">Batal</button>
+                  <button type="button" onClick={() => setIsModalOpen(false)} disabled={isSubmitting} className="px-4 py-2 border-[1.5px] border-gray-300 dark:border-slate-700 hover:border-gray-400 dark:hover:border-slate-600 text-brand-navy dark:text-slate-300 font-bold rounded-[9px] transition-all text-xs bg-white dark:bg-slate-800 shadow-sm">Batal</button>
                   <button type="submit" disabled={isSubmitting} className="px-5 py-2 bg-brand-teal hover:bg-brand-teal-light text-white font-bold rounded-[9px] shadow-md shadow-brand-teal/20 transition-all flex items-center gap-2 text-xs disabled:opacity-70 disabled:cursor-not-allowed">
                     {isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span className="font-bold">✓</span>}
                     <span>Simpan Data</span>
