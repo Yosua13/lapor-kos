@@ -35,6 +35,8 @@ interface Tenant {
     end_date: string;
     rental_duration: number;
     status: string;
+    latest_payment_status?: string | null;
+    latest_payment_amount?: number | null;
   };
   created_at: string;
   room?: {
@@ -61,6 +63,7 @@ export default function TenantProfilePage() {
   const [mounted, setMounted] = useState(false);
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
   // Edit mode state
@@ -86,12 +89,14 @@ export default function TenantProfilePage() {
     if (!id) return;
     setIsLoading(true);
     try {
-      const [tenantData, roomsData] = await Promise.all([
+      const [tenantData, roomsData, paymentsData] = await Promise.all([
         apiFetch(`/api/tenants/${id}`),
-        apiFetch('/api/rooms')
+        apiFetch('/api/rooms'),
+        apiFetch(`/api/payments?user_id=${id}`)
       ]);
       setTenant(tenantData);
       setRooms(roomsData || []);
+      setPayments(paymentsData || []);
       setFormData({
         name: tenantData.name,
         phone: tenantData.phone,
@@ -212,32 +217,75 @@ export default function TenantProfilePage() {
   const isContractActive = endDateObj >= new Date();
   const contractStatus = isContractActive ? 'Aktif' : 'Kontrak Habis';
   const contractStatusColor = isContractActive ? 'text-green-500 bg-green-50' : 'text-red-500 bg-red-50';
-  const totalPembayaran = tenant.room ? tenant.room.price_per_month * (tenant.contract?.rental_duration || 1) : 0;
+  const totalPembayaranReal = payments.reduce((acc, p) => acc + (p.total_paid || 0), 0);
   const initials = tenant.name.substring(0, 2).toUpperCase();
 
-  // Mock Activities (Combining real created_at with mock payments)
-  const activities = [
-    {
-      id: 1,
-      title: 'Pembayaran Lunas',
-      subtitle: `Rp ${totalPembayaran.toLocaleString('id-ID')} - Transfer BCA`,
-      date: new Date(tenant.contract?.start_date || tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
-      icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
-      color: 'bg-green-100'
-    },
-    {
-      id: 2,
-      title: 'Kontrak Dibuat',
-      subtitle: `Periode ${tenant.contract?.rental_duration || 1} bulan dimulai`,
-      date: new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
-      icon: <Clock className="w-4 h-4 text-brand-teal" />,
-      color: 'bg-brand-teal/10'
+  const latestPayment = payments[0] || null;
+  const paymentStatusLabel = latestPayment ? (
+    latestPayment.status === 'paid' ? 'Lunas' :
+    latestPayment.status === 'pending' ? 'Menunggu Verifikasi' :
+    latestPayment.status === 'partial' ? 'Bayar Sebagian' :
+    latestPayment.status === 'overdue' ? 'Terlambat' : 'Belum Bayar'
+  ) : 'Lunas';
+  const paymentStatusDesc = latestPayment ? `Bulan ${latestPayment.period_month} - ${latestPayment.period_year}` : 'Belum ada tagihan';
+
+  // Map real payments to activities
+  const activities = payments.map((p) => {
+    const totalBill = p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other;
+    const dateStr = new Date(p.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+    
+    if (p.status === 'paid') {
+      return {
+        id: `pay-${p.id}`,
+        title: `Tagihan Lunas (Bulan ${p.period_month})`,
+        subtitle: `Rp ${p.total_paid.toLocaleString('id-ID')} - ${p.payment_method ? p.payment_method.toUpperCase() : 'TRANSFER'}`,
+        date: dateStr,
+        icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
+        color: 'bg-green-100'
+      };
+    } else if (p.status === 'pending') {
+      return {
+        id: `pay-${p.id}`,
+        title: `Verifikasi Tertunda (Bulan ${p.period_month})`,
+        subtitle: `Rp ${p.total_paid.toLocaleString('id-ID')} - Menunggu persetujuan owner`,
+        date: dateStr,
+        icon: <Clock className="w-4 h-4 text-amber-500" />,
+        color: 'bg-amber-100'
+      };
+    } else if (p.status === 'partial') {
+      return {
+        id: `pay-${p.id}`,
+        title: `Dibayar Sebagian (Bulan ${p.period_month})`,
+        subtitle: `Terbayar Rp ${p.total_paid.toLocaleString('id-ID')} dari Rp ${totalBill.toLocaleString('id-ID')}`,
+        date: dateStr,
+        icon: <AlertTriangle className="w-4 h-4 text-blue-500" />,
+        color: 'bg-blue-100'
+      };
+    } else {
+      return {
+        id: `pay-${p.id}`,
+        title: `Tagihan Belum Dibayar (Bulan ${p.period_month})`,
+        subtitle: `Tagihan Rp ${totalBill.toLocaleString('id-ID')} jatuh tempo`,
+        date: dateStr,
+        icon: <AlertTriangle className="w-4 h-4 text-red-500" />,
+        color: 'bg-red-100'
+      };
     }
-  ];
+  });
+
+  // Always append "Kontrak Dibuat"
+  activities.push({
+    id: 'contract-created',
+    title: 'Kontrak Dibuat',
+    subtitle: `Periode ${tenant.contract?.rental_duration || 1} bulan dimulai`,
+    date: new Date(tenant.contract?.start_date || tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+    icon: <Clock className="w-4 h-4 text-brand-teal" />,
+    color: 'bg-brand-teal/10'
+  });
 
   if (!tenant.selfie_url || !tenant.ktp_url) {
     activities.push({
-      id: 3,
+      id: 'doc-warning',
       title: 'Dokumen Belum Lengkap',
       subtitle: 'Harap lengkapi KTP dan Selfie',
       date: new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
@@ -359,16 +407,16 @@ export default function TenantProfilePage() {
           <div className="w-12 h-12 bg-green-50 text-green-500 rounded-xl flex items-center justify-center"><CreditCard className="w-6 h-6" /></div>
           <div>
             <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Total Pembayaran</p>
-            <p className="text-lg font-display font-bold text-brand-navy">Rp {(totalPembayaran/1000000).toFixed(1)}jt</p>
-            <p className="text-xs text-gray-500">Lunas Semua</p>
+            <p className="text-lg font-display font-bold text-brand-navy">Rp {totalPembayaranReal.toLocaleString('id-ID')}</p>
+            <p className="text-xs text-gray-500">Telah diverifikasi</p>
           </div>
         </div>
         <div className="bg-white border-[1.5px] border-gray-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
           <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-xl flex items-center justify-center"><CheckCircle2 className="w-6 h-6" /></div>
           <div>
             <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Status Bayar</p>
-            <p className="text-lg font-display font-bold text-brand-navy">Tepat Waktu</p>
-            <p className="text-xs text-gray-500">{tenant.contract?.rental_duration || 1} bulan terakhir</p>
+            <p className="text-lg font-display font-bold text-brand-navy">{paymentStatusLabel}</p>
+            <p className="text-xs text-gray-500">{paymentStatusDesc}</p>
           </div>
         </div>
         <div className="bg-white border-[1.5px] border-gray-200 rounded-2xl p-4 flex items-center gap-4 shadow-sm">
