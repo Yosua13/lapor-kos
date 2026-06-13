@@ -56,13 +56,13 @@ export default function TenantsPage() {
     try {
       const contractsData = await apiFetch('/api/contracts');
       const mappedTenants = (contractsData || []).map((c: any) => ({
-        id: c.user.id,
-        name: c.user.name,
-        phone: c.user.phone,
-        email: c.user.email || `${c.user.name.toLowerCase().replace(/\s/g, '')}@gmail.com`,
+        id: c.user?.id || '',
+        name: c.user?.name || 'Unknown',
+        phone: c.user?.phone || '-',
+        email: c.user?.email || (c.user?.name ? `${c.user.name.toLowerCase().replace(/\s/g, '')}@gmail.com` : '-'),
         room_id: c.room_id,
-        ktp_url: c.user.ktp_url,
-        selfie_url: c.user.selfie_url,
+        ktp_url: c.user?.ktp_url,
+        selfie_url: c.user?.selfie_url,
         contract_id: c.id,
         contract: {
           start_date: c.start_date,
@@ -237,84 +237,74 @@ export default function TenantsPage() {
   if (!mounted) return null;
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full animate-slide-up">
+    <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full animate-slide-up -mt-4 lg:-mt-8">
 
       {/* HEADER */}
-      <div className="shrink-0 mb-6">
+      <div className="shrink-0 mb-3">
         <h1 className="text-[28px] font-display font-extrabold text-brand-navy">Penghuni & Kontrak</h1>
         <p className="text-[15px] text-gray-500 mt-1">Kelola data penghuni dan kontrak kamar kos Anda.</p>
       </div>
 
       {/* TABS (Pills) */}
-      <div className="flex items-center gap-4 overflow-x-auto no-scrollbar mb-6 shrink-0 pb-2">
+      <div className="flex flex-wrap items-center gap-3 mt-2 mb-6 shrink-0">
         <button
           onClick={() => setActiveTab('all')}
-          className={`flex-1 min-w-[180px] flex items-center justify-between px-5 py-3.5 rounded-2xl border transition-all whitespace-nowrap bg-white ${activeTab === 'all'
-              ? 'border-[#0e8a7a] shadow-sm'
-              : 'border-gray-200 hover:border-gray-300'
-            }`}
+          className={`px-4 py-2 rounded-[10px] border text-[13px] font-bold flex items-center gap-2 transition-all ${
+            activeTab === 'all' 
+              ? 'border-emerald-200 bg-emerald-50/50 text-[#0e8a7a]' 
+              : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
+          }`}
         >
-          <div className="flex items-center gap-3">
-            <CheckSquare className={`w-5 h-5 ${activeTab === 'all' ? 'text-[#0e8a7a]' : 'text-[#0e8a7a]'}`} />
-            <span className={`font-bold text-[15px] ${activeTab === 'all' ? 'text-brand-navy' : 'text-gray-600'}`}>Semua</span>
-          </div>
-          <span className="font-bold text-brand-navy bg-gray-100 px-3 py-1 rounded-xl text-[13px]">{stats.all}</span>
+          <CheckSquare className={`w-4 h-4 ${activeTab === 'all' ? 'text-[#0e8a7a]' : 'text-emerald-500'}`} /> Semua 
+          <span className={`px-2 py-0.5 rounded-md ${activeTab === 'all' ? 'bg-emerald-100/50 text-[#0e8a7a]' : 'bg-gray-100 text-gray-600'}`}>{stats.all}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('active')}
-          className={`flex-1 min-w-[180px] flex items-center justify-between px-5 py-3.5 rounded-2xl border transition-all whitespace-nowrap bg-white ${activeTab === 'active'
-              ? 'border-emerald-500 shadow-sm'
-              : 'border-gray-200 hover:border-gray-300'
-            }`}
+          className={`px-4 py-2 rounded-[10px] border text-[13px] font-bold flex items-center gap-2 transition-all ${
+            activeTab === 'active' 
+              ? 'border-emerald-200 bg-emerald-50/50 text-[#0e8a7a]' 
+              : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
+          }`}
         >
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className={`w-5 h-5 ${activeTab === 'active' ? 'text-emerald-500' : 'text-emerald-500'}`} />
-            <span className={`font-bold text-[15px] ${activeTab === 'active' ? 'text-brand-navy' : 'text-gray-600'}`}>Aktif</span>
-          </div>
-          <span className="font-bold text-brand-navy bg-gray-100 px-3 py-1 rounded-xl text-[13px]">{stats.active}</span>
+          <CheckCircle2 className={`w-4 h-4 ${activeTab === 'active' ? 'text-emerald-500' : 'text-emerald-500'}`} /> Aktif 
+          <span className={`px-2 py-0.5 rounded-md ${activeTab === 'active' ? 'bg-emerald-100/50 text-[#0e8a7a]' : 'bg-gray-100 text-gray-600'}`}>{stats.active}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('expiring')}
-          className={`flex-1 min-w-[200px] flex items-center justify-between px-5 py-3.5 rounded-2xl border transition-all whitespace-nowrap bg-white ${activeTab === 'expiring'
-              ? 'border-amber-500 shadow-sm'
-              : 'border-gray-200 hover:border-gray-300'
-            }`}
+          className={`px-4 py-2 rounded-[10px] border text-[13px] font-bold flex items-center gap-2 transition-all ${
+            activeTab === 'expiring' 
+              ? 'border-amber-200 bg-amber-50 text-amber-600' 
+              : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
+          }`}
         >
-          <div className="flex items-center gap-3">
-            <Clock className={`w-5 h-5 ${activeTab === 'expiring' ? 'text-amber-500' : 'text-amber-500'}`} />
-            <span className={`font-bold text-[15px] ${activeTab === 'expiring' ? 'text-brand-navy' : 'text-gray-600'}`}>Segera Habis</span>
-          </div>
-          <span className="font-bold text-brand-navy bg-gray-100 px-3 py-1 rounded-xl text-[13px]">{stats.expiring}</span>
+          <Clock className={`w-4 h-4 ${activeTab === 'expiring' ? 'text-amber-500' : 'text-amber-500'}`} /> Segera Habis 
+          <span className={`px-2 py-0.5 rounded-md ${activeTab === 'expiring' ? 'bg-amber-100/50 text-amber-600' : 'bg-gray-100 text-gray-600'}`}>{stats.expiring}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('unpaid')}
-          className={`flex-1 min-w-[200px] flex items-center justify-between px-5 py-3.5 rounded-2xl border transition-all whitespace-nowrap bg-white ${activeTab === 'unpaid'
-              ? 'border-red-500 shadow-sm'
-              : 'border-gray-200 hover:border-gray-300'
-            }`}
+          className={`px-4 py-2 rounded-[10px] border text-[13px] font-bold flex items-center gap-2 transition-all ${
+            activeTab === 'unpaid' 
+              ? 'border-red-200 bg-red-50 text-red-600' 
+              : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
+          }`}
         >
-          <div className="flex items-center gap-3">
-            <FileWarning className={`w-5 h-5 ${activeTab === 'unpaid' ? 'text-red-500' : 'text-red-500'}`} />
-            <span className={`font-bold text-[15px] ${activeTab === 'unpaid' ? 'text-brand-navy' : 'text-gray-600'}`}>Belum Bayar</span>
-          </div>
-          <span className="font-bold text-brand-navy bg-gray-100 px-3 py-1 rounded-xl text-[13px]">{stats.unpaid}</span>
+          <FileWarning className={`w-4 h-4 ${activeTab === 'unpaid' ? 'text-red-500' : 'text-red-500'}`} /> Belum Bayar 
+          <span className={`px-2 py-0.5 rounded-md ${activeTab === 'unpaid' ? 'bg-red-100/50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>{stats.unpaid}</span>
         </button>
 
         <button
           onClick={() => setActiveTab('missingDocs')}
-          className={`flex-1 min-w-[210px] flex items-center justify-between px-5 py-3.5 rounded-2xl border transition-all whitespace-nowrap bg-white ${activeTab === 'missingDocs'
-              ? 'border-amber-500 shadow-sm'
-              : 'border-gray-200 hover:border-gray-300'
-            }`}
+          className={`px-4 py-2 rounded-[10px] border text-[13px] font-bold flex items-center gap-2 transition-all ${
+            activeTab === 'missingDocs' 
+              ? 'border-amber-200 bg-amber-50 text-amber-600' 
+              : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
+          }`}
         >
-          <div className="flex items-center gap-3">
-            <FileQuestion className={`w-5 h-5 ${activeTab === 'missingDocs' ? 'text-amber-500' : 'text-amber-500'}`} />
-            <span className={`font-bold text-[15px] ${activeTab === 'missingDocs' ? 'text-brand-navy' : 'text-gray-600'}`}>Dokumen Kurang</span>
-          </div>
-          <span className="font-bold text-brand-navy bg-gray-100 px-3 py-1 rounded-xl text-[13px]">{stats.missingDocs}</span>
+          <FileQuestion className={`w-4 h-4 ${activeTab === 'missingDocs' ? 'text-amber-500' : 'text-amber-500'}`} /> Dokumen Kurang 
+          <span className={`px-2 py-0.5 rounded-md ${activeTab === 'missingDocs' ? 'bg-amber-100/50 text-amber-600' : 'bg-gray-100 text-gray-600'}`}>{stats.missingDocs}</span>
         </button>
       </div>
 
@@ -361,9 +351,8 @@ export default function TenantsPage() {
         </div>
 
         {/* TABLE BODY CONTAINER */}
-        <div className={`flex-1 overflow-y-auto no-scrollbar px-6 lg:px-8 pb-6 max-h-[1100px] ${
-          paginatedTenants.length > 0 ? 'bg-slate-50 pt-0' : 'bg-white pt-6'
-        }`}>
+        <div className={`flex-1 overflow-y-auto no-scrollbar px-6 lg:px-8 pb-6 max-h-[1100px] ${paginatedTenants.length > 0 ? 'bg-slate-50 pt-0' : 'bg-white pt-6'
+          }`}>
           {isLoading && tenants.length === 0 ? (
             <div className="flex justify-center items-center min-h-[400px]">
               <div className="w-10 h-10 border-4 border-brand-teal/30 border-t-brand-teal rounded-full animate-spin"></div>
@@ -478,7 +467,7 @@ export default function TenantsPage() {
                   </tr>
                 ))}
               </tbody>
-        </table>
+            </table>
           )}
         </div>
 
@@ -488,12 +477,12 @@ export default function TenantsPage() {
             <div className="text-[14px] text-gray-500 font-medium">
               Menampilkan {filteredAndSortedTenants.length > 0 ? Math.min((currentPage - 1) * itemsPerPage + 1, filteredAndSortedTenants.length) : 0} - {Math.min(currentPage * itemsPerPage, filteredAndSortedTenants.length)} dari {filteredAndSortedTenants.length} penghuni
             </div>
-            
+
             <div className="flex items-center gap-2">
               <span className="text-[14px] text-gray-500">Tampilkan:</span>
-              <select 
-                value={itemsPerPage} 
-                onChange={e => {setItemsPerPage(Number(e.target.value)); setCurrentPage(1);}}
+              <select
+                value={itemsPerPage}
+                onChange={e => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
                 className="border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none bg-white text-brand-navy font-bold cursor-pointer shadow-sm text-sm"
               >
                 <option value={5}>5</option>
@@ -503,7 +492,7 @@ export default function TenantsPage() {
               </select>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
@@ -517,8 +506,8 @@ export default function TenantsPage() {
                 key={i}
                 onClick={() => setCurrentPage(i + 1)}
                 className={`w-10 h-10 rounded-xl text-[14px] font-bold transition-colors ${currentPage === i + 1
-                    ? 'bg-[#0e8a7a] text-white border border-[#0e8a7a]'
-                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  ? 'bg-[#0e8a7a] text-white border border-[#0e8a7a]'
+                  : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
                   }`}
               >
                 {i + 1}
