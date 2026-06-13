@@ -16,6 +16,9 @@ type Contract struct {
 	RentalDuration int        `json:"rental_duration"`
 	MonthlyRent    float64    `json:"monthly_rent"`
 	TotalPrice     float64    `json:"total_price"`
+	ElectricityBill float64    `json:"electricity_bill"`
+	WaterBill      float64    `json:"water_bill"`
+	OtherBills     float64    `json:"other_bills"`
 	Deposit        float64    `json:"deposit"`
 	PaymentDueDay  int        `json:"payment_due_day"`
 	Status         string     `json:"status"` // active, expired, cancelled

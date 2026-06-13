@@ -174,11 +174,26 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 		SelfieURL: &selfiePath,
 	}
 
+	electricityBillStr := c.PostForm("electricity_bill")
+	electricityBill, _ := strconv.ParseFloat(electricityBillStr, 64)
+	waterBillStr := c.PostForm("water_bill")
+	waterBill, _ := strconv.ParseFloat(waterBillStr, 64)
+	otherBillsStr := c.PostForm("other_bills")
+	otherBills, _ := strconv.ParseFloat(otherBillsStr, 64)
+	paymentDueDayStr := c.PostForm("payment_due_day")
+	paymentDueDay, _ := strconv.Atoi(paymentDueDayStr)
+	notes := c.PostForm("notes")
+
     contract := &model.Contract{
         StartDate:      entryDate,
         RentalDuration: rentalDuration,
         MonthlyRent:    monthlyRent,
-        TotalPrice:     monthlyRent * float64(rentalDuration),
+        TotalPrice:     (monthlyRent * float64(rentalDuration)) + electricityBill + waterBill + otherBills,
+        ElectricityBill: electricityBill,
+        WaterBill:      waterBill,
+        OtherBills:     otherBills,
+        PaymentDueDay:  paymentDueDay,
+        Notes:          notes,
     }
 
 	if err := h.repo.AssignTenant(c.Request.Context(), roomID, user, contract, ownerID); err != nil {
@@ -206,17 +221,35 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	priceStr := c.PostForm("price_per_month")
 	description := c.PostForm("description")
 	status := c.PostForm("status")
+	roomType := c.PostForm("type")
+	floor := c.PostForm("floor")
+	isDraftStr := c.PostForm("is_draft")
+	roomIDStr := c.PostForm("room_id")
 
 	price, _ := strconv.ParseFloat(priceStr, 64)
 	if status == "" {
 		status = "occupied"
 	}
+	if floor == "" {
+		floor = "1"
+	}
+	isDraft := isDraftStr == "true"
 
 	room := &model.Room{
 		RoomNumber:    roomNumber,
 		PricePerMonth: price,
 		Description:   description,
 		Status:        status,
+		Type:          roomType,
+		Floor:         floor,
+		IsDraft:       isDraft,
+	}
+	
+	if roomIDStr != "" {
+		parsedID, err := uuid.Parse(roomIDStr)
+		if err == nil {
+			room.ID = parsedID
+		}
 	}
 
 	name := c.PostForm("name")
@@ -246,19 +279,64 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 		SelfieURL: &selfiePath,
 	}
 
+	electricityBillStr := c.PostForm("electricity_bill")
+	electricityBill, _ := strconv.ParseFloat(electricityBillStr, 64)
+	waterBillStr := c.PostForm("water_bill")
+	waterBill, _ := strconv.ParseFloat(waterBillStr, 64)
+	otherBillsStr := c.PostForm("other_bills")
+	otherBills, _ := strconv.ParseFloat(otherBillsStr, 64)
+	paymentDueDayStr := c.PostForm("payment_due_day")
+	paymentDueDay, _ := strconv.Atoi(paymentDueDayStr)
+	notes := c.PostForm("notes")
+
 	contract := &model.Contract{
 		StartDate:      entryDate,
 		RentalDuration: rentalDuration,
 		MonthlyRent:    price,
-		TotalPrice:     price * float64(rentalDuration),
+		TotalPrice:     (price * float64(rentalDuration)) + electricityBill + waterBill + otherBills,
+		ElectricityBill: electricityBill,
+        WaterBill:      waterBill,
+        OtherBills:     otherBills,
+        PaymentDueDay:  paymentDueDay,
+        Notes:          notes,
 	}
 
-	if err := h.repo.CreateWithTenant(c.Request.Context(), room, user, contract, ownerID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create room and tenant: " + err.Error()})
-		return
+	payment := &model.Payment{}
+
+	hasTenantData := user.Name != "" || user.Phone != ""
+	createMsg := "Room created successfully"
+	updateMsg := "Room updated successfully"
+
+	if room.Status == "occupied" && hasTenantData {
+		createMsg = "Room, tenant, contract, and payment created successfully"
+		updateMsg = "Room, tenant, contract, and payment updated successfully"
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Room and tenant created successfully", "room": room})
+	if room.ID != uuid.Nil {
+		if err := h.repo.UpdateWithTenant(c.Request.Context(), room, user, contract, payment, ownerID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update draft room and tenant: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"message": updateMsg, 
+			"room": room,
+			"tenant": user,
+			"contract": contract,
+			"payment": payment,
+		})
+	} else {
+		if err := h.repo.CreateWithTenant(c.Request.Context(), room, user, contract, payment, ownerID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create room and tenant: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, gin.H{
+			"message": createMsg, 
+			"room": room,
+			"tenant": user,
+			"contract": contract,
+			"payment": payment,
+		})
+	}
 }
 
 // uploadFile uploads a file from the multipart form to Supabase Storage and returns its public URL.

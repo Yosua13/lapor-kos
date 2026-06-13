@@ -53,6 +53,20 @@ func main() {
 		log.Println("Inline migration: users.phone column verified/created")
 	}
 
+	_, err = dbPool.Exec(context.Background(), `ALTER TABLE contracts ADD COLUMN IF NOT EXISTS electricity_bill DECIMAL(10,2) NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS water_bill DECIMAL(10,2) NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS other_bills DECIMAL(10,2) NOT NULL DEFAULT 0;`)
+	if err != nil {
+		log.Printf("Warning: Failed to run inline migration to add billing columns to contracts: %v", err)
+	} else {
+		log.Println("Inline migration: contracts billing columns verified/created")
+	}
+
+	_, err = dbPool.Exec(context.Background(), `ALTER TABLE rooms ADD COLUMN IF NOT EXISTS floor VARCHAR(50) NOT NULL DEFAULT '1', ADD COLUMN IF NOT EXISTS is_draft BOOLEAN NOT NULL DEFAULT false, ADD COLUMN IF NOT EXISTS type VARCHAR(100) NOT NULL DEFAULT '';`)
+	if err != nil {
+		log.Printf("Warning: Failed to run inline migration to add floor, is_draft, and type to rooms: %v", err)
+	} else {
+		log.Println("Inline migration: rooms floor, is_draft, and type columns verified/created")
+	}
+
 	// Initialize services
 	emailServ := service.NewEmailService()
 	aiServ := service.NewAIService()
