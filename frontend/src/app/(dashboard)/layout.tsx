@@ -93,9 +93,8 @@ export default function DashboardLayout({
     : [
         { section: 'MENU UTAMA', items: [
           { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-          { name: 'Kalender', href: '/calendar', icon: Calendar },
           { name: 'Manajemen Kamar', href: '/rooms', icon: DoorOpen },
-          { name: 'Data Penghuni', href: '/tenants', icon: Users },
+          { name: 'Penghuni & Kontrak', href: '/tenants', icon: Users },
           { name: 'Manajemen Kontrak', href: '/contracts', icon: FileText },
         ]},
         { section: 'KEUANGAN', items: [
@@ -103,6 +102,7 @@ export default function DashboardLayout({
           { name: 'Laporan', href: '/reports', icon: Home },
         ]},
         { section: 'LAINNYA', items: [
+          { name: 'Kalender', href: '/calendar', icon: Calendar },
           { name: 'Komplain', href: '/complaints', icon: MessageSquare },
           { name: 'Pengaturan', href: '/settings', icon: Settings },
         ]}

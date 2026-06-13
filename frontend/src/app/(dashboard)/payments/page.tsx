@@ -342,7 +342,7 @@ export default function PaymentsPage() {
               {payments.map((p) => {
                 const totalBill = p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other;
                 const roomNum = p.contract?.room?.room_number || '-';
-                const tenantName = p.contract?.tenant?.name || '-';
+                const tenantName = p.contract?.user?.name || '-';
                 
                 return (
                   <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
@@ -475,7 +475,7 @@ export default function PaymentsPage() {
                 >
                   <option value="">Pilih Kamar...</option>
                   {contracts.filter(c => c.status === 'active').map(c => (
-                    <option key={c.id} value={c.id}>Kamar {c.room?.room_number || '-'} - {c.tenant?.name || '-'}</option>
+                    <option key={c.id} value={c.id}>Kamar {c.room?.room_number || '-'} - {c.user?.name || '-'}</option>
                   ))}
                 </select>
               </div>
@@ -630,7 +630,7 @@ export default function PaymentsPage() {
               {/* Verify Form Details */}
               <form onSubmit={handleVerifySubmit} className="space-y-4">
                 <div className="bg-brand-navy/5 p-5 rounded-2xl border border-brand-navy/5 text-sm space-y-2">
-                  <div className="flex justify-between"><span className="text-brand-navy/40 font-semibold">Kamar / Penghuni:</span><span className="font-bold">Kamar {selectedPayment.contract?.room?.room_number || '-'} - {selectedPayment.contract?.tenant?.name || '-'}</span></div>
+                  <div className="flex justify-between"><span className="text-brand-navy/40 font-semibold">Kamar / Penghuni:</span><span className="font-bold">Kamar {selectedPayment.contract?.room?.room_number || '-'} - {selectedPayment.contract?.user?.name || '-'}</span></div>
                   <div className="flex justify-between"><span className="text-brand-navy/40 font-semibold">Total Tagihan:</span><span className="font-bold text-brand-navy">Rp {(selectedPayment.amount_rent + selectedPayment.amount_electricity + selectedPayment.amount_water + selectedPayment.amount_other).toLocaleString('id-ID')}</span></div>
                   <div className="flex justify-between"><span className="text-brand-navy/40 font-semibold">Metode Dipilih:</span><span className="font-bold text-brand-teal uppercase">{selectedPayment.payment_method || '-'}</span></div>
                   <div className="flex justify-between"><span className="text-brand-navy/40 font-semibold">Klaim Pembayaran:</span><span className="font-bold text-brand-teal">Rp {selectedPayment.total_paid.toLocaleString('id-ID')}</span></div>

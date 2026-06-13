@@ -35,7 +35,8 @@ interface Room {
   status: string;
   activeContract?: {
     end_date: string;
-    tenant?: {
+    user?: {
+      id?: string;
       name: string;
     };
   };
@@ -56,6 +57,8 @@ export default function RoomsPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'available' | 'occupied'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'number_asc' | 'price_asc' | 'price_desc'>('number_asc');
+  const [filterFloor, setFilterFloor] = useState<string>('all');
+  const [activeMenuRoomId, setActiveMenuRoomId] = useState<string | null>(null);
 
   // 2-Step Form state
   const [step, setStep] = useState(1);
@@ -92,7 +95,7 @@ export default function RoomsPage() {
     try {
       const [roomsData, tenantsData] = await Promise.all([
         apiFetch('/api/rooms'),
-        apiFetch('/api/tenants')
+        apiFetch('/api/contracts?status=active')
       ]);
       setRooms(roomsData || []);
       setTenants(tenantsData || []);
@@ -105,7 +108,9 @@ export default function RoomsPage() {
 
   // Helper to find tenant for a room
   const getTenantForRoom = (roomId: string) => {
-    return tenants.find(t => t.room_id === roomId || t.room?.id === roomId);
+    const contract = tenants.find(c => c.room_id === roomId);
+    if (contract) return { ...contract.user, contract: contract };
+    return undefined;
   };
 
   useEffect(() => {
@@ -121,11 +126,36 @@ export default function RoomsPage() {
     return { total, occupied, available, occupancyRate };
   }, [rooms]);
 
+  // Parse floor number dynamically from room number (first numeric digit found)
+  const getRoomFloor = (roomNumber: string) => {
+    const match = roomNumber.match(/\d/);
+    return match ? match[0] : '1';
+  };
+
+  const getRoomSize = (roomNumber: string) => {
+    const num = parseInt(roomNumber.replace(/\D/g, '')) || 0;
+    if (num % 3 === 0) return '18m²';
+    if (num % 3 === 1) return '20m²';
+    return '22m²';
+  };
+
+  const floors = useMemo(() => {
+    const set = new Set<string>();
+    rooms.forEach(r => {
+      set.add(getRoomFloor(r.room_number));
+    });
+    return Array.from(set).sort();
+  }, [rooms]);
+
   const filteredAndSortedRooms = useMemo(() => {
     let result = rooms;
 
     if (activeTab === 'available') result = result.filter(r => r.status === 'available');
     else if (activeTab === 'occupied') result = result.filter(r => r.status === 'occupied');
+
+    if (filterFloor !== 'all') {
+      result = result.filter(r => getRoomFloor(r.room_number) === filterFloor);
+    }
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -139,10 +169,25 @@ export default function RoomsPage() {
     });
 
     return result;
-  }, [rooms, activeTab, searchQuery, sortBy]);
+  }, [rooms, activeTab, filterFloor, searchQuery, sortBy]);
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const formatStartDate = (dateStr?: string) => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const getDaysRemaining = (endDateStr?: string) => {
+    if (!endDateStr) return '0 hari';
+    const endDate = new Date(endDateStr);
+    const now = new Date();
+    now.setHours(0,0,0,0);
+    const diffTime = endDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? `${diffDays} hari` : '0 hari';
   };
 
   const handleOpenModal = (room?: Room) => {
@@ -175,6 +220,28 @@ export default function RoomsPage() {
       });
       setFacilities([]);
     }
+    setIsModalOpen(true);
+  };
+
+  const handleAssignTenant = (room: Room) => {
+    setEditingRoom(room);
+    setFormData({
+      room_number: room.room_number,
+      price_per_month: room.price_per_month.toString(),
+      description: room.description,
+      status: 'occupied'
+    });
+    setFacilities(room.description ? room.description.split(',').map(s => s.trim()).filter(Boolean) : []);
+    
+    setStep(2);
+    setTenantFormData({
+      name: '',
+      phone: '',
+      email: '',
+      entry_date: new Date().toISOString().split('T')[0],
+      rental_duration: '1',
+    });
+    setFiles({ ktp: null, selfie: null });
     setIsModalOpen(true);
   };
 
@@ -274,7 +341,11 @@ export default function RoomsPage() {
       if (files.selfie) data.append('selfie', files.selfie);
 
       const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-      const response = await fetch(`${API_URL}/api/rooms/with-tenant`, {
+      const url = editingRoom 
+        ? `${API_URL}/api/rooms/${editingRoom.id}/assign-tenant`
+        : `${API_URL}/api/rooms/with-tenant`;
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -432,50 +503,70 @@ export default function RoomsPage() {
       </div>
 
       {/* TOOLBAR */}
-      <div className="flex flex-col lg:flex-row items-center gap-4 py-2">
-        <div className="flex bg-gray-100 p-1 rounded-xl w-full lg:w-auto overflow-x-auto no-scrollbar shrink-0">
-          {[
-            { id: 'all', label: `Semua (${stats.total})` },
-            { id: 'available', label: 'Tersedia' },
-            { id: 'occupied', label: 'Terisi' }
-          ].map(tab => (
+      <div className="flex flex-col lg:flex-row items-center justify-between gap-4 py-2">
+        <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+          {/* Tabs */}
+          <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar shrink-0">
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-2 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${
-                activeTab === tab.id ? 'bg-white text-brand-teal shadow-sm' : 'text-gray-500 hover:text-brand-navy'
+              onClick={() => setActiveTab('all')}
+              className={`px-4 py-2 rounded-full border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeTab === 'all' 
+                  ? 'border-[#0e8a7a] bg-teal-50/50 text-[#0e8a7a]' 
+                  : 'border-gray-200 bg-white text-gray-500 hover:text-brand-navy'
               }`}
             >
-              {tab.label}
+              Semua <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500 ml-1">{stats.total}</span>
             </button>
-          ))}
-        </div>
+            <button
+              onClick={() => setActiveTab('occupied')}
+              className={`px-4 py-2 rounded-full border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeTab === 'occupied' 
+                  ? 'border-[#0e8a7a] bg-teal-50/50 text-[#0e8a7a]' 
+                  : 'border-gray-200 bg-white text-gray-500 hover:text-brand-navy'
+              }`}
+            >
+              Terisi <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500 ml-1">{stats.occupied}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('available')}
+              className={`px-4 py-2 rounded-full border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                activeTab === 'available' 
+                  ? 'border-[#0e8a7a] bg-teal-50/50 text-[#0e8a7a]' 
+                  : 'border-gray-200 bg-white text-gray-500 hover:text-brand-navy'
+              }`}
+            >
+              Kosong <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500 ml-1">{stats.available}</span>
+            </button>
+          </div>
 
-        <div className="flex-1 flex flex-col md:flex-row items-center gap-3 w-full">
-          <div className="relative w-full md:max-w-xs">
+          {/* Search Input */}
+          <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input 
               type="text" 
               placeholder="Cari nomor kamar..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white border-[1.5px] border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-xs font-bold text-brand-navy focus:outline-none focus:border-brand-teal transition-colors"
+              className="w-full bg-white border border-gray-200 rounded-xl pl-9 pr-4 py-2 text-xs font-bold text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors shadow-sm"
             />
           </div>
+
+          {/* Sort Dropdown */}
           <select 
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="w-full md:w-auto bg-white border-[1.5px] border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-navy focus:outline-none focus:border-brand-teal transition-colors cursor-pointer"
+            className="w-full sm:w-auto bg-white border border-gray-200 rounded-xl px-4 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:border-[#0e8a7a] transition-colors cursor-pointer shadow-sm"
           >
-            <option value="number_asc">Nomor Kamar</option>
+            <option value="number_asc">Urutkan</option>
             <option value="price_asc">Harga Terendah</option>
             <option value="price_desc">Harga Tertinggi</option>
           </select>
         </div>
 
-        <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end">
-          <span className="text-xs text-gray-500 font-medium">Menampilkan <b>{filteredAndSortedRooms.length}</b> kamar</span>
-          <div className="flex bg-gray-100 p-1 rounded-xl shrink-0">
+        {/* View Toggle */}
+        <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end shrink-0">
+          <span className="text-xs text-gray-500 font-medium hidden sm:inline">Menampilkan <b>{filteredAndSortedRooms.length}</b> kamar</span>
+          <div className="flex bg-gray-100 p-1 rounded-xl">
             <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-400 hover:text-brand-navy'}`}><LayoutGrid className="w-4 h-4" /></button>
             <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-400 hover:text-brand-navy'}`}><ListIcon className="w-4 h-4" /></button>
           </div>
@@ -493,149 +584,234 @@ export default function RoomsPage() {
         </div>
       ) : viewMode === 'grid' ? (
         // GRID VIEW
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredAndSortedRooms.map(room => {
             const tenant = getTenantForRoom(room.id);
             const isOccupied = room.status === 'occupied';
             return (
-            <div key={room.id} className="bg-white border-[1.5px] border-gray-200 rounded-[20px] shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative group" style={{ borderLeft: `3px solid ${isOccupied ? '#0e8a7a' : '#f59e0b'}` }}>
-              <div className="p-5 flex-1">
-                <div className="flex justify-between items-start mb-4">
+              <div 
+                key={room.id} 
+                className="bg-white border border-gray-200 rounded-[16px] shadow-sm hover:shadow-md transition-all flex flex-col relative min-h-[176px] h-auto"
+                style={{ borderLeft: `4px solid ${isOccupied ? '#0e8a7a' : '#f59e0b'}` }}
+              >
+                <div className="p-4 pb-5 flex-1 flex flex-col justify-between overflow-hidden">
                   <div>
-                    <h3 className="font-display font-bold text-brand-navy text-lg leading-tight">Kamar {room.room_number}</h3>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Lantai {room.room_number.length > 1 ? room.room_number[0] : '1'}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
-                      isOccupied ? 'bg-teal-50 text-teal-700 ring-1 ring-teal-200' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${isOccupied ? 'bg-teal-500' : 'bg-amber-500'}`} />
-                      {isOccupied ? 'Terisi' : 'Kosong'}
-                    </span>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleOpenModal(room)} className="p-1.5 text-gray-400 hover:text-brand-teal hover:bg-brand-teal/10 rounded-lg transition-all"><Edit2 className="w-4 h-4" /></button>
-                      <button onClick={() => handleDeleteClick(room)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                  </div>
-                </div>
+                    {/* Header */}
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className="font-display font-bold text-brand-navy text-base leading-tight">Kamar {room.room_number}</h3>
+                      </div>
+                      <div className="flex items-center gap-2 relative">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          isOccupied ? 'bg-teal-50 text-[#0e8a7a]' : 'bg-amber-50 text-[#f59e0b]'
+                        }`}>
+                          {isOccupied ? (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#0e8a7a] inline-block" />
+                              Terisi
+                            </>
+                          ) : (
+                            'Kosong'
+                          )}
+                        </span>
+                        
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); setActiveMenuRoomId(activeMenuRoomId === room.id ? null : room.id); }}
+                          className="p-1 text-gray-400 hover:text-brand-navy rounded-lg transition-colors cursor-pointer"
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </button>
 
-                {/* Tenant Info (for occupied rooms) */}
-                {isOccupied && tenant ? (
-                  <div className="bg-gray-50 rounded-xl p-3 mb-4 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-brand-teal/10 overflow-hidden flex items-center justify-center shrink-0">
-                      {tenant.selfie_url ? (
-                        <img src={getImageUrl(tenant.selfie_url)} alt={tenant.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-brand-teal font-bold text-xs">{tenant.name?.substring(0, 2).toUpperCase()}</span>
-                      )}
+                        {/* Dropdown Menu */}
+                        {activeMenuRoomId === room.id && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setActiveMenuRoomId(null); }} />
+                            <div className="absolute right-0 top-7 z-20 bg-white border border-gray-100 rounded-xl shadow-lg py-1.5 w-28 text-left animate-in fade-in slide-in-from-top-2 duration-200">
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleOpenModal(room); setActiveMenuRoomId(null); }}
+                                className="w-full px-4 py-2 text-xs font-bold text-gray-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" /> Edit
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleDeleteClick(room); setActiveMenuRoomId(null); }}
+                                className="w-full px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Hapus
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-sm text-brand-navy truncate">{tenant.name}</p>
-                      <p className="text-[10px] text-gray-400">s/d {tenant.contract?.end_date ? new Date(tenant.contract.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</p>
-                    </div>
-                  </div>
-                ) : !isOccupied ? (
-                  <button 
-                    onClick={() => router.push('/tenants')}
-                    className="w-full py-2.5 mb-4 border-[1.5px] border-dashed border-gray-300 hover:border-brand-teal text-gray-400 hover:text-brand-teal rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Tambah Penghuni
-                  </button>
-                ) : null}
 
-                <div className="flex justify-between items-center">
-                  <p className="text-sm font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')}<span className="text-[10px] font-medium text-gray-400 font-sans">/bln</span></p>
-                  <div className="flex flex-wrap gap-1 justify-end">
-                    {(room.description ? room.description.split(',') : []).slice(0, 2).map((facility, idx) => (
-                      <span key={idx} className="px-2 py-0.5 rounded bg-gray-50 text-gray-500 text-[9px] font-medium border border-gray-100">
-                        {facility.trim()}
-                      </span>
-                    ))}
+                    {/* Occupied State box */}
+                    {isOccupied && tenant ? (
+                      <>
+                        <div 
+                          onClick={() => router.push(`/tenants/${tenant.id}`)}
+                          className="bg-slate-50 border border-slate-100 rounded-xl p-2 mb-2 flex items-center gap-2 cursor-pointer hover:bg-brand-teal/5 border-transparent hover:border-brand-teal/20 transition-all"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-brand-teal text-white overflow-hidden flex items-center justify-center shrink-0 shadow-sm text-[10px] font-bold">
+                            {tenant.selfie_url ? (
+                              <img src={getImageUrl(tenant.selfie_url)} alt={tenant.name} className="w-full h-full object-cover animate-in fade-in" />
+                            ) : (
+                              <span className="font-bold">{tenant.name?.substring(0, 2).toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-xs sm:text-sm text-brand-navy truncate hover:text-brand-teal transition-colors leading-tight">{tenant.name}</p>
+                            <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5 leading-none">{tenant.phone}</p>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center text-[10px] text-gray-400 font-medium px-0.5 mb-2.5">
+                          <span className="flex items-center gap-1">
+                            <span className="text-gray-300">↑</span> Mulai <strong className="text-gray-700 ml-0.5">{formatStartDate(tenant.contract?.start_date)}</strong>
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="text-gray-300">⌛</span> Sisa <strong className="text-gray-700 ml-0.5">{getDaysRemaining(tenant.contract?.end_date)}</strong>
+                          </span>
+                        </div>
+
+                        <div className="border-t border-gray-100 pt-1.5 flex justify-between items-center mt-auto">
+                          <p className="text-xs sm:text-sm font-extrabold text-brand-navy leading-none">
+                            Rp {room.price_per_month.toLocaleString('id-ID')}
+                            <span className="text-[10px] font-medium text-gray-400 font-sans">/bln</span>
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="h-8 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center mb-2.5 text-xs font-semibold text-gray-400">
+                          Belum ada penghuni
+                        </div>
+                        <div className="border-t border-dashed border-gray-200 pt-1.5 flex flex-col mt-auto">
+                          <p className="text-xs sm:text-sm font-extrabold text-brand-navy mb-2 leading-none">
+                            Rp {room.price_per_month.toLocaleString('id-ID')}
+                            <span className="text-[10px] font-medium text-gray-400 font-sans">/bln</span>
+                          </p>
+                          <button 
+                            onClick={() => handleAssignTenant(room)}
+                            className="w-full py-2 bg-[#0e8a7a] hover:bg-[#0c7567] text-white rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 shadow-sm shadow-brand-teal/10 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" /> Tambah Penghuni
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
             );
           })}
         </div>
       ) : (
         // LIST VIEW
-        <div className="bg-white border-[1.5px] border-gray-200 rounded-[24px] overflow-hidden shadow-sm">
+        <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-gray-50 border-b border-gray-200 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
+              <thead className="bg-gray-50 border-b border-gray-200 text-[11px] font-extrabold text-gray-400 uppercase tracking-widest">
                 <tr>
-                  <th className="px-6 py-4">Nomor Kamar</th>
-                  <th className="px-6 py-4">Penghuni & Status</th>
-                  <th className="px-6 py-4">Harga/Bulan</th>
-                  <th className="px-6 py-4 text-right">Aksi</th>
+                  <th className="px-4 py-3">Unit Kamar</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Penghuni</th>
+                  <th className="px-4 py-3">Harga/Bulan</th>
+                  <th className="px-4 py-3 text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredAndSortedRooms.map(room => (
-                  <tr key={room.id} className="hover:bg-gray-50/50 transition-colors group">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-[10px] flex items-center justify-center font-bold ${room.status === 'occupied' ? 'bg-brand-teal/10 text-brand-teal' : 'bg-amber-50 text-amber-600'}`}>
-                          {room.room_number.slice(-2)}
-                        </div>
+                {filteredAndSortedRooms.map(room => {
+                  const tenant = getTenantForRoom(room.id);
+                  const isOccupied = room.status === 'occupied';
+                  return (
+                    <tr key={room.id} className="hover:bg-gray-50/50 transition-colors group">
+                      <td className="px-4 py-3.5" style={{ borderLeft: `4px solid ${isOccupied ? '#0e8a7a' : '#f59e0b'}` }}>
                         <div>
                           <p className="font-bold text-brand-navy">Kamar {room.room_number}</p>
-                          <p className="text-[10px] text-gray-500 mt-0.5 truncate max-w-[150px]">{room.description || '-'}</p>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {room.status === 'occupied' && room.activeContract && room.activeContract.tenant ? (
-                        <div>
-                          <p className="font-bold text-brand-navy flex items-center gap-1.5">
-                             {room.activeContract.tenant.name}
-                          </p>
-                          <p className="text-[10px] text-gray-500 mt-0.5">S/d {formatDate(room.activeContract.end_date)}</p>
-                        </div>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-50 text-amber-600 ring-1 ring-amber-200">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> KOSONG
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          isOccupied ? 'bg-teal-50 text-[#0e8a7a]' : 'bg-amber-50 text-[#f59e0b]'
+                        }`}>
+                          {isOccupied ? (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#0e8a7a] inline-block" />
+                              Terisi
+                            </>
+                          ) : (
+                            'Kosong'
+                          )}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="font-bold text-brand-navy">Rp {room.price_per_month.toLocaleString('id-ID')}</p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {(room.description ? room.description.split(',') : []).slice(0, 1).map((facility, idx) => (
-                          <span key={idx} className="px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 text-[9px] font-medium border border-gray-100">
-                            {facility.trim()}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {room.status !== 'occupied' && (
-                          <button 
-                            onClick={() => router.push(`/contracts/new?roomId=${room.id}`)}
-                            className="px-2.5 py-1.5 text-[10px] font-bold text-brand-teal bg-brand-teal/10 hover:bg-brand-teal/20 rounded-lg transition-colors inline-flex items-center gap-1"
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {isOccupied && tenant ? (
+                          <div 
+                            onClick={() => router.push(`/tenants/${tenant.id}`)}
+                            className="flex items-center gap-2 cursor-pointer group/name"
                           >
-                            <Plus className="w-3 h-3" /> Tambah Penghuni
-                          </button>
+                            <div className="w-7 h-7 rounded-full bg-brand-teal text-white overflow-hidden flex items-center justify-center shrink-0 shadow-sm text-[10px] font-bold">
+                              {tenant.selfie_url ? (
+                                <img src={getImageUrl(tenant.selfie_url)} alt={tenant.name} className="w-full h-full object-cover" />
+                              ) : (
+                                tenant.name?.substring(0, 2).toUpperCase()
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm text-brand-navy group-hover/name:text-[#0e8a7a] transition-colors">{tenant.name}</p>
+                              <p className="text-[10px] sm:text-[11px] text-gray-400">{tenant.phone} · Mulai: {formatStartDate(tenant.contract?.start_date)} · Sisa: {getDaysRemaining(tenant.contract?.end_date)}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400 font-medium">Belum ada penghuni</span>
                         )}
-                        <button 
-                          onClick={() => handleOpenModal(room)} 
-                          className="px-2.5 py-1.5 text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors inline-flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3 h-3" /> Edit
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteClick(room)} 
-                          className="px-2.5 py-1.5 text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-                          title="Hapus"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm font-bold text-brand-navy">
+                        Rp {room.price_per_month.toLocaleString('id-ID')} /bln
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-2 relative">
+                          {!isOccupied && (
+                            <button 
+                              onClick={() => handleAssignTenant(room)}
+                              className="px-3 py-1.5 text-[10px] font-bold text-white bg-[#0e8a7a] hover:bg-[#0c7567] rounded-md transition-colors inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus className="w-2.5 h-2.5" /> Tambah Penghuni
+                            </button>
+                          )}
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); setActiveMenuRoomId(activeMenuRoomId === room.id ? null : room.id); }} 
+                            className="p-1 text-gray-400 hover:text-brand-navy rounded-lg transition-colors cursor-pointer"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+
+                          {/* Dropdown Menu */}
+                          {activeMenuRoomId === room.id && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setActiveMenuRoomId(null); }} />
+                              <div className="absolute right-0 top-7 z-20 bg-white border border-gray-100 rounded-xl shadow-lg py-1.5 w-28 text-left animate-in fade-in slide-in-from-top-2 duration-200">
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleOpenModal(room); setActiveMenuRoomId(null); }}
+                                  className="w-full px-4 py-2 text-xs font-bold text-gray-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" /> Edit
+                                </button>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteClick(room); setActiveMenuRoomId(null); }}
+                                  className="w-full px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Hapus
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

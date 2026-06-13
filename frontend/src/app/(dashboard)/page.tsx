@@ -58,12 +58,16 @@ export default function DashboardPage() {
           setTenantProfile(profileData);
           setTenantPayments(paymentsData || []);
         } else {
-          const [roomsData, tenantsData] = await Promise.all([
+          const [roomsData, contractsData] = await Promise.all([
             apiFetch('/api/rooms'),
-            apiFetch('/api/tenants')
+            apiFetch('/api/contracts')
           ]);
           setRooms(roomsData || []);
-          setTenants(tenantsData || []);
+          
+          // Map unique users with active contracts to simulate 'tenants' count
+          const activeContracts = (contractsData || []).filter((c: any) => c.status === 'active');
+          const uniqueTenantIds = new Set(activeContracts.map((c: any) => c.user_id));
+          setTenants(Array.from(uniqueTenantIds));
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
