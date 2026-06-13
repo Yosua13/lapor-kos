@@ -209,8 +209,8 @@ export default function ContractDetailPage() {
                 </div>
                 <div>
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Pihak Kedua (Penyewa)</p>
-                  <p className="text-lg font-bold text-brand-navy">{contract.tenant?.name}</p>
-                  <p className="text-sm text-gray-500 mt-1">{contract.tenant?.phone}</p>
+                  <p className="text-lg font-bold text-brand-navy">{contract.user?.name}</p>
+                  <p className="text-sm text-gray-500 mt-1">{contract.user?.phone}</p>
                 </div>
               </div>
 

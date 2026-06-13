@@ -13,7 +13,7 @@ import { useRouter } from 'next/navigation';
 interface Contract {
   id: string;
   room_id: string;
-  tenant_id: string;
+  user_id: string;
   owner_id: string;
   start_date: string;
   end_date: string;
@@ -28,7 +28,7 @@ interface Contract {
     price_per_month: number;
     status: string;
   };
-  tenant?: {
+  user?: {
     id: string;
     name: string;
     phone: string;
@@ -94,7 +94,7 @@ export default function ContractsPage() {
       const query = searchQuery.toLowerCase();
       result = result.filter(c => 
         (c.room?.room_number?.toLowerCase().includes(query) || false) ||
-        (c.tenant?.name?.toLowerCase().includes(query) || false)
+        (c.user?.name?.toLowerCase().includes(query) || false)
       );
     }
 
@@ -133,12 +133,6 @@ export default function ContractsPage() {
           <p className="text-sm text-gray-500 mt-1">Kelola data perjanjian sewa antara penghuni dan kamar</p>
         </div>
         <div className="flex items-center gap-3">
-          <Link
-            href="/contracts/new"
-            className="px-4 py-2 bg-brand-teal text-white font-bold text-sm rounded-xl hover:bg-brand-teal-light transition-all flex items-center gap-2 shadow-sm group"
-          >
-            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" /> Tambah Kontrak
-          </Link>
         </div>
       </div>
 
@@ -277,7 +271,7 @@ export default function ContractsPage() {
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Kamar {contract.room?.room_number || '-'} · Lantai {(contract.room?.room_number || '1')[0]}</p>
-                    <h3 className="text-lg font-bold text-brand-navy line-clamp-1">{contract.tenant?.name || '-'}</h3>
+                    <h3 className="text-lg font-bold text-brand-navy line-clamp-1">{contract.user?.name || '-'}</h3>
                   </div>
                   <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
                     contract.status === 'active' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' : 'bg-gray-100 text-gray-500 ring-1 ring-gray-200'
@@ -362,7 +356,7 @@ export default function ContractsPage() {
                   return (
                   <tr key={contract.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="font-bold text-brand-navy">{contract.tenant?.name || '-'}</p>
+                      <p className="font-bold text-brand-navy">{contract.user?.name || '-'}</p>
                       <p className="text-[10px] font-bold text-brand-teal mt-0.5">Kamar {contract.room?.room_number || '-'}</p>
                     </td>
                     <td className="px-6 py-4">
