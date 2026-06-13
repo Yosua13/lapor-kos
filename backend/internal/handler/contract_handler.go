@@ -38,9 +38,9 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid room ID"})
 		return
 	}
-	tenantID, err := uuid.Parse(req.TenantID)
+	userID, err := uuid.Parse(req.UserID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
 
@@ -57,7 +57,7 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 
 	contract := &model.Contract{
 		RoomID:         &roomID,
-		TenantID:       &tenantID,
+		UserID:         &userID,
 		OwnerID:        ownerID,
 		StartDate:      startDate,
 		EndDate:        endDate,

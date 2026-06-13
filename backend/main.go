@@ -62,18 +62,16 @@ func main() {
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(dbPool)
 	roomRepo := repository.NewRoomRepository(dbPool)
-	tenantRepo := repository.NewTenantRepository(dbPool)
 	contractRepo := repository.NewContractRepository(dbPool)
 	paymentRepo := repository.NewPaymentRepository(dbPool)
 	calendarRepo := repository.NewCalendarRepository(dbPool)
 	complaintRepo := repository.NewComplaintRepository(dbPool)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(userRepo, emailServ)
+	authHandler := handler.NewAuthHandler(userRepo, emailServ, storageServ)
 	roomHandler := handler.NewRoomHandler(roomRepo, storageServ)
-	tenantHandler := handler.NewTenantHandler(tenantRepo, storageServ)
 	contractHandler := handler.NewContractHandler(contractRepo)
-	paymentHandler := handler.NewPaymentHandler(paymentRepo, tenantRepo, storageServ)
+	paymentHandler := handler.NewPaymentHandler(paymentRepo, storageServ)
 	calendarHandler := handler.NewCalendarHandler(calendarRepo)
 	complaintHandler := handler.NewComplaintHandler(complaintRepo, userRepo, aiServ, waServ, storageServ)
 
@@ -130,6 +128,7 @@ func main() {
 		{
 			rooms.POST("", roomHandler.CreateRoom)
 			rooms.POST("/with-tenant", roomHandler.CreateRoomWithTenant)
+			rooms.POST("/:id/assign-tenant", roomHandler.AssignTenant)
 			rooms.GET("", roomHandler.GetRooms)
 			rooms.GET("/:id", roomHandler.GetRoom)
 			rooms.PUT("/:id", roomHandler.UpdateRoom)
@@ -139,13 +138,14 @@ func main() {
 		// Tenant routes (Protected)
 		tenants := api.Group("/tenants", middleware.AuthMiddleware())
 		{
-			tenants.GET("/me", middleware.RoleMiddleware(dbPool, "tenant"), tenantHandler.GetMyTenantProfile)
-			tenants.POST("", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.CreateTenant)
-			tenants.GET("", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.GetTenants)
-			tenants.GET("/:id", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.GetTenant)
-			tenants.PUT("/:id", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.UpdateTenant)
-			tenants.DELETE("/:id", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.DeleteTenant)
+			tenants.GET("/me", middleware.RoleMiddleware(dbPool, "tenant"), authHandler.GetMyTenantProfile)
+			tenants.GET("/:id", middleware.RoleMiddleware(dbPool, "owner"), authHandler.GetTenantProfileByID)
+			tenants.PUT("/:id", middleware.RoleMiddleware(dbPool, "owner"), authHandler.UpdateTenantProfileByID)
+			tenants.DELETE("/:id", middleware.RoleMiddleware(dbPool, "owner"), authHandler.DeleteTenantByID)
 		}
+
+
+
 
 		// Contract routes (Protected)
 		contracts := api.Group("/contracts", middleware.AuthMiddleware())

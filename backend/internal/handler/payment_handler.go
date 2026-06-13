@@ -15,18 +15,19 @@ import (
 
 type PaymentHandler struct {
 	repo           *repository.PaymentRepository
-	tenantRepo     *repository.TenantRepository
 	storageService *service.StorageService
 }
 
-func NewPaymentHandler(repo *repository.PaymentRepository, tenantRepo *repository.TenantRepository, storageService *service.StorageService) *PaymentHandler {
-	return &PaymentHandler{repo: repo, tenantRepo: tenantRepo, storageService: storageService}
+func NewPaymentHandler(repo *repository.PaymentRepository, storageService *service.StorageService) *PaymentHandler {
+	return &PaymentHandler{repo: repo, storageService: storageService}
 }
 
 func (h *PaymentHandler) GetAllPayments(c *gin.Context) {
 	status := c.Query("status")
 	monthStr := c.Query("month")
 	yearStr := c.Query("year")
+	contractID := c.Query("contract_id")
+	userID := c.Query("user_id")
 
 	var month, year int
 	if monthStr != "" {
@@ -36,7 +37,7 @@ func (h *PaymentHandler) GetAllPayments(c *gin.Context) {
 		year, _ = strconv.Atoi(yearStr)
 	}
 
-	payments, err := h.repo.FindAll(c.Request.Context(), status, month, year)
+	payments, err := h.repo.FindAll(c.Request.Context(), status, month, year, contractID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payments"})
 		return
@@ -53,7 +54,7 @@ func (h *PaymentHandler) GetTenantPayments(c *gin.Context) {
 	}
 	userID, _ := uuid.Parse(userIDStr.(string))
 
-	payments, err := h.repo.FindByTenantUserID(c.Request.Context(), userID)
+	payments, err := h.repo.FindByUserID(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch your payments"})
 		return
@@ -85,8 +86,8 @@ func (h *PaymentHandler) GetPayment(c *gin.Context) {
 
 	// Fetch user role
 	var role string
-	// Check if payment tenant matches the logged-in user
-	if payment.Contract.Tenant != nil && payment.Contract.Tenant.UserID != nil && *payment.Contract.Tenant.UserID == userID {
+	// Check if payment user matches the logged-in user
+	if payment.Contract != nil && payment.Contract.User != nil && payment.Contract.User.ID == userID {
 		role = "tenant"
 	}
 
@@ -262,9 +263,9 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 		if payment.Contract.Room != nil {
 			roomNumber = payment.Contract.Room.RoomNumber
 		}
-		if payment.Contract.Tenant != nil {
-			tenantName = payment.Contract.Tenant.Name
-			tenantPhone = payment.Contract.Tenant.Phone
+		if payment.Contract.User != nil {
+			tenantName = payment.Contract.User.Name
+			tenantPhone = payment.Contract.User.Phone
 		}
 	}
 

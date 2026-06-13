@@ -107,14 +107,86 @@ func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 		return
 	}
 
-	deleteTenant := c.Query("delete_tenant") == "true"
-
-	if err := h.repo.Delete(c.Request.Context(), id, deleteTenant); err != nil {
+	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete room"})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Room deleted successfully"})
+}
+
+func (h *RoomHandler) AssignTenant(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	ownerID, _ := uuid.Parse(userIDStr.(string))
+
+    roomID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid room ID"})
+		return
+	}
+
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form"})
+		return
+	}
+
+	name := c.PostForm("name")
+	phone := c.PostForm("phone")
+	email := c.PostForm("email")
+	entryDateStr := c.PostForm("entry_date")
+
+	entryDate, _ := time.Parse("2006-01-02", entryDateStr)
+	if entryDate.IsZero() {
+		entryDate = time.Now()
+	}
+
+	rentalDurationStr := c.PostForm("rental_duration")
+	rentalDuration, _ := strconv.Atoi(rentalDurationStr)
+	if rentalDuration <= 0 {
+		rentalDuration = 1
+	}
+
+    monthlyRentStr := c.PostForm("monthly_rent")
+	monthlyRent, _ := strconv.ParseFloat(monthlyRentStr, 64)
+
+	ktpPath, _ := h.uploadFile(c, "ktp")
+	selfiePath, _ := h.uploadFile(c, "selfie")
+
+    // Get room details for price if monthlyRent is not provided
+    if monthlyRent <= 0 {
+        room, err := h.repo.FindByID(c.Request.Context(), roomID)
+        if err != nil {
+            c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+            return
+        }
+        monthlyRent = room.PricePerMonth
+    }
+
+	user := &model.User{
+		Name:      name,
+		Phone:     phone,
+		Email:     email,
+		KtpURL:    &ktpPath,
+		SelfieURL: &selfiePath,
+	}
+
+    contract := &model.Contract{
+        StartDate:      entryDate,
+        RentalDuration: rentalDuration,
+        MonthlyRent:    monthlyRent,
+        TotalPrice:     monthlyRent * float64(rentalDuration),
+    }
+
+	if err := h.repo.AssignTenant(c.Request.Context(), roomID, user, contract, ownerID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign tenant to room: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Tenant assigned successfully"})
 }
 
 func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
@@ -134,7 +206,7 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	priceStr := c.PostForm("price_per_month")
 	description := c.PostForm("description")
 	status := c.PostForm("status")
-	
+
 	price, _ := strconv.ParseFloat(priceStr, 64)
 	if status == "" {
 		status = "occupied"
@@ -166,31 +238,34 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	ktpPath, _ := h.uploadFile(c, "ktp")
 	selfiePath, _ := h.uploadFile(c, "selfie")
 
-	tenant := &model.Tenant{
+	user := &model.User{
 		Name:      name,
 		Phone:     phone,
 		Email:     email,
-		KTPURL:    ktpPath,
-		SelfieURL: selfiePath,
-		Contract: &model.Contract{
-			StartDate:      entryDate,
-			RentalDuration: rentalDuration,
-		},
+		KtpURL:    &ktpPath,
+		SelfieURL: &selfiePath,
 	}
 
-	if err := h.repo.CreateWithTenant(c.Request.Context(), room, tenant, ownerID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create room and tenant"})
+	contract := &model.Contract{
+		StartDate:      entryDate,
+		RentalDuration: rentalDuration,
+		MonthlyRent:    price,
+		TotalPrice:     price * float64(rentalDuration),
+	}
+
+	if err := h.repo.CreateWithTenant(c.Request.Context(), room, user, contract, ownerID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create room and tenant: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"room": room, "tenant": tenant})
+	c.JSON(http.StatusCreated, gin.H{"message": "Room and tenant created successfully", "room": room})
 }
 
 // uploadFile uploads a file from the multipart form to Supabase Storage and returns its public URL.
 func (h *RoomHandler) uploadFile(c *gin.Context, fieldName string) (string, error) {
 	fileHeader, err := c.FormFile(fieldName)
 	if err != nil {
-		return "", err
+		return "", nil // ignore error if file not uploaded
 	}
 	return h.storageService.UploadFile(fileHeader, fieldName)
 }

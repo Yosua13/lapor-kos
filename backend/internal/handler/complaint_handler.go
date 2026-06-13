@@ -52,8 +52,8 @@ func (h *ComplaintHandler) CreateComplaint(c *gin.Context) {
 		return
 	}
 
-	// 1. Dapatkan tenant ID, room ID, dan owner ID berdasarkan active contract penyewa
-	tenantID, roomID, ownerID, err := h.complaintRepo.FindActiveContractByTenantUser(c.Request.Context(), userID)
+	// 1. Dapatkan room ID, dan owner ID berdasarkan active contract penyewa
+	roomID, ownerID, err := h.complaintRepo.FindActiveContractByTenantUser(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Penyewa harus memiliki kontrak aktif untuk mengirimkan komplain."})
 		return
@@ -92,7 +92,7 @@ func (h *ComplaintHandler) CreateComplaint(c *gin.Context) {
 
 	// 4. Simpan komplain ke database
 	complaint := &model.Complaint{
-		TenantID:    tenantID,
+		UserID:      userID,
 		OwnerID:     ownerID,
 		RoomID:      roomID,
 		Title:       req.Title,

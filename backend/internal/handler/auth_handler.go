@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
@@ -18,12 +19,13 @@ import (
 )
 
 type AuthHandler struct {
-	repo      repository.UserRepo
-	emailServ service.EmailServiceInterface
+	repo           repository.UserRepo
+	emailServ      service.EmailServiceInterface
+	storageService *service.StorageService
 }
 
-func NewAuthHandler(repo repository.UserRepo, emailServ service.EmailServiceInterface) *AuthHandler {
-	return &AuthHandler{repo: repo, emailServ: emailServ}
+func NewAuthHandler(repo repository.UserRepo, emailServ service.EmailServiceInterface, storageService *service.StorageService) *AuthHandler {
+	return &AuthHandler{repo: repo, emailServ: emailServ, storageService: storageService}
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -292,6 +294,30 @@ func (h *AuthHandler) UpdatePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
 }
 
+func (h *AuthHandler) GetMyTenantProfile(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	profile, err := h.repo.GetTenantProfile(c.Request.Context(), userID)
+	if err != nil {
+		log.Printf("Error getting tenant profile: %v\n", err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tenant profile not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, profile)
+}
+
+
 func (h *AuthHandler) generateToken(userID string) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
@@ -317,3 +343,90 @@ func generateOTP(n int) string {
 	}
 	return string(result)
 }
+
+func (h *AuthHandler) GetTenantProfileByID(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	profile, err := h.repo.GetTenantProfile(c.Request.Context(), id)
+	if err != nil {
+		log.Printf("Error getting tenant profile: %v\n", err)
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tenant profile not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, profile)
+}
+
+func (h *AuthHandler) UpdateTenantProfileByID(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form"})
+		return
+	}
+
+	name := c.PostForm("name")
+	phone := c.PostForm("phone")
+	roomIDStr := c.PostForm("room_id")
+	entryDateStr := c.PostForm("entry_date")
+	rentalDurationStr := c.PostForm("rental_duration")
+	rentalDuration, _ := strconv.Atoi(rentalDurationStr)
+
+	ktpPath, _ := h.uploadFile(c, "ktp")
+	selfiePath, _ := h.uploadFile(c, "selfie")
+
+	var ktpURL *string
+	if ktpPath != "" {
+		ktpURL = &ktpPath
+	}
+	var selfieURL *string
+	if selfiePath != "" {
+		selfieURL = &selfiePath
+	}
+
+	err = h.repo.UpdateTenantProfile(c.Request.Context(), id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL)
+	if err != nil {
+		log.Printf("Error updating tenant profile: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update tenant profile: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Tenant profile updated successfully"})
+}
+
+func (h *AuthHandler) DeleteTenantByID(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	err = h.repo.DeleteTenant(c.Request.Context(), id)
+	if err != nil {
+		log.Printf("Error deleting tenant: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete tenant: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Tenant deleted successfully"})
+}
+
+func (h *AuthHandler) uploadFile(c *gin.Context, fieldName string) (string, error) {
+	if h.storageService == nil {
+		return "", nil
+	}
+	fileHeader, err := c.FormFile(fieldName)
+	if err != nil {
+		return "", nil // ignore error if file not uploaded
+	}
+	return h.storageService.UploadFile(fileHeader, fieldName)
+}
+
