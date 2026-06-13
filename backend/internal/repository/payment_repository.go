@@ -46,11 +46,11 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 		p.paid_at, p.due_date, p.notes, p.created_at,
 		c.monthly_rent, c.deposit, c.payment_due_day,
 		r.room_number, r.price_per_month,
-		t.name, t.phone, t.user_id
+		u.name, u.phone, u.id
 	FROM payments p
 	JOIN contracts c ON p.contract_id = c.id
 	LEFT JOIN rooms r ON c.room_id = r.id
-	LEFT JOIN tenants t ON c.tenant_id = t.id
+	LEFT JOIN users u ON c.user_id = u.id
 	WHERE p.id = $1`
 
 	p := &model.Payment{}
@@ -58,8 +58,8 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 	var ownerID *uuid.UUID
 	var roomNum *string
 	var roomPrice *float64
-	var tenantName, tenantPhone *string
-	var tenantUserID *uuid.UUID
+	var userName, userPhone *string
+	var userID *uuid.UUID
 	var contractRent, contractDeposit *float64
 	var contractDueDay *int
 
@@ -70,7 +70,7 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 		&paidAt, &p.DueDate, &p.Notes, &p.CreatedAt,
 		&contractRent, &contractDeposit, &contractDueDay,
 		&roomNum, &roomPrice,
-		&tenantName, &tenantPhone, &tenantUserID,
+		&userName, &userPhone, &userID,
 	)
 	if err != nil {
 		return nil, err
@@ -93,28 +93,28 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 			PricePerMonth: *roomPrice,
 		}
 	}
-	if tenantName != nil {
-		p.Contract.Tenant = &model.Tenant{
-			Name:   *tenantName,
-			Phone:  *tenantPhone,
-			UserID: tenantUserID,
+	if userName != nil && userID != nil {
+		p.Contract.User = &model.User{
+			Name:   *userName,
+			Phone:  *userPhone,
+			ID:     *userID,
 		}
 	}
 
 	return p, nil
 }
 
-func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, filterMonth int, filterYear int) ([]model.Payment, error) {
+func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, filterMonth int, filterYear int, contractIDStr string, userIDStr string) ([]model.Payment, error) {
 	query := `SELECT 
 		p.id, p.contract_id, p.owner_id, p.period_month, p.period_year, 
 		p.amount_rent, p.amount_electricity, p.amount_water, p.amount_other, 
 		p.total_paid, p.payment_method, p.status, p.proof_photo_url, 
 		p.paid_at, p.due_date, p.notes, p.created_at,
-		r.room_number, t.name
+		r.room_number, u.name
 	FROM payments p
 	JOIN contracts c ON p.contract_id = c.id
 	LEFT JOIN rooms r ON c.room_id = r.id
-	LEFT JOIN tenants t ON c.tenant_id = t.id
+	LEFT JOIN users u ON c.user_id = u.id
 	WHERE 1=1`
 
 	args := []interface{}{}
@@ -135,6 +135,20 @@ func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, fi
 		args = append(args, filterYear)
 		argIdx++
 	}
+	if contractIDStr != "" {
+		if parsedID, err := uuid.Parse(contractIDStr); err == nil {
+			query += fmt.Sprintf(" AND p.contract_id = $%d", argIdx)
+			args = append(args, parsedID)
+			argIdx++
+		}
+	}
+	if userIDStr != "" {
+		if parsedID, err := uuid.Parse(userIDStr); err == nil {
+			query += fmt.Sprintf(" AND c.user_id = $%d", argIdx)
+			args = append(args, parsedID)
+			argIdx++
+		}
+	}
 
 	query += " ORDER BY p.due_date DESC, p.created_at DESC"
 
@@ -150,14 +164,14 @@ func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, fi
 		var paidAt *time.Time
 		var ownerID *uuid.UUID
 		var roomNum *string
-		var tenantName *string
+		var userName *string
 
 		err := rows.Scan(
 			&p.ID, &p.ContractID, &ownerID, &p.PeriodMonth, &p.PeriodYear,
 			&p.AmountRent, &p.AmountElectricity, &p.AmountWater, &p.AmountOther,
 			&p.TotalPaid, &p.PaymentMethod, &p.Status, &p.ProofPhotoURL,
 			&paidAt, &p.DueDate, &p.Notes, &p.CreatedAt,
-			&roomNum, &tenantName,
+			&roomNum, &userName,
 		)
 		if err != nil {
 			return nil, err
@@ -171,8 +185,8 @@ func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, fi
 		if roomNum != nil {
 			p.Contract.Room = &model.Room{RoomNumber: *roomNum}
 		}
-		if tenantName != nil {
-			p.Contract.Tenant = &model.Tenant{Name: *tenantName}
+		if userName != nil {
+			p.Contract.User = &model.User{Name: *userName}
 		}
 
 		payments = append(payments, p)
@@ -181,18 +195,18 @@ func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, fi
 	return payments, nil
 }
 
-func (r *PaymentRepository) FindByTenantUserID(ctx context.Context, userID uuid.UUID) ([]model.Payment, error) {
+func (r *PaymentRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Payment, error) {
 	query := `SELECT 
 		p.id, p.contract_id, p.owner_id, p.period_month, p.period_year, 
 		p.amount_rent, p.amount_electricity, p.amount_water, p.amount_other, 
 		p.total_paid, p.payment_method, p.status, p.proof_photo_url, 
 		p.paid_at, p.due_date, p.notes, p.created_at,
-		r.room_number, t.name
+		r.room_number, u.name
 	FROM payments p
 	JOIN contracts c ON p.contract_id = c.id
 	LEFT JOIN rooms r ON c.room_id = r.id
-	LEFT JOIN tenants t ON c.tenant_id = t.id
-	WHERE t.user_id = $1
+	LEFT JOIN users u ON c.user_id = u.id
+	WHERE c.user_id = $1
 	ORDER BY p.due_date DESC, p.created_at DESC`
 
 	rows, err := r.db.Query(ctx, query, userID)
@@ -207,14 +221,14 @@ func (r *PaymentRepository) FindByTenantUserID(ctx context.Context, userID uuid.
 		var paidAt *time.Time
 		var ownerID *uuid.UUID
 		var roomNum *string
-		var tenantName *string
+		var userName *string
 
 		err := rows.Scan(
 			&p.ID, &p.ContractID, &ownerID, &p.PeriodMonth, &p.PeriodYear,
 			&p.AmountRent, &p.AmountElectricity, &p.AmountWater, &p.AmountOther,
 			&p.TotalPaid, &p.PaymentMethod, &p.Status, &p.ProofPhotoURL,
 			&paidAt, &p.DueDate, &p.Notes, &p.CreatedAt,
-			&roomNum, &tenantName,
+			&roomNum, &userName,
 		)
 		if err != nil {
 			return nil, err
@@ -228,8 +242,8 @@ func (r *PaymentRepository) FindByTenantUserID(ctx context.Context, userID uuid.
 		if roomNum != nil {
 			p.Contract.Room = &model.Room{RoomNumber: *roomNum}
 		}
-		if tenantName != nil {
-			p.Contract.Tenant = &model.Tenant{Name: *tenantName}
+		if userName != nil {
+			p.Contract.User = &model.User{Name: *userName}
 		}
 
 		payments = append(payments, p)
@@ -262,16 +276,15 @@ func (r *PaymentRepository) SubmitProof(ctx context.Context, id uuid.UUID, proof
 	return err
 }
 
-func (r *PaymentRepository) FindActiveContractByTenantUserID(ctx context.Context, userID uuid.UUID) (*model.Contract, error) {
-	query := `SELECT c.id, c.room_id, c.tenant_id, c.owner_id, c.start_date, c.end_date, 
+func (r *PaymentRepository) FindActiveContractByUserID(ctx context.Context, userID uuid.UUID) (*model.Contract, error) {
+	query := `SELECT c.id, c.room_id, c.user_id, c.owner_id, c.start_date, c.end_date, 
 	                 c.rental_duration, c.monthly_rent, c.total_price, c.deposit, c.payment_due_day, c.status
 	          FROM contracts c
-	          JOIN tenants t ON c.tenant_id = t.id
-	          WHERE t.user_id = $1 AND c.status = 'active'
+	          WHERE c.user_id = $1 AND c.status = 'active'
 	          LIMIT 1`
 	c := &model.Contract{}
 	err := r.db.QueryRow(ctx, query, userID).Scan(
-		&c.ID, &c.RoomID, &c.TenantID, &c.OwnerID, &c.StartDate, &c.EndDate,
+		&c.ID, &c.RoomID, &c.UserID, &c.OwnerID, &c.StartDate, &c.EndDate,
 		&c.RentalDuration, &c.MonthlyRent, &c.TotalPrice, &c.Deposit, &c.PaymentDueDay, &c.Status,
 	)
 	if err == pgx.ErrNoRows {

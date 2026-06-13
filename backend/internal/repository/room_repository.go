@@ -25,13 +25,14 @@ func (r *RoomRepository) Create(ctx context.Context, room *model.Room) error {
 		Scan(&room.ID, &room.CreatedAt)
 }
 
-func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room, tenant *model.Tenant, ownerID uuid.UUID) error {
+func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room, user *model.User, contract *model.Contract, ownerID uuid.UUID) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
+	// 1. Create Room
 	roomQuery := `INSERT INTO rooms (room_number, price_per_month, description, status) 
 	              VALUES ($1, $2, $3, $4) RETURNING id, created_at`
 	err = tx.QueryRow(ctx, roomQuery, room.RoomNumber, room.PricePerMonth, room.Description, room.Status).
@@ -40,14 +41,12 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 		return err
 	}
 
-	var userIDPtr *uuid.UUID
-	if tenant.Email != "" {
-		var existingUserID uuid.UUID
-		err = tx.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", tenant.Email).Scan(&existingUserID)
-		if err == nil {
-			userIDPtr = &existingUserID
-		} else {
-			pass := tenant.Phone
+	// 2. Find or Create User
+	var userID uuid.UUID
+	if user.Email != "" {
+		err = tx.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", user.Email).Scan(&userID)
+		if err != nil {
+			pass := user.Phone
 			if pass == "" {
 				pass = "password123"
 			}
@@ -55,40 +54,105 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 			if err != nil {
 				return err
 			}
-			newUserID := uuid.New()
-			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified) 
-			              VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
-			err = tx.QueryRow(ctx, userQuery, newUserID, tenant.Name, tenant.Email, string(hashedPassword), "tenant", true).Scan(&newUserID)
+			userID = uuid.New()
+			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone, ktp_url, selfie_url) 
+			              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
+			err = tx.QueryRow(ctx, userQuery, userID, user.Name, user.Email, string(hashedPassword), "tenant", true, user.Phone, user.KtpURL, user.SelfieURL).Scan(&userID)
 			if err != nil {
 				return err
 			}
-			userIDPtr = &newUserID
+		} else {
+			// Update ktp/selfie/phone if provided
+			updateQ := `UPDATE users SET phone = COALESCE(NULLIF($1, ''), phone), ktp_url = COALESCE($2, ktp_url), selfie_url = COALESCE($3, selfie_url) WHERE id = $4`
+			_, err = tx.Exec(ctx, updateQ, user.Phone, user.KtpURL, user.SelfieURL, userID)
+			if err != nil {
+				return err
+			}
 		}
-	}
-	tenant.UserID = userIDPtr
-
-	tenant.RoomID = &room.ID
-	tenantQuery := `INSERT INTO tenants (room_id, name, phone, ktp_url, selfie_url, user_id) 
-	                VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`
-	err = tx.QueryRow(ctx, tenantQuery, tenant.RoomID, tenant.Name, tenant.Phone, tenant.KTPURL, tenant.SelfieURL, tenant.UserID).
-		Scan(&tenant.ID, &tenant.CreatedAt)
-	if err != nil {
-		return err
+	} else {
+		return fmt.Errorf("email is required")
 	}
 
-	// Create a contract for this tenant and room
-	contractQuery := `INSERT INTO contracts (room_id, tenant_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes) 
+	// 3. Create Contract
+	contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes) 
 	                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	
-	startDate := tenant.Contract.StartDate
-	rentalDuration := tenant.Contract.RentalDuration
+	startDate := contract.StartDate
+	rentalDuration := contract.RentalDuration
 	endDate := startDate.AddDate(0, rentalDuration, 0)
 	dueDate := startDate.AddDate(0, 1, -3)
 	paymentDueDay := dueDate.Day()
 	notes := fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
-	totalPrice := room.PricePerMonth * float64(rentalDuration)
 	
-	_, err = tx.Exec(ctx, contractQuery, room.ID, tenant.ID, ownerID, startDate, endDate, rentalDuration, room.PricePerMonth, totalPrice, 0, paymentDueDay, "active", notes)
+	_, err = tx.Exec(ctx, contractQuery, room.ID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes)
+	if err != nil {
+		return err
+	}
+
+	// 4. Update Room Status to Occupied
+	_, err = tx.Exec(ctx, `UPDATE rooms SET status = 'occupied' WHERE id = $1`, room.ID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+
+func (r *RoomRepository) AssignTenant(ctx context.Context, roomID uuid.UUID, user *model.User, contract *model.Contract, ownerID uuid.UUID) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var userID uuid.UUID
+	if user.Email != "" {
+		err = tx.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", user.Email).Scan(&userID)
+		if err != nil {
+			pass := user.Phone
+			if pass == "" {
+				pass = "password123"
+			}
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
+			if err != nil {
+				return err
+			}
+			userID = uuid.New()
+			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone, ktp_url, selfie_url) 
+			              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
+			err = tx.QueryRow(ctx, userQuery, userID, user.Name, user.Email, string(hashedPassword), "tenant", true, user.Phone, user.KtpURL, user.SelfieURL).Scan(&userID)
+			if err != nil {
+				return err
+			}
+		} else {
+            // Update ktp/selfie/phone if provided
+            updateQ := `UPDATE users SET phone = COALESCE(NULLIF($1, ''), phone), ktp_url = COALESCE($2, ktp_url), selfie_url = COALESCE($3, selfie_url) WHERE id = $4`
+            _, err = tx.Exec(ctx, updateQ, user.Phone, user.KtpURL, user.SelfieURL, userID)
+            if err != nil {
+                return err
+            }
+        }
+	} else {
+		return fmt.Errorf("email is required")
+	}
+
+	contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes) 
+	                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
+	
+	startDate := contract.StartDate
+	rentalDuration := contract.RentalDuration
+	endDate := startDate.AddDate(0, rentalDuration, 0)
+	dueDate := startDate.AddDate(0, 1, -3)
+	paymentDueDay := dueDate.Day()
+	notes := fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
+	
+	_, err = tx.Exec(ctx, contractQuery, roomID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, `UPDATE rooms SET status = 'occupied' WHERE id = $1`, roomID)
 	if err != nil {
 		return err
 	}
@@ -132,31 +196,7 @@ func (r *RoomRepository) Update(ctx context.Context, room *model.Room) error {
 	return err
 }
 
-func (r *RoomRepository) Delete(ctx context.Context, id uuid.UUID, deleteTenant bool) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	if deleteTenant {
-		_, err = tx.Exec(ctx, `DELETE FROM tenants WHERE room_id = $1`, id)
-	} else {
-		_, err = tx.Exec(ctx, `UPDATE tenants SET room_id = NULL WHERE room_id = $1`, id)
-	}
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.Exec(ctx, `DELETE FROM contracts WHERE room_id = $1`, id)
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.Exec(ctx, `DELETE FROM rooms WHERE id = $1`, id)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+func (r *RoomRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM rooms WHERE id = $1`, id)
+	return err
 }

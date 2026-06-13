@@ -28,7 +28,7 @@ func (r *CalendarRepository) FindEvents(ctx context.Context, ownerID uuid.UUID, 
 			c.id, c.end_date, c.status, r.room_number, t.name
 		FROM contracts c
 		JOIN rooms r ON c.room_id = r.id
-		JOIN tenants t ON c.tenant_id = t.id
+		JOIN users t ON c.user_id = t.id
 		WHERE c.owner_id = $1 
 		  AND EXTRACT(MONTH FROM c.end_date) = $2
 		  AND EXTRACT(YEAR FROM c.end_date) = $3
@@ -90,7 +90,7 @@ func (r *CalendarRepository) FindEvents(ctx context.Context, ownerID uuid.UUID, 
 		FROM payments p
 		JOIN contracts c ON p.contract_id = c.id
 		JOIN rooms r ON c.room_id = r.id
-		JOIN tenants t ON c.tenant_id = t.id
+		JOIN users t ON c.user_id = t.id
 		WHERE c.owner_id = $1
 		  AND EXTRACT(MONTH FROM p.due_date) = $2
 		  AND EXTRACT(YEAR FROM p.due_date) = $3
