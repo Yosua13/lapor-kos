@@ -18,6 +18,8 @@ type User struct {
 	OTPExpiresAt      *time.Time `json:"-" db:"otp_expires_at"`
 	WhatsAppGroupLink *string    `json:"whatsapp_group_link,omitempty" db:"whatsapp_group_link"`
 	Phone             string     `json:"phone" db:"phone"`
+	KtpURL            *string    `json:"ktp_url,omitempty" db:"ktp_url"`
+	SelfieURL         *string    `json:"selfie_url,omitempty" db:"selfie_url"`
 	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
 }
 

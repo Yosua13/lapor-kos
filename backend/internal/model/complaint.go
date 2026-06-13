@@ -8,7 +8,7 @@ import (
 
 type Complaint struct {
 	ID                uuid.UUID  `json:"id"`
-	TenantID          uuid.UUID  `json:"tenant_id"`
+	UserID            uuid.UUID  `json:"user_id"`
 	OwnerID           uuid.UUID  `json:"owner_id"`
 	RoomID            uuid.UUID  `json:"room_id"`
 	Title             string     `json:"title"`
@@ -24,7 +24,7 @@ type Complaint struct {
 	
 	// Virtual fields for display
 	RoomNumber        string     `json:"room_number,omitempty"`
-	TenantName        string     `json:"tenant_name,omitempty"`
+	UserName          string     `json:"user_name,omitempty"`
 }
 
 type CreateComplaintRequest struct {
