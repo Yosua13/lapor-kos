@@ -20,6 +20,14 @@ type User struct {
 	Phone             string     `json:"phone" db:"phone"`
 	KtpURL            *string    `json:"ktp_url,omitempty" db:"ktp_url"`
 	SelfieURL         *string    `json:"selfie_url,omitempty" db:"selfie_url"`
+	IsActive          bool       `json:"is_active" db:"is_active"`
+	DateOfBirth       *time.Time `json:"date_of_birth,omitempty" db:"date_of_birth"`
+	Gender            *string    `json:"gender,omitempty" db:"gender"`
+	Job               *string    `json:"job,omitempty" db:"job"`
+	EmergencyContactPhone    *string    `json:"emergency_contact_phone,omitempty" db:"emergency_contact_phone"`
+	EmergencyContactRelation *string    `json:"emergency_contact_relation,omitempty" db:"emergency_contact_relation"`
+	EmergencyContactName     *string    `json:"emergency_contact_name,omitempty" db:"emergency_contact_name"`
+	AdditionalDocURL         *string    `json:"additional_doc_url,omitempty" db:"additional_doc_url"`
 	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
 }
 

@@ -90,13 +90,28 @@ func (m *MockUserRepository) GetTenantProfile(ctx context.Context, id uuid.UUID)
 	return args.Get(0).(map[string]interface{}), args.Error(1)
 }
 
-func (m *MockUserRepository) UpdateTenantProfile(ctx context.Context, id uuid.UUID, name string, phone string, roomIDStr string, entryDateStr string, rentalDuration int, ktpURL *string, selfieURL *string) error {
-	args := m.Called(ctx, id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL)
+func (m *MockUserRepository) UpdateTenantProfile(ctx context.Context, id uuid.UUID, name string, phone string, roomIDStr string, entryDateStr string, rentalDuration int, ktpURL *string, selfieURL *string, dateOfBirth *time.Time, gender *string, job *string, emergencyContactPhone *string, emergencyContactRelation *string, emergencyContactName *string, additionalDocURL *string) error {
+	args := m.Called(ctx, id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName, additionalDocURL)
 	return args.Error(0)
 }
 
 func (m *MockUserRepository) DeleteTenant(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) CheckoutTenant(ctx context.Context, id uuid.UUID) error {
+	args := m.Called(ctx, id)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) ChangeRoom(ctx context.Context, userID uuid.UUID, roomIDStr string) error {
+	args := m.Called(ctx, userID, roomIDStr)
+	return args.Error(0)
+}
+
+func (m *MockUserRepository) ExtendContract(ctx context.Context, userID uuid.UUID, ownerID uuid.UUID, startDate time.Time, rentalDuration int, monthlyRent float64, electricityBill float64, waterBill float64, otherBills float64, paymentDueDay int, notes string) error {
+	args := m.Called(ctx, userID, ownerID, startDate, rentalDuration, monthlyRent, electricityBill, waterBill, otherBills, paymentDueDay, notes)
 	return args.Error(0)
 }
 

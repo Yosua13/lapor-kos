@@ -273,15 +273,62 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 		rentalDuration = 1
 	}
 
+	genderStr := c.PostForm("gender")
+	var gender *string
+	if genderStr != "" {
+		gender = &genderStr
+	}
+
+	jobStr := c.PostForm("job")
+	var job *string
+	if jobStr != "" {
+		job = &jobStr
+	}
+
+	emergencyContactPhoneStr := c.PostForm("emergency_contact_phone")
+	var emergencyContactPhone *string
+	if emergencyContactPhoneStr != "" {
+		emergencyContactPhone = &emergencyContactPhoneStr
+	}
+
+	emergencyContactRelationStr := c.PostForm("emergency_contact_relation")
+	var emergencyContactRelation *string
+	if emergencyContactRelationStr != "" {
+		emergencyContactRelation = &emergencyContactRelationStr
+	}
+
+	emergencyContactNameStr := c.PostForm("emergency_contact_name")
+	var emergencyContactName *string
+	if emergencyContactNameStr != "" {
+		emergencyContactName = &emergencyContactNameStr
+	}
+
+	dobStr := c.PostForm("date_of_birth")
+	var dateOfBirth *time.Time
+	if dobStr != "" {
+		if t, err := time.Parse("2006-01-02", dobStr); err == nil {
+			dateOfBirth = &t
+		}
+	}
+
 	ktpPath, _ := h.uploadFile(c, "ktp")
 	selfiePath, _ := h.uploadFile(c, "selfie")
+	additionalDocPath, _ := h.uploadFile(c, "additional_doc")
 
 	user := &model.User{
-		Name:      name,
-		Phone:     phone,
-		Email:     email,
-		KtpURL:    &ktpPath,
-		SelfieURL: &selfiePath,
+		Name:                     name,
+		Phone:                    phone,
+		Email:                    email,
+		KtpURL:                   &ktpPath,
+		SelfieURL:                &selfiePath,
+		DateOfBirth:              dateOfBirth,
+		Gender:                   gender,
+		Job:                      job,
+		EmergencyContactPhone:    emergencyContactPhone,
+		EmergencyContactRelation: emergencyContactRelation,
+		EmergencyContactName:     emergencyContactName,
+		AdditionalDocURL:         &additionalDocPath,
+		IsActive:                 true,
 	}
 
 	electricityBillStr := c.PostForm("electricity_bill")

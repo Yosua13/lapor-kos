@@ -380,8 +380,47 @@ func (h *AuthHandler) UpdateTenantProfileByID(c *gin.Context) {
 	rentalDurationStr := c.PostForm("rental_duration")
 	rentalDuration, _ := strconv.Atoi(rentalDurationStr)
 
+	genderStr := c.PostForm("gender")
+	var gender *string
+	if genderStr != "" {
+		gender = &genderStr
+	}
+
+	jobStr := c.PostForm("job")
+	var job *string
+	if jobStr != "" {
+		job = &jobStr
+	}
+
+	emergencyContactPhoneStr := c.PostForm("emergency_contact_phone")
+	var emergencyContactPhone *string
+	if emergencyContactPhoneStr != "" {
+		emergencyContactPhone = &emergencyContactPhoneStr
+	}
+
+	emergencyContactRelationStr := c.PostForm("emergency_contact_relation")
+	var emergencyContactRelation *string
+	if emergencyContactRelationStr != "" {
+		emergencyContactRelation = &emergencyContactRelationStr
+	}
+
+	emergencyContactNameStr := c.PostForm("emergency_contact_name")
+	var emergencyContactName *string
+	if emergencyContactNameStr != "" {
+		emergencyContactName = &emergencyContactNameStr
+	}
+
+	dobStr := c.PostForm("date_of_birth")
+	var dateOfBirth *time.Time
+	if dobStr != "" {
+		if t, err := time.Parse("2006-01-02", dobStr); err == nil {
+			dateOfBirth = &t
+		}
+	}
+
 	ktpPath, _ := h.uploadFile(c, "ktp")
 	selfiePath, _ := h.uploadFile(c, "selfie")
+	additionalDocPath, _ := h.uploadFile(c, "additional_doc")
 
 	var ktpURL *string
 	if ktpPath != "" {
@@ -391,8 +430,12 @@ func (h *AuthHandler) UpdateTenantProfileByID(c *gin.Context) {
 	if selfiePath != "" {
 		selfieURL = &selfiePath
 	}
+	var additionalDocURL *string
+	if additionalDocPath != "" {
+		additionalDocURL = &additionalDocPath
+	}
 
-	err = h.repo.UpdateTenantProfile(c.Request.Context(), id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL)
+	err = h.repo.UpdateTenantProfile(c.Request.Context(), id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName, additionalDocURL)
 	if err != nil {
 		log.Printf("Error updating tenant profile: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update tenant profile: " + err.Error()})
@@ -400,6 +443,94 @@ func (h *AuthHandler) UpdateTenantProfileByID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Tenant profile updated successfully"})
+}
+
+func (h *AuthHandler) CheckoutTenant(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	err = h.repo.CheckoutTenant(c.Request.Context(), id)
+	if err != nil {
+		log.Printf("Error checking out tenant: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to checkout tenant: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Tenant checked out successfully"})
+}
+
+func (h *AuthHandler) ChangeRoom(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	var req struct {
+		RoomID string `json:"room_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	err = h.repo.ChangeRoom(c.Request.Context(), id, req.RoomID)
+	if err != nil {
+		log.Printf("Error changing room: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change room: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Room changed successfully"})
+}
+
+func (h *AuthHandler) ExtendContract(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		return
+	}
+
+	var req struct {
+		StartDate       string  `json:"start_date" binding:"required"`
+		RentalDuration  int     `json:"rental_duration" binding:"required"`
+		MonthlyRent     float64 `json:"monthly_rent" binding:"required"`
+		ElectricityBill float64 `json:"electricity_bill"`
+		WaterBill       float64 `json:"water_bill"`
+		OtherBills      float64 `json:"other_bills"`
+		PaymentDueDay   int     `json:"payment_due_day"`
+		Notes           string  `json:"notes"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
+		return
+	}
+
+	ownerIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	ownerID, _ := uuid.Parse(ownerIDStr.(string))
+
+	startDate, err := time.Parse("2006-01-02", req.StartDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start date format (must be YYYY-MM-DD)"})
+		return
+	}
+
+	err = h.repo.ExtendContract(c.Request.Context(), id, ownerID, startDate, req.RentalDuration, req.MonthlyRent, req.ElectricityBill, req.WaterBill, req.OtherBills, req.PaymentDueDay, req.Notes)
+	if err != nil {
+		log.Printf("Error extending contract: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to extend contract: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Contract extended successfully"})
 }
 
 func (h *AuthHandler) DeleteTenantByID(c *gin.Context) {

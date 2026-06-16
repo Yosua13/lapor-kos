@@ -53,6 +53,22 @@ func main() {
 		log.Println("Inline migration: users.phone column verified/created")
 	}
 
+	_, err = dbPool.Exec(context.Background(), `
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(50);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS job VARCHAR(100);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(50);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_relation VARCHAR(50);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(100);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_doc_url TEXT;
+	`)
+	if err != nil {
+		log.Printf("Warning: Failed to run inline migration for user profile details: %v", err)
+	} else {
+		log.Println("Inline migration: users profile detail columns verified/created")
+	}
+
 	_, err = dbPool.Exec(context.Background(), `ALTER TABLE contracts ADD COLUMN IF NOT EXISTS electricity_bill DECIMAL(10,2) NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS water_bill DECIMAL(10,2) NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS other_bills DECIMAL(10,2) NOT NULL DEFAULT 0;`)
 	if err != nil {
 		log.Printf("Warning: Failed to run inline migration to add billing columns to contracts: %v", err)
@@ -156,6 +172,9 @@ func main() {
 			tenants.GET("/:id", middleware.RoleMiddleware(dbPool, "owner"), authHandler.GetTenantProfileByID)
 			tenants.PUT("/:id", middleware.RoleMiddleware(dbPool, "owner"), authHandler.UpdateTenantProfileByID)
 			tenants.DELETE("/:id", middleware.RoleMiddleware(dbPool, "owner"), authHandler.DeleteTenantByID)
+			tenants.POST("/:id/checkout", middleware.RoleMiddleware(dbPool, "owner"), authHandler.CheckoutTenant)
+			tenants.POST("/:id/change-room", middleware.RoleMiddleware(dbPool, "owner"), authHandler.ChangeRoom)
+			tenants.POST("/:id/extend-contract", middleware.RoleMiddleware(dbPool, "owner"), authHandler.ExtendContract)
 		}
 
 

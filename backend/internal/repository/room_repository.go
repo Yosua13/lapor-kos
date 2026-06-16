@@ -63,16 +63,27 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 				return err
 			}
 			userID = uuid.New()
-			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone, ktp_url, selfie_url) 
-			              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
-			err = tx.QueryRow(ctx, userQuery, userID, user.Name, user.Email, string(hashedPassword), "tenant", true, user.Phone, user.KtpURL, user.SelfieURL).Scan(&userID)
+			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone, ktp_url, selfie_url, date_of_birth, gender, job, emergency_contact_phone, emergency_contact_relation, emergency_contact_name, additional_doc_url) 
+			              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
+			err = tx.QueryRow(ctx, userQuery, userID, user.Name, user.Email, string(hashedPassword), "tenant", true, user.Phone, user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job, user.EmergencyContactPhone, user.EmergencyContactRelation, user.EmergencyContactName, user.AdditionalDocURL).Scan(&userID)
 			if err != nil {
 				return err
 			}
 		} else {
 			// Update ktp/selfie/phone if provided
-			updateQ := `UPDATE users SET phone = COALESCE(NULLIF($1, ''), phone), ktp_url = COALESCE($2, ktp_url), selfie_url = COALESCE($3, selfie_url) WHERE id = $4`
-			_, err = tx.Exec(ctx, updateQ, user.Phone, user.KtpURL, user.SelfieURL, userID)
+			updateQ := `UPDATE users SET 
+				phone = COALESCE(NULLIF($1, ''), phone), 
+				ktp_url = COALESCE($2, ktp_url), 
+				selfie_url = COALESCE($3, selfie_url),
+				date_of_birth = COALESCE($4, date_of_birth),
+				gender = COALESCE($5, gender),
+				job = COALESCE($6, job),
+				emergency_contact_phone = COALESCE($7, emergency_contact_phone),
+				emergency_contact_relation = COALESCE($8, emergency_contact_relation),
+				emergency_contact_name = COALESCE($9, emergency_contact_name),
+				additional_doc_url = COALESCE($10, additional_doc_url)
+				WHERE id = $11`
+			_, err = tx.Exec(ctx, updateQ, user.Phone, user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job, user.EmergencyContactPhone, user.EmergencyContactRelation, user.EmergencyContactName, user.AdditionalDocURL, userID)
 			if err != nil {
 				return err
 			}
@@ -174,15 +185,27 @@ func (r *RoomRepository) UpdateWithTenant(ctx context.Context, room *model.Room,
 				return err
 			}
 			userID = uuid.New()
-			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone, ktp_url, selfie_url) 
-			              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
-			err = tx.QueryRow(ctx, userQuery, userID, user.Name, user.Email, string(hashedPassword), "tenant", true, user.Phone, user.KtpURL, user.SelfieURL).Scan(&userID)
+			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone, ktp_url, selfie_url, date_of_birth, gender, job, emergency_contact_phone, emergency_contact_relation, emergency_contact_name, additional_doc_url) 
+			              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
+			err = tx.QueryRow(ctx, userQuery, userID, user.Name, user.Email, string(hashedPassword), "tenant", true, user.Phone, user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job, user.EmergencyContactPhone, user.EmergencyContactRelation, user.EmergencyContactName, user.AdditionalDocURL).Scan(&userID)
 			if err != nil {
 				return err
 			}
 		} else {
-			updateQ := `UPDATE users SET name = COALESCE(NULLIF($1, ''), name), phone = COALESCE(NULLIF($2, ''), phone), ktp_url = COALESCE($3, ktp_url), selfie_url = COALESCE($4, selfie_url) WHERE id = $5`
-			_, err = tx.Exec(ctx, updateQ, user.Name, user.Phone, user.KtpURL, user.SelfieURL, userID)
+			updateQ := `UPDATE users SET 
+				name = COALESCE(NULLIF($1, ''), name), 
+				phone = COALESCE(NULLIF($2, ''), phone), 
+				ktp_url = COALESCE($3, ktp_url), 
+				selfie_url = COALESCE($4, selfie_url),
+				date_of_birth = COALESCE($5, date_of_birth),
+				gender = COALESCE($6, gender),
+				job = COALESCE($7, job),
+				emergency_contact_phone = COALESCE($8, emergency_contact_phone),
+				emergency_contact_relation = COALESCE($9, emergency_contact_relation),
+				emergency_contact_name = COALESCE($10, emergency_contact_name),
+				additional_doc_url = COALESCE($11, additional_doc_url)
+				WHERE id = $12`
+			_, err = tx.Exec(ctx, updateQ, user.Name, user.Phone, user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job, user.EmergencyContactPhone, user.EmergencyContactRelation, user.EmergencyContactName, user.AdditionalDocURL, userID)
 			if err != nil {
 				return err
 			}
