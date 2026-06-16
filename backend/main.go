@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/cron"
 	"github.com/Yosua13/lapor-kos/backend/internal/handler"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
@@ -39,6 +40,10 @@ func main() {
 	}
 	defer dbPool.Close()
 
+	// Start Background Cron Jobs
+	billingCron := cron.NewBillingCron(dbPool)
+	billingCron.Start()
+
 	// Verify connection
 	if err := dbPool.Ping(context.Background()); err != nil {
 		log.Fatalf("Database ping failed: %v\n", err)
@@ -69,7 +74,14 @@ func main() {
 		log.Println("Inline migration: users profile detail columns verified/created")
 	}
 
-	_, err = dbPool.Exec(context.Background(), `ALTER TABLE contracts ADD COLUMN IF NOT EXISTS electricity_bill DECIMAL(10,2) NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS water_bill DECIMAL(10,2) NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS other_bills DECIMAL(10,2) NOT NULL DEFAULT 0;`)
+	_, err = dbPool.Exec(context.Background(), `
+		ALTER TABLE contracts 
+		ADD COLUMN IF NOT EXISTS electricity_bill DECIMAL(10,2) NOT NULL DEFAULT 0, 
+		ADD COLUMN IF NOT EXISTS water_bill DECIMAL(10,2) NOT NULL DEFAULT 0, 
+		ADD COLUMN IF NOT EXISTS other_bills DECIMAL(10,2) NOT NULL DEFAULT 0,
+		ADD COLUMN IF NOT EXISTS payment_interval VARCHAR(50) NOT NULL DEFAULT 'monthly',
+		ADD COLUMN IF NOT EXISTS deposit DECIMAL(10,2) NOT NULL DEFAULT 0;
+	`)
 	if err != nil {
 		log.Printf("Warning: Failed to run inline migration to add billing columns to contracts: %v", err)
 	} else {
@@ -137,6 +149,14 @@ func main() {
 				"status":   "UP",
 				"database": "Connected",
 				"message":  "Lapor Kos API is running",
+			})
+		})
+
+		api.POST("/cron/trigger", func(c *gin.Context) {
+			billingCron.Trigger()
+			c.JSON(http.StatusOK, gin.H{
+				"status":  "success",
+				"message": "Billing cron triggered successfully",
 			})
 		})
 
