@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Check,
   ChevronRight,
@@ -27,8 +27,9 @@ const STEPS = [
   { id: 4, title: 'Review' },
 ];
 
-export default function AddRoomPage() {
+function AddRoomContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,7 +56,32 @@ export default function AddRoomPage() {
   // Mount logic
   useEffect(() => {
     setMounted(true);
-  }, []);
+    
+    const fetchRoomDetails = async () => {
+      const rId = searchParams.get('roomId');
+      if (rId) {
+        try {
+          const room = await apiFetch(`/api/rooms/${rId}`);
+          if (room) {
+            setDraftId(room.id);
+            setRoomData({
+              room_number: room.room_number || '',
+              price_per_month: room.price_per_month ? room.price_per_month.toLocaleString('id-ID') : '',
+              description: room.description || '',
+              type: room.type || '',
+              status: 'occupied',
+              floor: room.floor || ''
+            });
+            setCurrentStep(2);
+          }
+        } catch (err: any) {
+          console.error('Failed to fetch room details:', err.message);
+        }
+      }
+    };
+
+    fetchRoomDetails();
+  }, [searchParams]);
 
   const formatPhoneNumber = (val: string) => {
     let cleaned = val.replace(/\D/g, '');
@@ -268,7 +294,7 @@ export default function AddRoomPage() {
 
       <div className="flex flex-col lg:flex-row gap-6 flex-1">
         {/* Left Form Area */}
-        <div className="flex-1 bg-white rounded-[24px] border border-gray-200 shadow-sm p-8 flex flex-col">
+        <div className="flex-1 bg-white rounded-[24px] border border-gray-200 shadow-sm p-8 flex flex-col h-fit">
           <div className="mb-8">
             <h2 className="text-[20px] font-bold text-brand-navy mb-1">{STEPS[currentStep - 1].title}</h2>
             <p className="text-[13px] text-gray-500">
@@ -279,7 +305,7 @@ export default function AddRoomPage() {
             </p>
           </div>
 
-          <div className="space-y-6 flex-1">
+          <div className="space-y-6">
             {/* STEP 1: Data Kamar */}
             {currentStep === 1 && (
               <>
@@ -880,6 +906,12 @@ export default function AddRoomPage() {
                         <span className="text-gray-500">Jatuh Tempo</span>
                         <span className="font-bold text-brand-navy">{contractData.payment_due_day ? `Tanggal ${contractData.payment_due_day}` : '-'}</span>
                       </div>
+                      {contractData.notes && (
+                        <div className="flex justify-between items-center text-[14px]">
+                          <span className="text-gray-500 font-bold">Catatan Tambahan</span>
+                          <span className="font-medium text-gray-700 leading-relaxed">{contractData.notes}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="mt-6 pt-6 border-t border-gray-100">
@@ -887,12 +919,6 @@ export default function AddRoomPage() {
                         <span className="font-bold text-gray-700 text-[15px]">Total Biaya</span>
                         <span className="font-extrabold text-[#0e8a7a] text-[20px]">{totalBiaya ? `Rp ${totalBiaya.toLocaleString('id-ID')}` : '-'}</span>
                       </div>
-                      {contractData.notes && (
-                        <div className="flex flex-col gap-1 text-[13px] p-4 bg-gray-50 rounded-xl">
-                          <span className="text-gray-500 font-bold">Catatan Tambahan</span>
-                          <span className="font-medium text-gray-700 leading-relaxed">{contractData.notes}</span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
@@ -910,7 +936,7 @@ export default function AddRoomPage() {
             </button>
 
             <div className="flex gap-4">
-              {currentStep < 4 && !(currentStep === 1 && roomData.status === 'occupied') && (
+              {currentStep === 1 && (
                 <button
                   onClick={saveDraft}
                   className="px-6 py-3 border border-gray-200 text-gray-600 font-bold text-[14px] rounded-[12px] hover:bg-gray-50 transition-colors flex items-center gap-2"
@@ -1064,5 +1090,13 @@ export default function AddRoomPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AddRoomPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center items-center h-64"><Loader2 className="w-10 h-10 animate-spin text-brand-teal" /></div>}>
+      <AddRoomContent />
+    </Suspense>
   );
 }
