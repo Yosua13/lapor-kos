@@ -90,6 +90,8 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 		PricePerMonth: req.PricePerMonth,
 		Description:   req.Description,
 		Status:        req.Status,
+		Floor:         req.Floor,
+		Type:          req.Type,
 	}
 
 	if err := h.repo.Update(c.Request.Context(), room); err != nil {
@@ -107,8 +109,11 @@ func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 		return
 	}
 
-	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete room"})
+	deleteTenantStr := c.Query("delete_tenant")
+	deleteTenant := deleteTenantStr == "true"
+
+	if err := h.repo.DeleteWithTenant(c.Request.Context(), id, deleteTenant); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete room: " + err.Error()})
 		return
 	}
 

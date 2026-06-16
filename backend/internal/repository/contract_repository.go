@@ -35,10 +35,24 @@ func (r *ContractRepository) Create(ctx context.Context, contract *model.Contrac
 		}
 	}
 
-	query := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes) 
-	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id, created_at`
-	err = tx.QueryRow(ctx, query, contract.RoomID, contract.UserID, contract.OwnerID, contract.StartDate, contract.EndDate, contract.RentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, contract.PaymentDueDay, contract.Status, contract.Notes).
+	query := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills) 
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id, created_at`
+	err = tx.QueryRow(ctx, query, contract.RoomID, contract.UserID, contract.OwnerID, contract.StartDate, contract.EndDate, contract.RentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, contract.PaymentDueDay, contract.Status, contract.Notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills).
 		Scan(&contract.ID, &contract.CreatedAt)
+	if err != nil {
+		return err
+	}
+
+	// Create Initial Payment
+	dueDate := contract.StartDate.AddDate(0, 1, -3)
+	notes := contract.Notes
+	if notes == "" {
+		notes = fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", contract.PaymentDueDay)
+	}
+	paymentID := uuid.New()
+	paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
+	_, err = tx.Exec(ctx, paymentQuery, paymentID, contract.ID, contract.OwnerID, int(contract.StartDate.Month()), contract.StartDate.Year(), contract.MonthlyRent, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, 0.0, "", "unpaid", dueDate, notes)
 	if err != nil {
 		return err
 	}

@@ -117,7 +117,7 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 		payment.PaymentMethod = ""
 		payment.Status = "unpaid"
 		payment.DueDate = dueDate
-		payment.Notes = "Initial payment generated on contract creation"
+		payment.Notes = notes
 
 		paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
 						 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
@@ -250,7 +250,30 @@ func (r *RoomRepository) UpdateWithTenant(ctx context.Context, room *model.Room,
 			paymentUpdate := `UPDATE payments SET amount_rent=$1, amount_electricity=$2, amount_water=$3, amount_other=$4, due_date=$5 
 							  WHERE contract_id=$6 AND status='unpaid' RETURNING id`
 			err = tx.QueryRow(ctx, paymentUpdate, contract.MonthlyRent, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, dueDate, contract.ID).Scan(&payment.ID)
-			if err == nil {
+			if err != nil { // if payment doesn't exist, insert one!
+				paymentID := uuid.New()
+				payment.ID = paymentID
+				payment.ContractID = contract.ID
+				payment.OwnerID = &ownerID
+				payment.PeriodMonth = int(startDate.Month())
+				payment.PeriodYear = startDate.Year()
+				payment.AmountRent = contract.MonthlyRent
+				payment.AmountElectricity = contract.ElectricityBill
+				payment.AmountWater = contract.WaterBill
+				payment.AmountOther = contract.OtherBills
+				payment.TotalPaid = 0
+				payment.PaymentMethod = ""
+				payment.Status = "unpaid"
+				payment.DueDate = dueDate
+				payment.Notes = notes
+
+				paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
+								 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
+				_, err = tx.Exec(ctx, paymentQuery, payment.ID, payment.ContractID, payment.OwnerID, payment.PeriodMonth, payment.PeriodYear, payment.AmountRent, payment.AmountElectricity, payment.AmountWater, payment.AmountOther, payment.TotalPaid, payment.PaymentMethod, payment.Status, payment.DueDate, payment.Notes)
+				if err != nil {
+					return err
+				}
+			} else {
 				payment.ContractID = contract.ID
 				payment.AmountRent = contract.MonthlyRent
 				payment.AmountElectricity = contract.ElectricityBill
@@ -313,7 +336,7 @@ func (r *RoomRepository) AssignTenant(ctx context.Context, roomID uuid.UUID, use
 	}
 
 	contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills) 
-	                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
+	                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`
 	
 	startDate := contract.StartDate
 	rentalDuration := contract.RentalDuration
@@ -330,7 +353,16 @@ func (r *RoomRepository) AssignTenant(ctx context.Context, roomID uuid.UUID, use
 		notes = fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
 	}
 	
-	_, err = tx.Exec(ctx, contractQuery, roomID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills)
+	err = tx.QueryRow(ctx, contractQuery, roomID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills).Scan(&contract.ID)
+	if err != nil {
+		return err
+	}
+
+	// Create Initial Payment
+	paymentID := uuid.New()
+	paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
+					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
+	_, err = tx.Exec(ctx, paymentQuery, paymentID, contract.ID, ownerID, int(startDate.Month()), startDate.Year(), contract.MonthlyRent, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, 0.0, "", "unpaid", dueDate, notes)
 	if err != nil {
 		return err
 	}
@@ -344,7 +376,7 @@ func (r *RoomRepository) AssignTenant(ctx context.Context, roomID uuid.UUID, use
 }
 
 func (r *RoomRepository) FindAll(ctx context.Context) ([]model.Room, error) {
-	query := `SELECT id, room_number, price_per_month, description, status, created_at FROM rooms ORDER BY room_number ASC`
+	query := `SELECT id, room_number, price_per_month, description, status, floor, is_draft, type, created_at FROM rooms ORDER BY room_number ASC`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
 		return nil, err
@@ -354,7 +386,7 @@ func (r *RoomRepository) FindAll(ctx context.Context) ([]model.Room, error) {
 	var rooms []model.Room
 	for rows.Next() {
 		var room model.Room
-		err := rows.Scan(&room.ID, &room.RoomNumber, &room.PricePerMonth, &room.Description, &room.Status, &room.CreatedAt)
+		err := rows.Scan(&room.ID, &room.RoomNumber, &room.PricePerMonth, &room.Description, &room.Status, &room.Floor, &room.IsDraft, &room.Type, &room.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -364,9 +396,9 @@ func (r *RoomRepository) FindAll(ctx context.Context) ([]model.Room, error) {
 }
 
 func (r *RoomRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Room, error) {
-	query := `SELECT id, room_number, price_per_month, description, status, created_at FROM rooms WHERE id = $1`
+	query := `SELECT id, room_number, price_per_month, description, status, floor, is_draft, type, created_at FROM rooms WHERE id = $1`
 	room := &model.Room{}
-	err := r.db.QueryRow(ctx, query, id).Scan(&room.ID, &room.RoomNumber, &room.PricePerMonth, &room.Description, &room.Status, &room.CreatedAt)
+	err := r.db.QueryRow(ctx, query, id).Scan(&room.ID, &room.RoomNumber, &room.PricePerMonth, &room.Description, &room.Status, &room.Floor, &room.IsDraft, &room.Type, &room.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -374,12 +406,49 @@ func (r *RoomRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Roo
 }
 
 func (r *RoomRepository) Update(ctx context.Context, room *model.Room) error {
-	query := `UPDATE rooms SET room_number = $1, price_per_month = $2, description = $3, status = $4 WHERE id = $5`
-	_, err := r.db.Exec(ctx, query, room.RoomNumber, room.PricePerMonth, room.Description, room.Status, room.ID)
+	query := `UPDATE rooms SET room_number = $1, price_per_month = $2, description = $3, status = $4, floor = $5, type = $6 WHERE id = $7`
+	_, err := r.db.Exec(ctx, query, room.RoomNumber, room.PricePerMonth, room.Description, room.Status, room.Floor, room.Type, room.ID)
 	return err
 }
 
 func (r *RoomRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM rooms WHERE id = $1`, id)
 	return err
+}
+
+func (r *RoomRepository) DeleteWithTenant(ctx context.Context, id uuid.UUID, deleteTenant bool) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if deleteTenant {
+		var userIDs []uuid.UUID
+		rows, err := tx.Query(ctx, "SELECT DISTINCT user_id FROM contracts WHERE room_id = $1 AND status = 'active' AND user_id IS NOT NULL", id)
+		if err == nil {
+			for rows.Next() {
+				var uID uuid.UUID
+				if errScan := rows.Scan(&uID); errScan == nil {
+					userIDs = append(userIDs, uID)
+				}
+			}
+			rows.Close()
+		}
+
+		for _, uID := range userIDs {
+			_, _ = tx.Exec(ctx, "DELETE FROM payments WHERE contract_id IN (SELECT id FROM contracts WHERE user_id = $1)", uID)
+			_, _ = tx.Exec(ctx, "DELETE FROM complaints WHERE user_id = $1", uID)
+			_, _ = tx.Exec(ctx, "DELETE FROM contracts WHERE user_id = $1", uID)
+			_, _ = tx.Exec(ctx, "DELETE FROM users WHERE id = $1", uID)
+		}
+	}
+
+	_, _ = tx.Exec(ctx, "DELETE FROM complaints WHERE room_id = $1", id)
+	_, err = tx.Exec(ctx, "DELETE FROM rooms WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

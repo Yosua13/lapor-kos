@@ -41,10 +41,10 @@ func (r *PaymentRepository) Create(ctx context.Context, p *model.Payment) error 
 func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Payment, error) {
 	query := `SELECT 
 		p.id, p.contract_id, p.owner_id, p.period_month, p.period_year, 
-		p.amount_rent, p.amount_electricity, p.amount_water, p.amount_other, 
-		p.total_paid, p.payment_method, p.status, p.proof_photo_url, 
-		p.paid_at, p.due_date, p.notes, p.created_at,
-		c.monthly_rent, c.deposit, c.payment_due_day,
+		COALESCE(p.amount_rent, 0), COALESCE(p.amount_electricity, 0), COALESCE(p.amount_water, 0), COALESCE(p.amount_other, 0), 
+		COALESCE(p.total_paid, 0), COALESCE(p.payment_method, ''), p.status, COALESCE(p.proof_photo_url, ''), 
+		p.paid_at, p.due_date, COALESCE(p.notes, ''), p.created_at,
+		COALESCE(c.monthly_rent, 0), COALESCE(c.deposit, 0), COALESCE(c.payment_due_day, 1),
 		r.room_number, r.price_per_month,
 		u.name, u.phone, u.id
 	FROM payments p
@@ -107,9 +107,9 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, filterMonth int, filterYear int, contractIDStr string, userIDStr string) ([]model.Payment, error) {
 	query := `SELECT 
 		p.id, p.contract_id, p.owner_id, p.period_month, p.period_year, 
-		p.amount_rent, p.amount_electricity, p.amount_water, p.amount_other, 
-		p.total_paid, p.payment_method, p.status, p.proof_photo_url, 
-		p.paid_at, p.due_date, p.notes, p.created_at,
+		COALESCE(p.amount_rent, 0), COALESCE(p.amount_electricity, 0), COALESCE(p.amount_water, 0), COALESCE(p.amount_other, 0), 
+		COALESCE(p.total_paid, 0), COALESCE(p.payment_method, ''), p.status, COALESCE(p.proof_photo_url, ''), 
+		p.paid_at, p.due_date, COALESCE(p.notes, ''), p.created_at,
 		r.room_number, u.name
 	FROM payments p
 	JOIN contracts c ON p.contract_id = c.id
@@ -198,9 +198,9 @@ func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, fi
 func (r *PaymentRepository) FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Payment, error) {
 	query := `SELECT 
 		p.id, p.contract_id, p.owner_id, p.period_month, p.period_year, 
-		p.amount_rent, p.amount_electricity, p.amount_water, p.amount_other, 
-		p.total_paid, p.payment_method, p.status, p.proof_photo_url, 
-		p.paid_at, p.due_date, p.notes, p.created_at,
+		COALESCE(p.amount_rent, 0), COALESCE(p.amount_electricity, 0), COALESCE(p.amount_water, 0), COALESCE(p.amount_other, 0), 
+		COALESCE(p.total_paid, 0), COALESCE(p.payment_method, ''), p.status, COALESCE(p.proof_photo_url, ''), 
+		p.paid_at, p.due_date, COALESCE(p.notes, ''), p.created_at,
 		r.room_number, u.name
 	FROM payments p
 	JOIN contracts c ON p.contract_id = c.id
