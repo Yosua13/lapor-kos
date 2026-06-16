@@ -36,7 +36,17 @@ function AddRoomContent() {
 
   // Form States
   const [roomData, setRoomData] = useState({ room_number: '', price_per_month: '', description: '', type: '', status: '', floor: '' });
-  const [tenantData, setTenantData] = useState({ name: '', phone: '', email: '' });
+  const [tenantData, setTenantData] = useState({ 
+    name: '', 
+    phone: '', 
+    email: '', 
+    date_of_birth: '', 
+    gender: '', 
+    job: '', 
+    emergency_contact_phone: '', 
+    emergency_contact_relation: '', 
+    emergency_contact_name: '' 
+  });
   const [contractData, setContractData] = useState({
     entry_date: '',
     rental_duration: '',
@@ -50,7 +60,7 @@ function AddRoomContent() {
   const [draftId, setDraftId] = useState<string | null>(null);
 
   // File states (files can't be saved in localStorage easily, so they are kept in memory)
-  const [files, setFiles] = useState<{ ktp: File | null, selfie: File | null }>({ ktp: null, selfie: null });
+  const [files, setFiles] = useState<{ ktp: File | null, selfie: File | null, additional_doc: File | null }>({ ktp: null, selfie: null, additional_doc: null });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Mount logic
@@ -120,6 +130,19 @@ function AddRoomContent() {
           }
         }
         if (!tenantData.email) newErrors.tenant_email = 'Email wajib diisi!';
+        if (!tenantData.date_of_birth) newErrors.date_of_birth = 'Tanggal Lahir wajib diisi!';
+        if (!tenantData.gender) newErrors.gender = 'Jenis Kelamin wajib dipilih!';
+        if (!tenantData.job) newErrors.job = 'Pekerjaan / Status wajib diisi!';
+        if (!tenantData.emergency_contact_name) newErrors.emergency_contact_name = 'Nama Kontak Darurat wajib diisi!';
+        if (!tenantData.emergency_contact_relation) newErrors.emergency_contact_relation = 'Hubungan wajib diisi!';
+        if (!tenantData.emergency_contact_phone) {
+          newErrors.emergency_contact_phone = 'Nomor HP / WA Darurat wajib diisi!';
+        } else {
+          const rawEmergency = tenantData.emergency_contact_phone.replace(/\D/g, '');
+          if (rawEmergency.length < 10 || rawEmergency.length > 14) {
+            newErrors.emergency_contact_phone = 'Nomor HP Darurat harus 10-14 digit!';
+          }
+        }
         if (!files.ktp) newErrors.ktp = 'Foto KTP wajib diupload!';
         if (!files.selfie) newErrors.selfie = 'Foto Selfie wajib diupload!';
       }
@@ -172,6 +195,15 @@ function AddRoomContent() {
       data.append('name', tenantData.name);
       data.append('phone', tenantData.phone);
       data.append('email', tenantData.email);
+      data.append('date_of_birth', tenantData.date_of_birth);
+      data.append('gender', tenantData.gender);
+      data.append('job', tenantData.job);
+      data.append('emergency_contact_phone', tenantData.emergency_contact_phone);
+      data.append('emergency_contact_relation', tenantData.emergency_contact_relation);
+      data.append('emergency_contact_name', tenantData.emergency_contact_name);
+      if (files.additional_doc) {
+        data.append('additional_doc', files.additional_doc);
+      }
       data.append('entry_date', contractData.entry_date);
       data.append('rental_duration', contractData.rental_duration);
       data.append('electricity_bill', contractData.electricity_bill || '0');
@@ -507,7 +539,7 @@ function AddRoomContent() {
               <>
                 <div className="flex flex-col lg:flex-row gap-6 items-start">
                   <div className="w-full lg:w-40 shrink-0 mt-3">
-                    <label className="text-[13px] font-bold text-gray-700">Nama Lengkap</label>
+                    <label className="text-[13px] font-bold text-gray-700">Nama Lengkap <span className="text-red-500">*</span></label>
                   </div>
                   <div className="relative flex-1 w-full">
                     <User className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -525,9 +557,68 @@ function AddRoomContent() {
                   </div>
                 </div>
 
+                <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+                  <div className="w-full lg:w-40 shrink-0 mt-3">
+                    <label className="text-[13px] font-bold text-gray-700">Tanggal Lahir <span className="text-red-500">*</span></label>
+                  </div>
+                  <div className="relative flex-1 w-full">
+                    <Calendar className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="date"
+                      value={tenantData.date_of_birth}
+                      onChange={e => {
+                        setTenantData({ ...tenantData, date_of_birth: e.target.value });
+                        if (errors.date_of_birth) setErrors({ ...errors, date_of_birth: '' });
+                      }}
+                      className={`w-full bg-white border ${errors.date_of_birth ? 'border-red-500' : 'border-gray-200'} rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
+                    />
+                    {errors.date_of_birth && <p className="text-red-500 text-[12px] mt-1">{errors.date_of_birth}</p>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+                  <div className="w-full lg:w-40 shrink-0 mt-3">
+                    <label className="text-[13px] font-bold text-gray-700">Jenis Kelamin <span className="text-red-500">*</span></label>
+                  </div>
+                  <div className="relative flex-1 w-full">
+                    <select
+                      value={tenantData.gender}
+                      onChange={e => {
+                        setTenantData({ ...tenantData, gender: e.target.value });
+                        if (errors.gender) setErrors({ ...errors, gender: '' });
+                      }}
+                      className={`w-full bg-white border ${errors.gender ? 'border-red-500' : 'border-gray-200'} rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
+                    >
+                      <option value="">Pilih jenis kelamin...</option>
+                      <option value="Laki-laki">Laki-laki</option>
+                      <option value="Perempuan">Perempuan</option>
+                    </select>
+                    {errors.gender && <p className="text-red-500 text-[12px] mt-1">{errors.gender}</p>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+                  <div className="w-full lg:w-40 shrink-0 mt-3">
+                    <label className="text-[13px] font-bold text-gray-700">Pekerjaan / Status <span className="text-red-500">*</span></label>
+                  </div>
+                  <div className="relative flex-1 w-full">
+                    <input
+                      type="text"
+                      value={tenantData.job}
+                      onChange={e => {
+                        setTenantData({ ...tenantData, job: e.target.value });
+                        if (errors.job) setErrors({ ...errors, job: '' });
+                      }}
+                      placeholder="Contoh: Karyawan, Mahasiswa, etc."
+                      className={`w-full bg-white border ${errors.job ? 'border-red-500' : 'border-gray-200'} rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
+                    />
+                    {errors.job && <p className="text-red-500 text-[12px] mt-1">{errors.job}</p>}
+                  </div>
+                </div>
+
                 <div className="flex flex-col lg:flex-row gap-6 items-start">
                   <div className="w-full lg:w-40 shrink-0 mt-3">
-                    <label className="text-[13px] font-bold text-gray-700">Nomor HP / WA</label>
+                    <label className="text-[13px] font-bold text-gray-700">Nomor HP / WA <span className="text-red-500">*</span></label>
                   </div>
                   <div className="relative flex-1 w-full">
                     <Phone className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -563,6 +654,71 @@ function AddRoomContent() {
                     />
                     {errors.tenant_email && <p className="text-red-500 text-[12px] mt-1">{errors.tenant_email}</p>}
                   </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-6 mt-6 w-full">
+                  <h3 className="font-bold text-[15px] text-brand-navy mb-4">Kontak Darurat / Kerabat</h3>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+                  <div className="w-full lg:w-40 shrink-0 mt-3">
+                    <label className="text-[13px] font-bold text-gray-700">Nama Kontak <span className="text-red-500">*</span></label>
+                  </div>
+                  <div className="relative flex-1 w-full">
+                    <input
+                      type="text"
+                      value={tenantData.emergency_contact_name}
+                      onChange={e => {
+                        setTenantData({ ...tenantData, emergency_contact_name: e.target.value });
+                        if (errors.emergency_contact_name) setErrors({ ...errors, emergency_contact_name: '' });
+                      }}
+                      placeholder="Nama kerabat / kontak darurat"
+                      className={`w-full bg-white border ${errors.emergency_contact_name ? 'border-red-500' : 'border-gray-200'} rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
+                    />
+                    {errors.emergency_contact_name && <p className="text-red-500 text-[12px] mt-1">{errors.emergency_contact_name}</p>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+                  <div className="w-full lg:w-40 shrink-0 mt-3">
+                    <label className="text-[13px] font-bold text-gray-700">Hubungan <span className="text-red-500">*</span></label>
+                  </div>
+                  <div className="relative flex-1 w-full">
+                    <input
+                      type="text"
+                      value={tenantData.emergency_contact_relation}
+                      onChange={e => {
+                        setTenantData({ ...tenantData, emergency_contact_relation: e.target.value });
+                        if (errors.emergency_contact_relation) setErrors({ ...errors, emergency_contact_relation: '' });
+                      }}
+                      placeholder="Contoh: Orang Tua, Saudara, Teman"
+                      className={`w-full bg-white border ${errors.emergency_contact_relation ? 'border-red-500' : 'border-gray-200'} rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
+                    />
+                    {errors.emergency_contact_relation && <p className="text-red-500 text-[12px] mt-1">{errors.emergency_contact_relation}</p>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+                  <div className="w-full lg:w-40 shrink-0 mt-3">
+                    <label className="text-[13px] font-bold text-gray-700">Nomor HP / WA <span className="text-red-500">*</span></label>
+                  </div>
+                  <div className="relative flex-1 w-full">
+                    <input
+                      type="text"
+                      value={tenantData.emergency_contact_phone}
+                      onChange={e => {
+                        setTenantData({ ...tenantData, emergency_contact_phone: formatPhoneNumber(e.target.value) });
+                        if (errors.emergency_contact_phone) setErrors({ ...errors, emergency_contact_phone: '' });
+                      }}
+                      placeholder="+62-8xx-xxxx-xxxx"
+                      className={`w-full bg-white border ${errors.emergency_contact_phone ? 'border-red-500' : 'border-gray-200'} rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
+                    />
+                    {errors.emergency_contact_phone && <p className="text-red-500 text-[12px] mt-1">{errors.emergency_contact_phone}</p>}
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-100 pt-6 mt-6 w-full">
+                  <h3 className="font-bold text-[15px] text-brand-navy mb-4">Upload Dokumen</h3>
                 </div>
 
                 <div className="flex flex-col lg:flex-row gap-6 items-start">
@@ -638,6 +794,75 @@ function AddRoomContent() {
                       </div>
                     )}
                     {errors.selfie && <p className="text-red-500 text-[12px] mt-2">{errors.selfie}</p>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+                  <div className="w-full lg:w-40 shrink-0 mt-1">
+                    <label className="text-[13px] font-bold text-gray-700 block mb-1">Dokumen Tambahan</label>
+                    <p className="text-[11px] text-gray-400 leading-tight">Optional. Upload file dokumen pendukung (KK, Surat Kerja, etc).</p>
+                  </div>
+                  <div className="flex-1 w-full">
+                    {files.additional_doc ? (
+                      <div 
+                        className="relative rounded-[16px] overflow-hidden border border-gray-200 group w-full h-32 md:h-48 bg-gray-50 flex items-center justify-center cursor-pointer" 
+                        onClick={() => {
+                          const fileUrl = URL.createObjectURL(files.additional_doc!);
+                          if (files.additional_doc!.type.startsWith('image/')) {
+                            setPreviewImage(fileUrl);
+                          } else {
+                            window.open(fileUrl, '_blank');
+                          }
+                        }}
+                      >
+                        {files.additional_doc.type.startsWith('image/') ? (
+                          <img 
+                            src={URL.createObjectURL(files.additional_doc)} 
+                            alt="Dokumen Tambahan Preview" 
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center">
+                            <FileText className="w-8 h-8 text-[#0e8a7a] mb-2" />
+                            <span className="text-xs font-bold text-brand-navy truncate max-w-xs">{files.additional_doc.name}</span>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="text-white font-bold text-sm bg-black/50 px-4 py-2 rounded-lg">
+                            {files.additional_doc.type.startsWith('image/') ? 'Pratinjau Foto' : 'Buka PDF'}
+                          </span>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setFiles({ ...files, additional_doc: null }); }}
+                          className="absolute top-2 right-2 w-8 h-8 bg-white/90 hover:bg-white text-red-500 rounded-full flex items-center justify-center shadow-sm transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="border-2 border-dashed border-gray-200 bg-gray-50/50 rounded-[16px] p-6 hover:border-brand-teal transition-colors flex items-center justify-center cursor-pointer relative">
+                        <input type="file" onChange={e => {
+                          if (e.target.files && e.target.files[0]) {
+                            const file = e.target.files[0];
+                            if (file.size > 5 * 1024 * 1024) {
+                              alert('Ukuran file maksimal 5MB!');
+                              return;
+                            }
+                            setFiles({ ...files, additional_doc: file });
+                          }
+                        }} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/jpeg,image/png,application/pdf" />
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-emerald-50 text-[#0e8a7a] rounded-xl flex items-center justify-center shrink-0">
+                            <UploadCloud className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-[14px] text-brand-navy">Klik untuk upload dokumen tambahan</p>
+                            <p className="text-[12px] text-gray-500">Format JPG, PNG, PDF (Maks. 5MB)</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
