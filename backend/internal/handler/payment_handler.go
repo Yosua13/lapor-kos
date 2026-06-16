@@ -269,6 +269,49 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 		}
 	}
 
+	depositVal := 0.0
+	if payment.Contract != nil {
+		depositVal = payment.Contract.Deposit
+	}
+	hasDeposit := depositVal > 0 && payment.AmountOther >= depositVal
+	displayOther := payment.AmountOther
+	if hasDeposit {
+		displayOther = payment.AmountOther - depositVal
+	}
+
+	tableRows := fmt.Sprintf(`
+                <tr>
+                    <td>Sewa Kamar Bulanan</td>
+                    <td class="text-right">%s</td>
+                </tr>
+                <tr>
+                    <td>Biaya Listrik</td>
+                    <td class="text-right">%s</td>
+                </tr>
+                <tr>
+                    <td>Biaya Air</td>
+                    <td class="text-right">%s</td>
+                </tr>
+                <tr>
+                    <td>Biaya Tambahan Lainnya</td>
+                    <td class="text-right">%s</td>
+                </tr>`,
+		formatRupiah(payment.AmountRent),
+		formatRupiah(payment.AmountElectricity),
+		formatRupiah(payment.AmountWater),
+		formatRupiah(displayOther),
+	)
+
+	if hasDeposit {
+		tableRows += fmt.Sprintf(`
+                <tr>
+                    <td>Uang Jaminan (Deposito)</td>
+                    <td class="text-right">%s</td>
+                </tr>`,
+			formatRupiah(depositVal),
+		)
+	}
+
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="id">
 <head>
@@ -464,22 +507,7 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td>Sewa Kamar Bulanan</td>
-                    <td class="text-right">%s</td>
-                </tr>
-                <tr>
-                    <td>Biaya Listrik</td>
-                    <td class="text-right">%s</td>
-                </tr>
-                <tr>
-                    <td>Biaya Air</td>
-                    <td class="text-right">%s</td>
-                </tr>
-                <tr>
-                    <td>Biaya Tambahan Lainnya</td>
-                    <td class="text-right">%s</td>
-                </tr>
+                %s
                 <tr class="total-row">
                     <td>Total Tagihan</td>
                     <td class="text-right">%s</td>
@@ -515,10 +543,7 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 		payment.PeriodMonth,
 		payment.PeriodYear,
 		paidDate,
-		formatRupiah(payment.AmountRent),
-		formatRupiah(payment.AmountElectricity),
-		formatRupiah(payment.AmountWater),
-		formatRupiah(payment.AmountOther),
+		tableRows,
 		formatRupiah(totalBill),
 		payment.PaymentMethod,
 		formatRupiah(payment.TotalPaid),

@@ -468,7 +468,7 @@ export default function PaymentsPage() {
                     setNewBill({ 
                       ...newBill, 
                       contract_id: cId,
-                      amount_rent: contract ? contract.monthly_rent * contract.rental_duration : 0
+                      amount_rent: contract ? (contract.payment_interval === 'per_contract' ? contract.monthly_rent * contract.rental_duration : contract.monthly_rent) : 0
                     });
                   }}
                   className="w-full bg-brand-navy/5 border border-brand-navy/5 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:bg-white focus:border-brand-teal/20 transition-all font-semibold"
@@ -864,6 +864,9 @@ interface ReceiptModalProps {
 
 function ReceiptModal({ payment, onClose }: ReceiptModalProps) {
   const totalBill = payment.amount_rent + payment.amount_electricity + payment.amount_water + payment.amount_other;
+  const depositVal = payment.contract?.deposit || 0;
+  const hasDepositInThisPayment = depositVal > 0 && payment.amount_other >= depositVal;
+  const displayOther = hasDepositInThisPayment ? payment.amount_other - depositVal : payment.amount_other;
   
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
@@ -958,8 +961,14 @@ function ReceiptModal({ payment, onClose }: ReceiptModalProps) {
             </tr>
             <tr>
               <td className="p-3 font-medium text-gray-600">Biaya Tambahan Lainnya</td>
-              <td className="p-3 text-right font-bold text-brand-navy">{formatCurrency(payment.amount_other)}</td>
+              <td className="p-3 text-right font-bold text-brand-navy">{formatCurrency(displayOther)}</td>
             </tr>
+            {hasDepositInThisPayment && (
+              <tr>
+                <td className="p-3 font-medium text-gray-600">Uang Jaminan (Deposito)</td>
+                <td className="p-3 text-right font-bold text-brand-navy">{formatCurrency(depositVal)}</td>
+              </tr>
+            )}
             <tr className="bg-gray-50 font-bold text-sm border-t-2 border-gray-300">
               <td className="p-3 text-gray-700">Total Tagihan</td>
               <td className="p-3 text-right text-brand-navy">{formatCurrency(totalBill)}</td>
