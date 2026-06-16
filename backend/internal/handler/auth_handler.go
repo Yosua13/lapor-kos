@@ -501,6 +501,8 @@ func (h *AuthHandler) ExtendContract(c *gin.Context) {
 		ElectricityBill float64 `json:"electricity_bill"`
 		WaterBill       float64 `json:"water_bill"`
 		OtherBills      float64 `json:"other_bills"`
+		Deposit         float64 `json:"deposit"`
+		PaymentInterval string  `json:"payment_interval"`
 		PaymentDueDay   int     `json:"payment_due_day"`
 		Notes           string  `json:"notes"`
 	}
@@ -523,7 +525,11 @@ func (h *AuthHandler) ExtendContract(c *gin.Context) {
 		return
 	}
 
-	err = h.repo.ExtendContract(c.Request.Context(), id, ownerID, startDate, req.RentalDuration, req.MonthlyRent, req.ElectricityBill, req.WaterBill, req.OtherBills, req.PaymentDueDay, req.Notes)
+	if req.PaymentInterval == "" {
+		req.PaymentInterval = "monthly"
+	}
+
+	err = h.repo.ExtendContract(c.Request.Context(), id, ownerID, startDate, req.RentalDuration, req.MonthlyRent, req.ElectricityBill, req.WaterBill, req.OtherBills, req.Deposit, req.PaymentInterval, req.PaymentDueDay, req.Notes)
 	if err != nil {
 		log.Printf("Error extending contract: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to extend contract: " + err.Error()})

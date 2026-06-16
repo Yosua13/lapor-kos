@@ -110,8 +110,8 @@ func (m *MockUserRepository) ChangeRoom(ctx context.Context, userID uuid.UUID, r
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) ExtendContract(ctx context.Context, userID uuid.UUID, ownerID uuid.UUID, startDate time.Time, rentalDuration int, monthlyRent float64, electricityBill float64, waterBill float64, otherBills float64, paymentDueDay int, notes string) error {
-	args := m.Called(ctx, userID, ownerID, startDate, rentalDuration, monthlyRent, electricityBill, waterBill, otherBills, paymentDueDay, notes)
+func (m *MockUserRepository) ExtendContract(ctx context.Context, userID uuid.UUID, ownerID uuid.UUID, startDate time.Time, rentalDuration int, monthlyRent float64, electricityBill float64, waterBill float64, otherBills float64, deposit float64, paymentInterval string, paymentDueDay int, notes string) error {
+	args := m.Called(ctx, userID, ownerID, startDate, rentalDuration, monthlyRent, electricityBill, waterBill, otherBills, deposit, paymentInterval, paymentDueDay, notes)
 	return args.Error(0)
 }
 

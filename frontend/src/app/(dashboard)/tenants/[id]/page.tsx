@@ -141,6 +141,8 @@ export default function TenantProfilePage() {
     water_bill: '',
     other_bills: '',
     payment_due_day: '1',
+    payment_interval: 'monthly',
+    deposit: '',
     notes: ''
   });
   const [isExtending, setIsExtending] = useState(false);
@@ -402,6 +404,8 @@ export default function TenantProfilePage() {
         electricity_bill: parseFloat(extendData.electricity_bill.replace(/\D/g, '')) || 0,
         water_bill: parseFloat(extendData.water_bill.replace(/\D/g, '')) || 0,
         other_bills: parseFloat(extendData.other_bills.replace(/\D/g, '')) || 0,
+        payment_interval: extendData.payment_interval,
+        deposit: parseFloat(extendData.deposit.replace(/\D/g, '')) || 0,
         payment_due_day: parseInt(extendData.payment_due_day, 10) || 1,
         notes: extendData.notes
       };
@@ -1007,7 +1011,7 @@ export default function TenantProfilePage() {
                     <div className="flex justify-between">
                       <span className="text-gray-500">Total Sewa</span>
                       <span className="font-bold text-[#1f2937] text-right">
-                        {tenant.contract?.total_price ? `Rp ${tenant.contract.total_price.toLocaleString('id-ID')}` : '-'}
+                        {tenant.contract?.total_price ? `Rp ${(tenant.contract.total_price - (tenant.contract.deposit || 0)).toLocaleString('id-ID')}` : '-'}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -1026,7 +1030,7 @@ export default function TenantProfilePage() {
                     <div className="flex justify-between">
                       <span className="text-[#1f2937] font-bold">Total Pembayaran</span>
                       <span className="font-bold text-[#1f2937] text-right">
-                        {tenant.contract ? `Rp ${(tenant.contract.total_price + tenant.contract.deposit).toLocaleString('id-ID')}` : '-'}
+                        {tenant.contract ? `Rp ${tenant.contract.total_price.toLocaleString('id-ID')}` : '-'}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -1038,7 +1042,7 @@ export default function TenantProfilePage() {
                     <div className="flex justify-between">
                       <span className="text-gray-500">Sisa Pembayaran</span>
                       <span className="font-bold text-[#f97316] text-right">
-                        Rp {Math.max(0, (tenant.contract ? (tenant.contract.total_price + tenant.contract.deposit) : 0) - totalPembayaranReal).toLocaleString('id-ID')}
+                        Rp {Math.max(0, (tenant.contract ? tenant.contract.total_price : 0) - totalPembayaranReal).toLocaleString('id-ID')}
                       </span>
                     </div>
                     <div className="flex justify-between">

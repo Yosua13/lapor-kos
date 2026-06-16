@@ -26,7 +26,7 @@ type UserRepo interface {
 	DeleteTenant(ctx context.Context, id uuid.UUID) error
 	CheckoutTenant(ctx context.Context, id uuid.UUID) error
 	ChangeRoom(ctx context.Context, userID uuid.UUID, roomIDStr string) error
-	ExtendContract(ctx context.Context, userID uuid.UUID, ownerID uuid.UUID, startDate time.Time, rentalDuration int, monthlyRent float64, electricityBill float64, waterBill float64, otherBills float64, paymentDueDay int, notes string) error
+	ExtendContract(ctx context.Context, userID uuid.UUID, ownerID uuid.UUID, startDate time.Time, rentalDuration int, monthlyRent float64, electricityBill float64, waterBill float64, otherBills float64, deposit float64, paymentInterval string, paymentDueDay int, notes string) error
 }
 
 type UserRepository struct {
@@ -129,7 +129,7 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, userID uuid.UUID)
 			u.is_active, u.date_of_birth, u.gender, u.job, 
 			u.emergency_contact_phone, u.emergency_contact_relation, u.emergency_contact_name, 
 			u.additional_doc_url, u.created_at,
-			c.id as contract_id, c.start_date, c.end_date, c.rental_duration, c.monthly_rent, c.total_price, c.deposit, c.payment_due_day, c.status as contract_status, c.notes as contract_notes,
+			c.id as contract_id, c.start_date, c.end_date, c.rental_duration, c.monthly_rent, c.total_price, c.deposit, c.payment_interval, c.payment_due_day, c.status as contract_status, c.notes as contract_notes,
 			r.id as room_id, r.room_number, r.price_per_month, r.description, r.status as room_status, r.type as room_type, r.floor as room_floor,
 			(SELECT status FROM payments WHERE contract_id = c.id ORDER BY period_year DESC, period_month DESC, due_date DESC LIMIT 1) AS latest_payment_status,
 			(SELECT (amount_rent + amount_electricity + amount_water + amount_other) FROM payments WHERE contract_id = c.id ORDER BY period_year DESC, period_month DESC, due_date DESC LIMIT 1) AS latest_payment_amount
@@ -152,7 +152,7 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, userID uuid.UUID)
 	var startDate, endDate *time.Time
 	var rentalDuration, paymentDueDay *int
 	var monthlyRent, totalPrice, deposit *float64
-	var contractStatus, contractNotes *string
+	var contractStatus, contractNotes, paymentInterval *string
 	var roomNumber, roomDescription, roomStatus, roomType, roomFloor *string
 	var roomPrice *float64
 	var latestPaymentStatus *string
@@ -163,7 +163,7 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, userID uuid.UUID)
 		&isActive, &dateOfBirth, &gender, &job, 
 		&emergencyContactPhone, &emergencyContactRelation, &emergencyContactName, 
 		&additionalDocURL, &createdAt,
-		&contractID, &startDate, &endDate, &rentalDuration, &monthlyRent, &totalPrice, &deposit, &paymentDueDay, &contractStatus, &contractNotes,
+		&contractID, &startDate, &endDate, &rentalDuration, &monthlyRent, &totalPrice, &deposit, &paymentInterval, &paymentDueDay, &contractStatus, &contractNotes,
 		&roomID, &roomNumber, &roomPrice, &roomDescription, &roomStatus, &roomType, &roomFloor,
 		&latestPaymentStatus, &latestPaymentAmount,
 	)
@@ -198,6 +198,7 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, userID uuid.UUID)
 			"monthly_rent":          *monthlyRent,
 			"total_price":           *totalPrice,
 			"deposit":               *deposit,
+			"payment_interval":      *paymentInterval,
 			"payment_due_day":       *paymentDueDay,
 			"status":                *contractStatus,
 			"notes":                 *contractNotes,
@@ -444,7 +445,7 @@ func (r *UserRepository) ChangeRoom(ctx context.Context, userID uuid.UUID, roomI
 	return tx.Commit(ctx)
 }
 
-func (r *UserRepository) ExtendContract(ctx context.Context, userID uuid.UUID, ownerID uuid.UUID, startDate time.Time, rentalDuration int, monthlyRent float64, electricityBill float64, waterBill float64, otherBills float64, paymentDueDay int, notes string) error {
+func (r *UserRepository) ExtendContract(ctx context.Context, userID uuid.UUID, ownerID uuid.UUID, startDate time.Time, rentalDuration int, monthlyRent float64, electricityBill float64, waterBill float64, otherBills float64, deposit float64, paymentInterval string, paymentDueDay int, notes string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -476,13 +477,18 @@ func (r *UserRepository) ExtendContract(ctx context.Context, userID uuid.UUID, o
 		notes = fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
 	}
 
-	totalPrice := (monthlyRent * float64(rentalDuration)) + electricityBill + waterBill + otherBills
+	var totalPrice float64
+	if paymentInterval == "per_contract" {
+		totalPrice = (monthlyRent * float64(rentalDuration)) + (electricityBill * float64(rentalDuration)) + (waterBill * float64(rentalDuration)) + (otherBills * float64(rentalDuration)) + deposit
+	} else {
+		totalPrice = monthlyRent + electricityBill + waterBill + otherBills + deposit
+	}
 
 	// 3. Insert new contract
 	newContractID := uuid.New()
-	contractQuery := `INSERT INTO contracts (id, room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills) 
-					  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`
-	_, err = tx.Exec(ctx, contractQuery, newContractID, roomID, userID, ownerID, startDate, endDate, rentalDuration, monthlyRent, totalPrice, 0.0, paymentDueDay, "active", notes, electricityBill, waterBill, otherBills)
+	contractQuery := `INSERT INTO contracts (id, room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills, payment_interval) 
+					  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`
+	_, err = tx.Exec(ctx, contractQuery, newContractID, roomID, userID, ownerID, startDate, endDate, rentalDuration, monthlyRent, totalPrice, deposit, paymentDueDay, "active", notes, electricityBill, waterBill, otherBills, paymentInterval)
 	if err != nil {
 		return err
 	}
@@ -492,9 +498,22 @@ func (r *UserRepository) ExtendContract(ctx context.Context, userID uuid.UUID, o
 	periodMonth := int(startDate.Month())
 	periodYear := startDate.Year()
 
+	var pRent, pElec, pWater, pOther float64
+	if paymentInterval == "per_contract" {
+		pRent = monthlyRent * float64(rentalDuration)
+		pElec = electricityBill * float64(rentalDuration)
+		pWater = waterBill * float64(rentalDuration)
+		pOther = (otherBills * float64(rentalDuration)) + deposit
+	} else {
+		pRent = monthlyRent
+		pElec = electricityBill
+		pWater = waterBill
+		pOther = otherBills + deposit
+	}
+
 	paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
 					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
-	_, err = tx.Exec(ctx, paymentQuery, paymentID, newContractID, ownerID, periodMonth, periodYear, monthlyRent, electricityBill, waterBill, otherBills, 0, "", "unpaid", dueDate, notes)
+	_, err = tx.Exec(ctx, paymentQuery, paymentID, newContractID, ownerID, periodMonth, periodYear, pRent, pElec, pWater, pOther, 0, "", "unpaid", dueDate, notes)
 	if err != nil {
 		return err
 	}
