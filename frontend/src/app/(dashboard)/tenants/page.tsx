@@ -5,7 +5,8 @@ import { apiFetch, getImageUrl } from '@/lib/api';
 import {
   Users, CheckCircle2, Clock, AlertTriangle,
   Search, CheckSquare, FileWarning, AlertCircle, FileQuestion,
-  ChevronRight, ChevronLeft, Download, ArrowUpDown, ChevronDown
+  ChevronRight, ChevronLeft, Download, ArrowUpDown, ChevronDown,
+  LayoutGrid, List as ListIcon
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -46,6 +47,7 @@ export default function TenantsPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'expiring' | 'unpaid' | 'missingDocs'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'name_asc' | 'closest_expiry'>('newest');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -313,46 +315,64 @@ export default function TenantsPage() {
 
         {/* TOOLBAR (Head) */}
         <div className="shrink-0 flex flex-col lg:flex-row items-center justify-between gap-4 p-6 lg:px-8 border-b border-gray-100">
-          {/* Search Input */}
-          <div className="relative w-full lg:w-[450px]">
-            <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Cari nama / kamar / no. HP..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors shadow-sm"
-            />
-          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto flex-1">
+            {/* Search Input */}
+            <div className="relative w-full sm:max-w-[280px]">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Cari nama / kamar / no. HP..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-white border border-gray-200 rounded-[10px] pl-9 pr-4 py-2.5 text-[13px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors shadow-sm"
+              />
+            </div>
 
-          <div className="flex items-center gap-4 w-full lg:w-auto">
             {/* Sort Dropdown */}
-            <div className="relative flex items-center border border-gray-200 bg-white rounded-[14px] px-4 py-3 shadow-sm focus-within:border-[#0e8a7a] transition-colors w-full lg:w-auto">
-              <div className="flex items-center gap-2 pointer-events-none">
-                <ArrowUpDown className="w-4 h-4 text-gray-500" />
-                <span className="text-brand-navy text-[14px] font-bold">Urutkan:</span>
-              </div>
+            <div className="relative w-full sm:w-[200px]">
+              <label className="absolute -top-2 left-3 bg-white px-1 text-[10px] text-gray-500 font-medium z-10">Urutkan</label>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="bg-transparent text-[14px] font-bold text-brand-navy focus:outline-none cursor-pointer pl-2 pr-6 appearance-none w-full"
+                className="w-full bg-white border border-gray-200 rounded-[10px] pl-3 pr-8 py-2.5 text-[13px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors appearance-none relative cursor-pointer"
               >
                 <option value="newest">Terbaru</option>
                 <option value="name_asc">Nama A-Z</option>
                 <option value="closest_expiry">Terdekat</option>
               </select>
-              <ChevronDown className="w-4 h-4 text-gray-400 absolute right-4 pointer-events-none" />
+              <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full lg:w-auto shrink-0 justify-end">
+            {/* View Toggle */}
+            <div className="flex bg-gray-100 p-1 rounded-xl mr-1 shrink-0">
+              <button 
+                type="button"
+                onClick={() => setViewMode('grid')} 
+                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-400 hover:text-brand-navy'}`}
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button 
+                type="button"
+                onClick={() => setViewMode('list')} 
+                className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-400 hover:text-brand-navy'}`}
+              >
+                <ListIcon className="w-4 h-4" />
+              </button>
             </div>
 
-            <button className="px-5 py-3 border border-[#0e8a7a] text-[#0e8a7a] font-bold text-[14px] rounded-[14px] hover:bg-[#0e8a7a]/5 transition-colors flex items-center gap-2 whitespace-nowrap shadow-sm">
+            <button className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-brand-navy font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm bg-white">
               <Download className="w-4 h-4" /> Export Data
             </button>
           </div>
         </div>
 
         {/* TABLE BODY CONTAINER */}
-        <div className={`flex-1 overflow-y-auto no-scrollbar px-6 lg:px-8 pb-6 max-h-[1100px] ${paginatedTenants.length > 0 ? 'bg-slate-50 pt-0' : 'bg-white pt-6'
-          }`}>
+        <div className={`flex-1 overflow-y-auto no-scrollbar px-6 lg:px-8 pb-6 ${
+          paginatedTenants.length > 0 && viewMode === 'list' ? 'bg-slate-50 pt-0' : 'bg-white pt-6'
+        }`}>
           {isLoading && tenants.length === 0 ? (
             <div className="flex justify-center items-center min-h-[400px]">
               <div className="w-10 h-10 border-4 border-brand-teal/30 border-t-brand-teal rounded-full animate-spin"></div>
@@ -362,6 +382,102 @@ export default function TenantsPage() {
               <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4 text-gray-400"><Users className="w-8 h-8" /></div>
               <h3 className="text-lg font-bold text-brand-navy mb-1">Tidak ada penghuni</h3>
               <p className="text-sm text-gray-500 max-w-sm mx-auto">Data penghuni tidak ditemukan berdasarkan pencarian atau filter yang Anda pilih.</p>
+            </div>
+          ) : viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 pt-4">
+              {paginatedTenants.map(t => (
+                <div key={t.id} className="bg-white border-[1.5px] border-gray-200 rounded-[20px] shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col relative group">
+                  {/* Top Accent Color Bar */}
+                  <div className={`absolute top-0 left-0 w-full h-[3px] ${
+                    t.daysUntilExpiry < 0 ? 'bg-red-500' : t.daysUntilExpiry <= 30 ? 'bg-amber-500' : 'bg-emerald-500'
+                  }`}></div>
+                  
+                  <div className="p-5 flex-1 flex flex-col justify-between">
+                    {/* Profile Header */}
+                    <div className="flex items-start gap-4 mb-4">
+                      <div className="relative shrink-0">
+                        <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100 border border-gray-200 shadow-sm">
+                          {t.selfie_url ? (
+                            <img src={getImageUrl(t.selfie_url)} alt={t.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-brand-teal/10 text-brand-teal font-display font-bold text-lg">
+                              {t.name.substring(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                        </div>
+                        <div className={`absolute top-0 right-0 w-3 h-3 rounded-full border-2 border-white ${t.statusColorDot}`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                          <h3 className="font-bold text-brand-navy text-[15px] truncate max-w-[140px]">{t.name}</h3>
+                          <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${t.statusPillColor}`}>
+                            {t.contractStatus}
+                          </span>
+                        </div>
+                        <p className="text-[12px] text-gray-500 truncate">{t.email}</p>
+                        <p className="text-[12px] text-gray-600 font-semibold mt-1">{t.phone}</p>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-gray-100 w-full my-3"></div>
+
+                    {/* Mid Details */}
+                    <div className="grid grid-cols-2 gap-3 mb-4 text-left">
+                      <div>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Kamar & Lantai</p>
+                        <p className="text-xs font-bold text-brand-navy mt-0.5">Kamar {t.room?.room_number}</p>
+                        <p className="text-[11px] text-gray-500">{t.floorStr}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Status Bayar</p>
+                        <div className="mt-0.5">
+                          <span className={`inline-block px-2.5 py-0.5 rounded-lg text-[10px] font-bold ${t.paymentPillColor}`}>
+                            {t.paymentStatus}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 mb-4 text-left">
+                      <div>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Tanggal Masuk</p>
+                        <p className="text-xs font-bold text-gray-600 mt-0.5">{formatDate(t.contract?.start_date)}</p>
+                        <p className="text-[10px] text-gray-400">({t.monthsAgo} bln lalu)</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">Akhir Kontrak</p>
+                        <p className="text-xs font-bold text-gray-600 mt-0.5">{formatDate(t.contract?.end_date)}</p>
+                        <p className={`text-[10px] font-bold ${t.daysUntilExpiry < 0 ? 'text-red-500' : 'text-[#0e8a7a]'}`}>
+                          {t.daysUntilExpiry < 0 ? `${Math.abs(t.daysUntilExpiry)} hari lewat` : `${t.daysUntilExpiry} hari sisa`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="h-px bg-gray-100 w-full my-3"></div>
+
+                    {/* Documents & Action */}
+                    <div className="flex items-center justify-between mt-1">
+                      <div className="flex gap-3 text-[11px] font-bold text-left">
+                        <div className="flex items-center gap-1">
+                          {t.ktp_url ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                          <span className={t.ktp_url ? "text-gray-500" : "text-red-500"}>KTP</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {t.selfie_url ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500" />}
+                          <span className={t.selfie_url ? "text-gray-500" : "text-red-500"}>Selfie</span>
+                        </div>
+                      </div>
+                      
+                      <button
+                        onClick={() => router.push(`/tenants/${t.id}`)}
+                        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-xl text-[11px] font-bold text-gray-700 hover:bg-gray-50 hover:text-brand-teal hover:border-brand-teal transition-all shadow-sm bg-white"
+                      >
+                        Detail Profil <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <table className="w-full text-left text-sm border-separate border-spacing-y-4 min-w-[1100px]">
