@@ -90,8 +90,8 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 		}
 
 		// 3. Create Contract
-		contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills) 
-						  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`
+		contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills, payment_interval) 
+						  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
 		
 		startDate := contract.StartDate
 		rentalDuration := contract.RentalDuration
@@ -108,7 +108,7 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 			notes = fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
 		}
 		
-		err = tx.QueryRow(ctx, contractQuery, room.ID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills).Scan(&contract.ID)
+		err = tx.QueryRow(ctx, contractQuery, room.ID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, contract.PaymentInterval).Scan(&contract.ID)
 		if err != nil {
 			return err
 		}
@@ -120,10 +120,24 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 		payment.OwnerID = &ownerID
 		payment.PeriodMonth = int(startDate.Month())
 		payment.PeriodYear = startDate.Year()
-		payment.AmountRent = contract.MonthlyRent
-		payment.AmountElectricity = contract.ElectricityBill
-		payment.AmountWater = contract.WaterBill
-		payment.AmountOther = contract.OtherBills
+		
+		var pRent, pElec, pWater, pOther float64
+		if contract.PaymentInterval == "per_contract" {
+			pRent = contract.MonthlyRent * float64(rentalDuration)
+			pElec = contract.ElectricityBill * float64(rentalDuration)
+			pWater = contract.WaterBill * float64(rentalDuration)
+			pOther = (contract.OtherBills * float64(rentalDuration)) + contract.Deposit
+		} else {
+			pRent = contract.MonthlyRent
+			pElec = contract.ElectricityBill
+			pWater = contract.WaterBill
+			pOther = contract.OtherBills + contract.Deposit
+		}
+
+		payment.AmountRent = pRent
+		payment.AmountElectricity = pElec
+		payment.AmountWater = pWater
+		payment.AmountOther = pOther
 		payment.TotalPaid = 0
 		payment.PaymentMethod = ""
 		payment.Status = "unpaid"
@@ -231,9 +245,9 @@ func (r *RoomRepository) UpdateWithTenant(ctx context.Context, room *model.Room,
 		}
 
 		if err != nil { // contract doesn't exist, insert
-			contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills) 
-							  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`
-			err = tx.QueryRow(ctx, contractQuery, room.ID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills).Scan(&contract.ID)
+			contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills, payment_interval) 
+							  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
+			err = tx.QueryRow(ctx, contractQuery, room.ID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, contract.PaymentInterval).Scan(&contract.ID)
 			if err != nil {
 				return err
 			}
@@ -244,10 +258,23 @@ func (r *RoomRepository) UpdateWithTenant(ctx context.Context, room *model.Room,
 			payment.OwnerID = &ownerID
 			payment.PeriodMonth = int(startDate.Month())
 			payment.PeriodYear = startDate.Year()
-			payment.AmountRent = contract.MonthlyRent
-			payment.AmountElectricity = contract.ElectricityBill
-			payment.AmountWater = contract.WaterBill
-			payment.AmountOther = contract.OtherBills
+			var pRent, pElec, pWater, pOther float64
+			if contract.PaymentInterval == "per_contract" {
+				pRent = contract.MonthlyRent * float64(rentalDuration)
+				pElec = contract.ElectricityBill * float64(rentalDuration)
+				pWater = contract.WaterBill * float64(rentalDuration)
+				pOther = (contract.OtherBills * float64(rentalDuration)) + contract.Deposit
+			} else {
+				pRent = contract.MonthlyRent
+				pElec = contract.ElectricityBill
+				pWater = contract.WaterBill
+				pOther = contract.OtherBills + contract.Deposit
+			}
+
+			payment.AmountRent = pRent
+			payment.AmountElectricity = pElec
+			payment.AmountWater = pWater
+			payment.AmountOther = pOther
 			payment.TotalPaid = 0
 			payment.PaymentMethod = ""
 			payment.Status = "unpaid"
@@ -263,16 +290,29 @@ func (r *RoomRepository) UpdateWithTenant(ctx context.Context, room *model.Room,
 
 		} else { // contract exists, update
 			contract.ID = contractID
-			contractUpdate := `UPDATE contracts SET user_id=$1, start_date=$2, end_date=$3, rental_duration=$4, monthly_rent=$5, total_price=$6, payment_due_day=$7, notes=$8, electricity_bill=$9, water_bill=$10, other_bills=$11 WHERE id=$12`
-			_, err = tx.Exec(ctx, contractUpdate, userID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, paymentDueDay, notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, contract.ID)
+			contractUpdate := `UPDATE contracts SET user_id=$1, start_date=$2, end_date=$3, rental_duration=$4, monthly_rent=$5, total_price=$6, payment_due_day=$7, notes=$8, electricity_bill=$9, water_bill=$10, other_bills=$11, payment_interval=$12, deposit=$13 WHERE id=$14`
+			_, err = tx.Exec(ctx, contractUpdate, userID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, paymentDueDay, notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, contract.PaymentInterval, contract.Deposit, contract.ID)
 			if err != nil {
 				return err
 			}
 
 			// Update the unpaid initial payment if it exists
+			var pRent, pElec, pWater, pOther float64
+			if contract.PaymentInterval == "per_contract" {
+				pRent = contract.MonthlyRent * float64(rentalDuration)
+				pElec = contract.ElectricityBill * float64(rentalDuration)
+				pWater = contract.WaterBill * float64(rentalDuration)
+				pOther = (contract.OtherBills * float64(rentalDuration)) + contract.Deposit
+			} else {
+				pRent = contract.MonthlyRent
+				pElec = contract.ElectricityBill
+				pWater = contract.WaterBill
+				pOther = contract.OtherBills + contract.Deposit
+			}
+
 			paymentUpdate := `UPDATE payments SET amount_rent=$1, amount_electricity=$2, amount_water=$3, amount_other=$4, due_date=$5 
 							  WHERE contract_id=$6 AND status='unpaid' RETURNING id`
-			err = tx.QueryRow(ctx, paymentUpdate, contract.MonthlyRent, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, dueDate, contract.ID).Scan(&payment.ID)
+			err = tx.QueryRow(ctx, paymentUpdate, pRent, pElec, pWater, pOther, dueDate, contract.ID).Scan(&payment.ID)
 			if err != nil { // if payment doesn't exist, insert one!
 				paymentID := uuid.New()
 				payment.ID = paymentID
@@ -280,10 +320,10 @@ func (r *RoomRepository) UpdateWithTenant(ctx context.Context, room *model.Room,
 				payment.OwnerID = &ownerID
 				payment.PeriodMonth = int(startDate.Month())
 				payment.PeriodYear = startDate.Year()
-				payment.AmountRent = contract.MonthlyRent
-				payment.AmountElectricity = contract.ElectricityBill
-				payment.AmountWater = contract.WaterBill
-				payment.AmountOther = contract.OtherBills
+				payment.AmountRent = pRent
+				payment.AmountElectricity = pElec
+				payment.AmountWater = pWater
+				payment.AmountOther = pOther
 				payment.TotalPaid = 0
 				payment.PaymentMethod = ""
 				payment.Status = "unpaid"
@@ -298,10 +338,10 @@ func (r *RoomRepository) UpdateWithTenant(ctx context.Context, room *model.Room,
 				}
 			} else {
 				payment.ContractID = contract.ID
-				payment.AmountRent = contract.MonthlyRent
-				payment.AmountElectricity = contract.ElectricityBill
-				payment.AmountWater = contract.WaterBill
-				payment.AmountOther = contract.OtherBills
+				payment.AmountRent = pRent
+				payment.AmountElectricity = pElec
+				payment.AmountWater = pWater
+				payment.AmountOther = pOther
 				payment.Status = "unpaid"
 				payment.DueDate = dueDate
 			}
@@ -358,8 +398,8 @@ func (r *RoomRepository) AssignTenant(ctx context.Context, roomID uuid.UUID, use
 		return fmt.Errorf("email is required")
 	}
 
-	contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills) 
-	                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`
+	contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills, payment_interval) 
+	                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
 	
 	startDate := contract.StartDate
 	rentalDuration := contract.RentalDuration
@@ -376,16 +416,30 @@ func (r *RoomRepository) AssignTenant(ctx context.Context, roomID uuid.UUID, use
 		notes = fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
 	}
 	
-	err = tx.QueryRow(ctx, contractQuery, roomID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills).Scan(&contract.ID)
+	err = tx.QueryRow(ctx, contractQuery, roomID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, contract.PaymentInterval).Scan(&contract.ID)
 	if err != nil {
 		return err
 	}
 
 	// Create Initial Payment
 	paymentID := uuid.New()
+	
+	var pRent, pElec, pWater, pOther float64
+	if contract.PaymentInterval == "per_contract" {
+		pRent = contract.MonthlyRent * float64(rentalDuration)
+		pElec = contract.ElectricityBill * float64(rentalDuration)
+		pWater = contract.WaterBill * float64(rentalDuration)
+		pOther = (contract.OtherBills * float64(rentalDuration)) + contract.Deposit
+	} else {
+		pRent = contract.MonthlyRent
+		pElec = contract.ElectricityBill
+		pWater = contract.WaterBill
+		pOther = contract.OtherBills + contract.Deposit
+	}
+
 	paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
 					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
-	_, err = tx.Exec(ctx, paymentQuery, paymentID, contract.ID, ownerID, int(startDate.Month()), startDate.Year(), contract.MonthlyRent, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, 0.0, "", "unpaid", dueDate, notes)
+	_, err = tx.Exec(ctx, paymentQuery, paymentID, contract.ID, ownerID, int(startDate.Month()), startDate.Year(), pRent, pElec, pWater, pOther, 0.0, "", "unpaid", dueDate, notes)
 	if err != nil {
 		return err
 	}

@@ -54,6 +54,8 @@ function AddRoomContent() {
     water_bill: '',
     other_bills: '',
     payment_due_day: '',
+    payment_interval: '',
+    deposit: '',
     notes: ''
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -148,10 +150,17 @@ function AddRoomContent() {
       }
     } else if (step === 3) {
       if (roomData.status === 'occupied') {
+        if (!contractData.payment_interval) newErrors.payment_interval = 'Interval Pembayaran wajib dipilih!';
+        if (!contractData.deposit) newErrors.deposit = 'Deposito wajib diisi!';
         if (!contractData.entry_date) newErrors.entry_date = 'Tanggal Masuk wajib diisi!';
         if (!contractData.rental_duration) newErrors.duration = 'Durasi Kontrak wajib dipilih!';
+        if (!contractData.electricity_bill) newErrors.electricity_bill = 'Tagihan Listrik wajib diisi!';
+        if (!contractData.water_bill) newErrors.water_bill = 'Tagihan Air wajib diisi!';
+        if (!contractData.other_bills) newErrors.other_bills = 'Biaya Lainnya wajib diisi!';
+        if (!contractData.payment_due_day) newErrors.payment_due_day = 'Jatuh Tempo Pembayaran wajib dipilih!';
       }
     }
+    
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -206,10 +215,12 @@ function AddRoomContent() {
       }
       data.append('entry_date', contractData.entry_date);
       data.append('rental_duration', contractData.rental_duration);
-      data.append('electricity_bill', contractData.electricity_bill || '0');
-      data.append('water_bill', contractData.water_bill || '0');
-      data.append('other_bills', contractData.other_bills || '0');
+      data.append('electricity_bill', contractData.electricity_bill.replace(/\./g, '') || '0');
+      data.append('water_bill', contractData.water_bill.replace(/\./g, '') || '0');
+      data.append('other_bills', contractData.other_bills.replace(/\./g, '') || '0');
       data.append('payment_due_day', contractData.payment_due_day || '1');
+      data.append('payment_interval', contractData.payment_interval);
+      data.append('deposit', contractData.deposit.replace(/\./g, '') || '0');
       data.append('notes', contractData.notes);
 
       if (files.ktp) data.append('ktp', files.ktp);
@@ -265,14 +276,23 @@ function AddRoomContent() {
     }
   };
 
-  // Calculations
   const rawPrice = parseInt(roomData.price_per_month.replace(/\./g, '')) || 0;
   const duration = parseInt(contractData.rental_duration) || 1;
-  const totalSewa = rawPrice * duration;
   const electricity = parseInt(contractData.electricity_bill.replace(/\./g, '')) || 0;
   const water = parseInt(contractData.water_bill.replace(/\./g, '')) || 0;
   const otherBills = parseInt(contractData.other_bills.replace(/\./g, '')) || 0;
-  const totalBiaya = totalSewa + electricity + water + otherBills;
+  const deposit = parseInt(contractData.deposit.replace(/\./g, '')) || 0;
+  
+  let totalSewa = rawPrice;
+  let totalBiaya = 0;
+  
+  if (contractData.payment_interval === 'per_contract') {
+    totalSewa = rawPrice * duration;
+    totalBiaya = totalSewa + (electricity * duration) + (water * duration) + (otherBills * duration) + deposit;
+  } else if (contractData.payment_interval === 'monthly') {
+    totalSewa = rawPrice;
+    totalBiaya = totalSewa + electricity + water + otherBills + deposit;
+  }
 
   if (!mounted) return null;
 
@@ -876,8 +896,46 @@ function AddRoomContent() {
                 <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-start gap-3 mb-6">
                   <Info className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
                   <div>
-                    <h4 className="font-bold text-amber-800 text-[13px]">Sistem Pembayaran Bulanan</h4>
-                    <p className="text-[12px] text-amber-700 mt-1">Durasi sewa akan menentukan panjang kontrak di sistem. Tagihan akan otomatis dibuat berdasarkan harga kamar setiap bulannya.</p>
+                    <h4 className="font-bold text-amber-800 text-[13px]">Sistem Pembayaran Bulanan / Per Kontrak</h4>
+                    <p className="text-[12px] text-amber-700 mt-1">Jika memilih Per Bulan, sistem akan membuat tagihan rutin setiap bulan. Jika Per Kontrak, semua tagihan akan dikalikan durasi sewa dan dilunasi di muka.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div>
+                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Interval Pembayaran <span className="text-red-500">*</span></label>
+                    <select
+                      value={contractData.payment_interval}
+                      onChange={e => {
+                        setContractData({ ...contractData, payment_interval: e.target.value });
+                        if (errors.payment_interval) setErrors({ ...errors, payment_interval: '' });
+                      }}
+                      className={`w-full bg-white border ${errors.payment_interval ? 'border-red-500' : 'border-gray-200'} rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
+                    >
+                      <option value="">Silahkan pilih...</option>
+                      <option value="monthly">Bulanan (Per Bulan)</option>
+                      <option value="per_contract">Lunas di Depan (Per Kontrak)</option>
+                    </select>
+                    {errors.payment_interval && <p className="text-red-500 text-[12px] mt-1">{errors.payment_interval}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Deposito (Uang Jaminan) <span className="text-red-500">*</span></label>
+                    <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">Rp</span>
+                      <input
+                        type="text"
+                        value={contractData.deposit}
+                        onChange={e => {
+                          const rawValue = e.target.value.replace(/\D/g, '');
+                          const formattedValue = rawValue ? parseInt(rawValue, 10).toLocaleString('id-ID') : '';
+                          setContractData({ ...contractData, deposit: formattedValue });
+                          if (errors.deposit) setErrors({ ...errors, deposit: '' });
+                        }}
+                        placeholder="0"
+                        className={`w-full bg-white border ${errors.deposit ? 'border-red-500' : 'border-gray-200'} rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
+                      />
+                    </div>
+                    {errors.deposit && <p className="text-red-500 text-[12px] mt-1">{errors.deposit}</p>}
                   </div>
                 </div>
 
@@ -919,7 +977,7 @@ function AddRoomContent() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div>
-                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Tagihan Listrik</label>
+                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Tagihan Listrik <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">Rp</span>
                       <input
@@ -929,14 +987,16 @@ function AddRoomContent() {
                           const rawValue = e.target.value.replace(/\D/g, '');
                           const formattedValue = rawValue ? parseInt(rawValue, 10).toLocaleString('id-ID') : '';
                           setContractData({ ...contractData, electricity_bill: formattedValue });
+                          if (errors.electricity_bill) setErrors({ ...errors, electricity_bill: '' });
                         }}
                         placeholder="0"
-                        className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                        className={`w-full bg-white border ${errors.electricity_bill ? 'border-red-500' : 'border-gray-200'} rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
                       />
                     </div>
+                    {errors.electricity_bill && <p className="text-red-500 text-[12px] mt-1">{errors.electricity_bill}</p>}
                   </div>
                   <div>
-                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Tagihan Air</label>
+                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Tagihan Air <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">Rp</span>
                       <input
@@ -946,14 +1006,16 @@ function AddRoomContent() {
                           const rawValue = e.target.value.replace(/\D/g, '');
                           const formattedValue = rawValue ? parseInt(rawValue, 10).toLocaleString('id-ID') : '';
                           setContractData({ ...contractData, water_bill: formattedValue });
+                          if (errors.water_bill) setErrors({ ...errors, water_bill: '' });
                         }}
                         placeholder="0"
-                        className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                        className={`w-full bg-white border ${errors.water_bill ? 'border-red-500' : 'border-gray-200'} rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
                       />
                     </div>
+                    {errors.water_bill && <p className="text-red-500 text-[12px] mt-1">{errors.water_bill}</p>}
                   </div>
                   <div>
-                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Biaya Lainnya</label>
+                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Biaya Lainnya <span className="text-red-500">*</span></label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">Rp</span>
                       <input
@@ -963,27 +1025,33 @@ function AddRoomContent() {
                           const rawValue = e.target.value.replace(/\D/g, '');
                           const formattedValue = rawValue ? parseInt(rawValue, 10).toLocaleString('id-ID') : '';
                           setContractData({ ...contractData, other_bills: formattedValue });
+                          if (errors.other_bills) setErrors({ ...errors, other_bills: '' });
                         }}
                         placeholder="0"
-                        className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                        className={`w-full bg-white border ${errors.other_bills ? 'border-red-500' : 'border-gray-200'} rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
                       />
                     </div>
+                    {errors.other_bills && <p className="text-red-500 text-[12px] mt-1">{errors.other_bills}</p>}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Jatuh Tempo Pembayaran (Tanggal)</label>
+                    <label className="block text-[13px] font-bold text-gray-700 mb-2">Jatuh Tempo Pembayaran (Tanggal) <span className="text-red-500">*</span></label>
                     <select
                       value={contractData.payment_due_day}
-                      onChange={e => setContractData({ ...contractData, payment_due_day: e.target.value })}
-                      className="w-full bg-white border border-gray-200 rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                      onChange={e => {
+                        setContractData({ ...contractData, payment_due_day: e.target.value });
+                        if (errors.payment_due_day) setErrors({ ...errors, payment_due_day: '' });
+                      }}
+                      className={`w-full bg-white border ${errors.payment_due_day ? 'border-red-500' : 'border-gray-200'} rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
                     >
                       <option value="" disabled>Silahkan pilih...</option>
                       {Array.from({ length: 31 }, (_, i) => i + 1).map(num => (
                         <option key={num} value={num}>Tanggal {num}</option>
                       ))}
                     </select>
+                    {errors.payment_due_day && <p className="text-red-500 text-[12px] mt-1">{errors.payment_due_day}</p>}
                   </div>
                   <div>
                     <label className="block text-[13px] font-bold text-gray-700 mb-2">Catatan Tambahan</label>
@@ -999,24 +1067,28 @@ function AddRoomContent() {
 
                 <div className="bg-[#f0f9f8] border border-[#0e8a7a]/20 rounded-[16px] p-5 mt-4">
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-[13px] font-bold text-gray-600">Sewa Bulanan ({contractData.rental_duration || '1'} Bulan)</span>
+                    <span className="text-[13px] font-bold text-gray-600">Sewa {contractData.payment_interval === 'per_contract' ? 'Total' : 'Bulanan'} ({contractData.payment_interval === 'per_contract' ? duration : 1} Bulan)</span>
                     <span className="text-[14px] font-bold text-brand-navy">Rp {totalSewa.toLocaleString('id-ID')}</span>
                   </div>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-[13px] font-bold text-gray-600">Tagihan Listrik</span>
-                    <span className="text-[14px] font-bold text-brand-navy">Rp {electricity.toLocaleString('id-ID')}</span>
+                    <span className="text-[13px] font-bold text-gray-600">Tagihan Listrik {contractData.payment_interval === 'per_contract' && `(x${duration})`}</span>
+                    <span className="text-[14px] font-bold text-brand-navy">Rp {(contractData.payment_interval === 'per_contract' ? electricity * duration : electricity).toLocaleString('id-ID')}</span>
                   </div>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-[13px] font-bold text-gray-600">Tagihan Air</span>
-                    <span className="text-[14px] font-bold text-brand-navy">Rp {water.toLocaleString('id-ID')}</span>
+                    <span className="text-[13px] font-bold text-gray-600">Tagihan Air {contractData.payment_interval === 'per_contract' && `(x${duration})`}</span>
+                    <span className="text-[14px] font-bold text-brand-navy">Rp {(contractData.payment_interval === 'per_contract' ? water * duration : water).toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[13px] font-bold text-gray-600">Biaya Lainnya {contractData.payment_interval === 'per_contract' && `(x${duration})`}</span>
+                    <span className="text-[14px] font-bold text-brand-navy">Rp {(contractData.payment_interval === 'per_contract' ? otherBills * duration : otherBills).toLocaleString('id-ID')}</span>
                   </div>
                   <div className="flex justify-between items-center mb-4">
-                    <span className="text-[13px] font-bold text-gray-600">Biaya Lainnya</span>
-                    <span className="text-[14px] font-bold text-brand-navy">Rp {otherBills.toLocaleString('id-ID')}</span>
+                    <span className="text-[13px] font-bold text-gray-600">Deposito (Bayar Sekali)</span>
+                    <span className="text-[14px] font-bold text-brand-navy">Rp {deposit.toLocaleString('id-ID')}</span>
                   </div>
                   <div className="h-px bg-[#0e8a7a]/20 w-full mb-4"></div>
                   <div className="flex justify-between items-center">
-                    <span className="text-[15px] font-extrabold text-brand-navy">Total Harga</span>
+                    <span className="text-[15px] font-extrabold text-brand-navy">Total Tagihan Awal</span>
                     <span className="text-[20px] font-extrabold text-[#0e8a7a]">
                       Rp {totalBiaya.toLocaleString('id-ID')}
                     </span>
@@ -1077,10 +1149,10 @@ function AddRoomContent() {
                     </div>
                     <div className="space-y-4">
                       {roomData.status === 'occupied' ? (
-                        <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-4">
                           <div className="flex justify-between items-center text-[14px]">
                             <span className="text-gray-500">Nama Lengkap</span>
-                            <span className="font-bold text-brand-navy truncate max-w-[150px]">{tenantData.name || '-'}</span>
+                            <span className="font-bold text-brand-navy truncate max-w-[180px]">{tenantData.name || '-'}</span>
                           </div>
                           <div className="flex justify-between items-center text-[14px]">
                             <span className="text-gray-500">Nomor HP / WA</span>
@@ -1088,9 +1160,38 @@ function AddRoomContent() {
                           </div>
                           <div className="flex justify-between items-center text-[14px]">
                             <span className="text-gray-500">Email</span>
-                            <span className="font-bold text-brand-navy truncate max-w-[150px]">{tenantData.email || '-'}</span>
+                            <span className="font-bold text-brand-navy truncate max-w-[180px]">{tenantData.email || '-'}</span>
                           </div>
-                        </>
+                          <div className="flex justify-between items-center text-[14px]">
+                            <span className="text-gray-500">Tanggal Lahir</span>
+                            <span className="font-bold text-brand-navy">
+                              {tenantData.date_of_birth ? new Date(tenantData.date_of_birth).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[14px]">
+                            <span className="text-gray-500">Jenis Kelamin</span>
+                            <span className="font-bold text-brand-navy">{tenantData.gender || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-[14px]">
+                            <span className="text-gray-500">Pekerjaan</span>
+                            <span className="font-bold text-brand-navy">{tenantData.job || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-[14px] md:col-span-2 pt-2 border-t border-gray-100">
+                            <span className="text-gray-400 font-bold text-[12px] uppercase tracking-wider">Kontak Darurat</span>
+                          </div>
+                          <div className="flex justify-between items-center text-[14px]">
+                            <span className="text-gray-500">Nama Kontak</span>
+                            <span className="font-bold text-brand-navy">{tenantData.emergency_contact_name || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-[14px]">
+                            <span className="text-gray-500">Hubungan</span>
+                            <span className="font-bold text-brand-navy">{tenantData.emergency_contact_relation || '-'}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-[14px]">
+                            <span className="text-gray-500">No. HP Darurat</span>
+                            <span className="font-bold text-brand-navy">{tenantData.emergency_contact_phone || '-'}</span>
+                          </div>
+                        </div>
                       ) : (
                         <div className="flex h-full items-center justify-center text-gray-400 text-sm font-medium py-8">
                           Tidak ada penghuni (Kamar Kosong)
@@ -1114,6 +1215,14 @@ function AddRoomContent() {
                       <div className="flex justify-between items-center text-[14px]">
                         <span className="text-gray-500">Durasi Kontrak</span>
                         <span className="font-bold text-brand-navy">{contractData.rental_duration ? `${contractData.rental_duration} Bulan` : '-'}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[14px]">
+                        <span className="text-gray-500">Interval Pembayaran</span>
+                        <span className="font-bold text-brand-navy">{contractData.payment_interval === 'per_contract' ? 'Lunas di Depan (Per Kontrak)' : 'Bulanan (Per Bulan)'}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[14px]">
+                        <span className="text-gray-500">Deposito</span>
+                        <span className="font-bold text-brand-navy">{deposit ? `Rp ${deposit.toLocaleString('id-ID')}` : '-'}</span>
                       </div>
                       <div className="flex justify-between items-center text-[14px]">
                         <span className="text-gray-500">Tagihan Listrik</span>
@@ -1262,6 +1371,16 @@ function AddRoomContent() {
                   <div className="flex justify-between items-center text-[13px]">
                     <span className="text-gray-500">Durasi Kontrak</span>
                     <span className="font-bold text-brand-navy">{contractData.rental_duration ? `${contractData.rental_duration} Bulan` : '-'}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[13px]">
+                    <span className="text-gray-500">Interval Pembayaran</span>
+                    <span className="font-bold text-brand-navy truncate max-w-[150px]" title={contractData.payment_interval === 'per_contract' ? 'Lunas di Depan (Per Kontrak)' : 'Bulanan (Per Bulan)'}>
+                      {contractData.payment_interval === 'per_contract' ? 'Per Kontrak' : 'Bulanan'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-[13px]">
+                    <span className="text-gray-500">Deposito</span>
+                    <span className="font-bold text-brand-navy">{deposit ? `Rp ${deposit.toLocaleString('id-ID')}` : '-'}</span>
                   </div>
                   <div className="flex justify-between items-center text-[13px]">
                     <span className="text-gray-500">Tagihan Listrik</span>

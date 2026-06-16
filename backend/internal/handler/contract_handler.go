@@ -56,18 +56,19 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 	}
 
 	contract := &model.Contract{
-		RoomID:         &roomID,
-		UserID:         &userID,
-		OwnerID:        ownerID,
-		StartDate:      startDate,
-		EndDate:        endDate,
-		RentalDuration: req.RentalDuration,
-		MonthlyRent:    req.MonthlyRent,
-		TotalPrice:     req.MonthlyRent * float64(req.RentalDuration),
-		Deposit:        req.Deposit,
-		PaymentDueDay:  req.PaymentDueDay,
-		Status:         "active",
-		Notes:          req.Notes,
+		RoomID:          &roomID,
+		UserID:          &userID,
+		OwnerID:         ownerID,
+		StartDate:       startDate,
+		EndDate:         endDate,
+		RentalDuration:  req.RentalDuration,
+		MonthlyRent:     req.MonthlyRent,
+		TotalPrice:      req.MonthlyRent * float64(req.RentalDuration),
+		Deposit:         req.Deposit,
+		PaymentInterval: req.PaymentInterval,
+		PaymentDueDay:   req.PaymentDueDay,
+		Status:          "active",
+		Notes:           req.Notes,
 	}
 
 	if err := h.repo.Create(c.Request.Context(), contract); err != nil {

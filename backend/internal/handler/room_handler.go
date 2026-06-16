@@ -188,15 +188,31 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 	paymentDueDayStr := c.PostForm("payment_due_day")
 	paymentDueDay, _ := strconv.Atoi(paymentDueDayStr)
 	notes := c.PostForm("notes")
+	
+	paymentInterval := c.PostForm("payment_interval")
+	if paymentInterval == "" {
+		paymentInterval = "monthly"
+	}
+	depositStr := c.PostForm("deposit")
+	deposit, _ := strconv.ParseFloat(depositStr, 64)
+
+	var totalPrice float64
+	if paymentInterval == "per_contract" {
+		totalPrice = (monthlyRent * float64(rentalDuration)) + (electricityBill * float64(rentalDuration)) + (waterBill * float64(rentalDuration)) + (otherBills * float64(rentalDuration)) + deposit
+	} else {
+		totalPrice = monthlyRent + electricityBill + waterBill + otherBills + deposit
+	}
 
     contract := &model.Contract{
         StartDate:      entryDate,
         RentalDuration: rentalDuration,
         MonthlyRent:    monthlyRent,
-        TotalPrice:     (monthlyRent * float64(rentalDuration)) + electricityBill + waterBill + otherBills,
+        TotalPrice:     totalPrice,
         ElectricityBill: electricityBill,
         WaterBill:      waterBill,
         OtherBills:     otherBills,
+        Deposit:        deposit,
+        PaymentInterval: paymentInterval,
         PaymentDueDay:  paymentDueDay,
         Notes:          notes,
     }
@@ -341,14 +357,30 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	paymentDueDay, _ := strconv.Atoi(paymentDueDayStr)
 	notes := c.PostForm("notes")
 
+	paymentInterval := c.PostForm("payment_interval")
+	if paymentInterval == "" {
+		paymentInterval = "monthly"
+	}
+	depositStr := c.PostForm("deposit")
+	deposit, _ := strconv.ParseFloat(depositStr, 64)
+
+	var totalPrice float64
+	if paymentInterval == "per_contract" {
+		totalPrice = (price * float64(rentalDuration)) + (electricityBill * float64(rentalDuration)) + (waterBill * float64(rentalDuration)) + (otherBills * float64(rentalDuration)) + deposit
+	} else {
+		totalPrice = price + electricityBill + waterBill + otherBills + deposit
+	}
+
 	contract := &model.Contract{
 		StartDate:      entryDate,
 		RentalDuration: rentalDuration,
 		MonthlyRent:    price,
-		TotalPrice:     (price * float64(rentalDuration)) + electricityBill + waterBill + otherBills,
+		TotalPrice:     totalPrice,
 		ElectricityBill: electricityBill,
         WaterBill:      waterBill,
         OtherBills:     otherBills,
+		Deposit:        deposit,
+        PaymentInterval: paymentInterval,
         PaymentDueDay:  paymentDueDay,
         Notes:          notes,
 	}

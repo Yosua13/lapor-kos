@@ -20,6 +20,7 @@ type Contract struct {
 	WaterBill      float64    `json:"water_bill"`
 	OtherBills     float64    `json:"other_bills"`
 	Deposit        float64    `json:"deposit"`
+	PaymentInterval string     `json:"payment_interval"` // 'monthly' or 'per_contract'
 	PaymentDueDay  int        `json:"payment_due_day"`
 	Status         string     `json:"status"` // active, expired, cancelled
 	Notes          string     `json:"notes"`
@@ -43,6 +44,7 @@ type CreateContractRequest struct {
 	MonthlyRent    float64 `json:"monthly_rent" binding:"required"`
 	TotalPrice     float64 `json:"total_price"`
 	Deposit        float64 `json:"deposit"`
+	PaymentInterval string  `json:"payment_interval"`
 	PaymentDueDay  int     `json:"payment_due_day"`
 	Notes          string  `json:"notes"`
 }
@@ -53,6 +55,7 @@ type UpdateContractRequest struct {
 	EndDate        string  `json:"end_date"`
 	MonthlyRent    float64 `json:"monthly_rent"`
 	Deposit        float64 `json:"deposit"`
+	PaymentInterval string  `json:"payment_interval"`
 	PaymentDueDay  int     `json:"payment_due_day"`
 	Status         string  `json:"status"`
 	Notes          string  `json:"notes"`
