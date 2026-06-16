@@ -60,6 +60,8 @@ interface Tenant {
   emergency_contact_relation?: string;
   emergency_contact_phone?: string;
   notes?: string;
+  is_active?: boolean;
+  additional_doc_url?: string;
 
   contract?: {
     id: string;
@@ -125,6 +127,47 @@ export default function TenantProfilePage() {
     ktp: null,
     selfie: null
   });
+
+  const [showChangeRoomModal, setShowChangeRoomModal] = useState(false);
+  const [selectedRoomId, setSelectedRoomId] = useState('');
+  const [isChangingRoom, setIsChangingRoom] = useState(false);
+
+  const [showExtendModal, setShowExtendModal] = useState(false);
+  const [extendData, setExtendData] = useState({
+    start_date: '',
+    rental_duration: '1',
+    monthly_rent: '',
+    electricity_bill: '',
+    water_bill: '',
+    other_bills: '',
+    payment_due_day: '1',
+    notes: ''
+  });
+  const [isExtending, setIsExtending] = useState(false);
+
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+
+  // New fields for tenant profile editing
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    date_of_birth: '',
+    gender: '',
+    job: '',
+    address: '',
+    notes: '',
+    emergency_contact_name: '',
+    emergency_contact_relation: '',
+    emergency_contact_phone: ''
+  });
+  const [editFiles, setEditFiles] = useState<{ ktp: File | null, selfie: File | null, additional_doc: File | null }>({
+    ktp: null,
+    selfie: null,
+    additional_doc: null
+  });
+
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [activeMenu, setActiveMenu] = useState<'ringkasan' | 'kontrak' | 'data-pribadi' | 'dokumen' | 'pembayaran' | 'aktivitas'>('ringkasan');
 
@@ -147,6 +190,26 @@ export default function TenantProfilePage() {
         entry_date: tenantData.contract?.start_date ? tenantData.contract.start_date.split('T')[0] : '',
         rental_duration: tenantData.contract?.rental_duration || 1
       });
+      setEditFormData({
+        name: tenantData.name || '',
+        phone: tenantData.phone || '',
+        email: tenantData.email || '',
+        date_of_birth: tenantData.date_of_birth ? tenantData.date_of_birth.split('T')[0] : '',
+        gender: tenantData.gender || '',
+        job: tenantData.job || '',
+        address: tenantData.address || '',
+        notes: tenantData.notes || '',
+        emergency_contact_name: tenantData.emergency_contact_name || '',
+        emergency_contact_relation: tenantData.emergency_contact_relation || '',
+        emergency_contact_phone: tenantData.emergency_contact_phone || ''
+      });
+      if (tenantData.contract?.end_date) {
+        setExtendData(prev => ({
+          ...prev,
+          start_date: tenantData.contract.end_date.split('T')[0],
+          monthly_rent: String(tenantData.contract.monthly_rent || '')
+        }));
+      }
     } catch (err: any) {
       alert(err.message || 'Gagal memuat detail penghuni');
       router.push('/tenants');
@@ -242,6 +305,152 @@ export default function TenantProfilePage() {
       showToast(err.message, 'error');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleEditProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editFormData.name.trim()) { alert('Nama wajib diisi'); return; }
+    if (!editFormData.phone.trim()) { alert('Nomor HP wajib diisi'); return; }
+
+    setIsSaving(true);
+    try {
+      const data = new FormData();
+      data.append('name', editFormData.name);
+      data.append('phone', editFormData.phone);
+      data.append('room_id', tenant?.room?.id || '');
+      data.append('entry_date', tenant?.contract?.start_date ? tenant.contract.start_date.split('T')[0] : '');
+      data.append('rental_duration', String(tenant?.contract?.rental_duration || 1));
+      
+      data.append('date_of_birth', editFormData.date_of_birth);
+      data.append('gender', editFormData.gender);
+      data.append('job', editFormData.job);
+      data.append('address', editFormData.address);
+      data.append('notes', editFormData.notes);
+      data.append('emergency_contact_name', editFormData.emergency_contact_name);
+      data.append('emergency_contact_relation', editFormData.emergency_contact_relation);
+      data.append('emergency_contact_phone', editFormData.emergency_contact_phone);
+
+      if (editFiles.ktp) data.append('ktp', editFiles.ktp);
+      if (editFiles.selfie) data.append('selfie', editFiles.selfie);
+      if (editFiles.additional_doc) data.append('additional_doc', editFiles.additional_doc);
+
+      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+      const response = await fetch(`${API_URL}/api/tenants/${id}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: data
+      });
+
+      if (!response.ok) throw new Error('Gagal memperbarui profil');
+
+      setIsEditing(false);
+      setEditFiles({ ktp: null, selfie: null, additional_doc: null });
+      fetchData();
+      showToast('Profil berhasil diperbarui!');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleChangeRoomSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRoomId) { alert('Silahkan pilih kamar baru'); return; }
+
+    setIsChangingRoom(true);
+    try {
+      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+      const response = await fetch(`${API_URL}/api/tenants/${id}/change-room`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ room_id: selectedRoomId })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Gagal memindahkan kamar');
+      }
+
+      setShowChangeRoomModal(false);
+      fetchData();
+      showToast('Berhasil memindahkan kamar!');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsChangingRoom(false);
+    }
+  };
+
+  const handleExtendContractSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!extendData.start_date) { alert('Tanggal mulai wajib diisi'); return; }
+    if (!extendData.rental_duration) { alert('Durasi wajib diisi'); return; }
+    if (!extendData.monthly_rent) { alert('Harga sewa wajib diisi'); return; }
+
+    setIsExtending(true);
+    try {
+      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+      const payload = {
+        start_date: extendData.start_date,
+        rental_duration: parseInt(extendData.rental_duration, 10),
+        monthly_rent: parseFloat(extendData.monthly_rent.replace(/\D/g, '')),
+        electricity_bill: parseFloat(extendData.electricity_bill.replace(/\D/g, '')) || 0,
+        water_bill: parseFloat(extendData.water_bill.replace(/\D/g, '')) || 0,
+        other_bills: parseFloat(extendData.other_bills.replace(/\D/g, '')) || 0,
+        payment_due_day: parseInt(extendData.payment_due_day, 10) || 1,
+        notes: extendData.notes
+      };
+
+      const response = await fetch(`${API_URL}/api/tenants/${id}/extend-contract`, {
+        method: 'POST',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Gagal memperpanjang kontrak');
+      }
+
+      setShowExtendModal(false);
+      fetchData();
+      showToast('Kontrak berhasil diperpanjang dan tagihan baru dibuat!');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsExtending(false);
+    }
+  };
+
+  const handleCheckoutSubmit = async () => {
+    setIsCheckingOut(true);
+    try {
+      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
+      const response = await fetch(`${API_URL}/api/tenants/${id}/checkout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Gagal melakukan checkout');
+      }
+
+      setShowCheckoutModal(false);
+      fetchData();
+      showToast('Penghuni berhasil checkout!');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsCheckingOut(false);
     }
   };
 
@@ -482,16 +691,25 @@ export default function TenantProfilePage() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-3 w-full xl:w-auto overflow-x-auto pb-2 xl:pb-0 no-scrollbar shrink-0">
-          <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-[13px] font-bold text-gray-700 hover:bg-gray-50 whitespace-nowrap transition-colors">
+          <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-[13px] font-bold text-gray-700 hover:bg-gray-50 whitespace-nowrap transition-colors">
             <Edit2 className="w-4 h-4" /> Edit Profil
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-[13px] font-bold text-gray-700 hover:bg-gray-50 whitespace-nowrap transition-colors">
+          <button onClick={() => setShowChangeRoomModal(true)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-[13px] font-bold text-gray-700 hover:bg-gray-50 whitespace-nowrap transition-colors">
             <ArrowRightLeft className="w-4 h-4" /> Pindah Kamar
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-[13px] font-bold text-gray-700 hover:bg-gray-50 whitespace-nowrap transition-colors">
+          <button 
+            onClick={() => {
+              if (daysRemaining > 7) {
+                showToast(`Kontrak belum bisa diperpanjang (tersisa ${daysRemaining} hari). Hanya bisa diperpanjang H-7 hari.`, 'error');
+              } else {
+                setShowExtendModal(true);
+              }
+            }} 
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-[13px] font-bold text-gray-700 hover:bg-gray-50 whitespace-nowrap transition-colors"
+          >
             <Calendar className="w-4 h-4" /> Perpanjang Kontrak
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 border border-red-200 rounded-lg text-[13px] font-bold text-red-600 hover:bg-red-50 whitespace-nowrap transition-colors">
+          <button onClick={() => setShowCheckoutModal(true)} className="flex items-center gap-2 px-4 py-2 border border-red-200 rounded-lg text-[13px] font-bold text-red-600 hover:bg-red-50 whitespace-nowrap transition-colors">
             <LogOut className="w-4 h-4" /> Checkout
           </button>
         </div>
@@ -1125,7 +1343,7 @@ export default function TenantProfilePage() {
                      </div>
                    </div>
 
-                   <button className="w-full py-2.5 border border-[#0e8a7a] text-[#0e8a7a] hover:bg-[#0e8a7a]/5 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
+                   <button onClick={() => setIsEditing(true)} className="w-full py-2.5 border border-[#0e8a7a] text-[#0e8a7a] hover:bg-[#0e8a7a]/5 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
                      <Edit2 className="w-4 h-4" /> Edit Data Pribadi
                    </button>
                  </div>
@@ -1148,7 +1366,7 @@ export default function TenantProfilePage() {
                      </div>
                      <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Nomor HP/WA</span>
-                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.phone || '-'}</span>
+                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.emergency_contact_phone || '-'}</span>
                      </div>
                    </div>
 
@@ -1171,7 +1389,11 @@ export default function TenantProfilePage() {
                    <div className="space-y-4 text-[13px] text-gray-500 flex-1 mb-8">
                      <div className="grid grid-cols-[140px_1fr] items-center">
                        <span>Status Akun</span>
-                       <span className="font-medium text-[#1f2937] flex items-center gap-2"><span className="text-gray-400">:</span> <span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Aktif</span></span>
+                       <span className="font-medium text-[#1f2937] flex items-center gap-2"><span className="text-gray-400">:</span> 
+                         <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md ${tenant.is_active ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50'}`}>
+                           {tenant.is_active ? 'Aktif' : 'Tidak Aktif'}
+                         </span>
+                       </span>
                      </div>
                      <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Role</span>
@@ -1353,23 +1575,46 @@ export default function TenantProfilePage() {
                       <h3 className="font-bold text-[14px] text-[#1f2937]">Dokumen Tambahan</h3>
                       <span className="px-2 py-0.5 text-[10px] font-medium text-gray-500 bg-gray-100 rounded-md">Opsional</span>
                     </div>
-                    <div className="w-full h-[120px] bg-gray-50 border border-gray-200 rounded-xl mb-4 overflow-hidden relative flex items-center justify-center">
-                      <FileText className="w-10 h-10 text-gray-300" />
+                    <div className="w-full h-[120px] bg-gray-100 rounded-xl mb-4 overflow-hidden relative cursor-pointer group" onClick={() => tenant.additional_doc_url && setSelectedImage(getImageUrl(tenant.additional_doc_url))}>
+                      {tenant.additional_doc_url ? (
+                        <img src={getImageUrl(tenant.additional_doc_url)} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="Dokumen Tambahan" />
+                      ) : (
+                        <div className="w-full h-full bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center">
+                          <FileText className="w-8 h-8 text-gray-300" />
+                        </div>
+                      )}
+                      {tenant.additional_doc_url && (
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Eye className="w-6 h-6 text-white" />
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2 text-[11px] text-gray-500 mb-6">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-3.5 h-3.5" />
                         <span className="w-20">Diunggah</span>
-                        <span className="text-gray-400 font-medium">-</span>
+                        <span className="text-[#1f2937] font-medium">
+                          {tenant.additional_doc_url ? `${new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}` : '-'}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="w-20">Status</span>
-                        <span className="text-gray-400 font-bold flex items-center gap-1">Belum Ada <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div></span>
+                        {tenant.additional_doc_url ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="w-20">Status</span>
+                            <span className="text-emerald-600 font-bold flex items-center gap-1">Ada <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div></span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="w-3.5 h-3.5 text-gray-400" />
+                            <span className="w-20">Status</span>
+                            <span className="text-gray-400 font-bold flex items-center gap-1">Belum Ada <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div></span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="mt-auto space-y-2">
-                      <button className="w-full py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-[12px] font-bold transition-colors flex items-center justify-center gap-2">
+                      <button onClick={() => tenant.additional_doc_url && setSelectedImage(getImageUrl(tenant.additional_doc_url))} className="w-full py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-[12px] font-bold transition-colors flex items-center justify-center gap-2">
                         <Eye className="w-3.5 h-3.5" /> Lihat
                       </button>
                       <button className="w-full py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-[12px] font-bold transition-colors flex items-center justify-center gap-2">
@@ -1769,13 +2014,421 @@ export default function TenantProfilePage() {
         </div>
       </div>
 
+      {/* Edit Profile Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 shrink-0">
+              <h3 className="font-display font-extrabold text-[18px] text-brand-navy">Edit Profil Penghuni</h3>
+              <button onClick={() => setIsEditing(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleEditProfileSubmit} className="p-6 space-y-6 flex-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Nama Lengkap</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.name}
+                    onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Nomor HP / WA</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.phone}
+                    onChange={e => setEditFormData({ ...editFormData, phone: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Tanggal Lahir</label>
+                  <input
+                    type="date"
+                    value={editFormData.date_of_birth}
+                    onChange={e => setEditFormData({ ...editFormData, date_of_birth: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Jenis Kelamin</label>
+                  <select
+                    value={editFormData.gender}
+                    onChange={e => setEditFormData({ ...editFormData, gender: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                  >
+                    <option value="">Pilih jenis kelamin...</option>
+                    <option value="Laki-laki">Laki-laki</option>
+                    <option value="Perempuan">Perempuan</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Pekerjaan / Status</label>
+                  <input
+                    type="text"
+                    value={editFormData.job}
+                    onChange={e => setEditFormData({ ...editFormData, job: e.target.value })}
+                    placeholder="Contoh: Karyawan, Mahasiswa"
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Alamat Asal</label>
+                  <input
+                    type="text"
+                    value={editFormData.address}
+                    onChange={e => setEditFormData({ ...editFormData, address: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                  />
+                </div>
+              </div>
+
+              {/* Emergency Contact Group */}
+              <div className="border-t border-gray-100 pt-4">
+                <h4 className="font-bold text-[14px] text-brand-navy mb-3">Kontak Darurat / Kerabat</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Nama Kerabat</label>
+                    <input
+                      type="text"
+                      value={editFormData.emergency_contact_name}
+                      onChange={e => setEditFormData({ ...editFormData, emergency_contact_name: e.target.value })}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Hubungan</label>
+                    <input
+                      type="text"
+                      value={editFormData.emergency_contact_relation}
+                      onChange={e => setEditFormData({ ...editFormData, emergency_contact_relation: e.target.value })}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Nomor HP / WA</label>
+                    <input
+                      type="text"
+                      value={editFormData.emergency_contact_phone}
+                      onChange={e => setEditFormData({ ...editFormData, emergency_contact_phone: e.target.value })}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Files Upload Group */}
+              <div className="border-t border-gray-100 pt-4">
+                <h4 className="font-bold text-[14px] text-brand-navy mb-3">Unggah Dokumen Identitas</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Ganti Foto KTP</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={e => e.target.files && setEditFiles({ ...editFiles, ktp: e.target.files[0] })}
+                      className="text-[11px] w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Ganti Foto Selfie</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={e => e.target.files && setEditFiles({ ...editFiles, selfie: e.target.files[0] })}
+                      className="text-[11px] w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Ganti Dokumen Tambahan</label>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={e => e.target.files && setEditFiles({ ...editFiles, additional_doc: e.target.files[0] })}
+                      className="text-[11px] w-full"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Catatan Owner</label>
+                <textarea
+                  value={editFormData.notes}
+                  onChange={e => setEditFormData({ ...editFormData, notes: e.target.value })}
+                  rows={2}
+                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[13px] font-bold transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-[#0e8a7a] hover:bg-[#0c7668] text-white rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2"
+                >
+                  {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Simpan Perubahan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Change Room Modal */}
+      {showChangeRoomModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h3 className="font-display font-extrabold text-[18px] text-brand-navy">Pindah Kamar</h3>
+              <button onClick={() => setShowChangeRoomModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleChangeRoomSubmit} className="p-6 space-y-4">
+              <div>
+                <p className="text-[13px] text-gray-500 mb-4">
+                  Pilih kamar baru untuk memindahkan <span className="font-bold text-gray-700">{tenant.name}</span>. Kamar saat ini: <span className="font-bold text-gray-700">Kamar {tenant.room?.room_number || '-'}</span>.
+                </p>
+                <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Pilih Kamar Baru</label>
+                <select
+                  required
+                  value={selectedRoomId}
+                  onChange={e => setSelectedRoomId(e.target.value)}
+                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
+                >
+                  <option value="">Pilih kamar kosong...</option>
+                  {rooms
+                    .filter(r => r.status === 'available')
+                    .map(r => (
+                      <option key={r.id} value={r.id}>
+                        Kamar {r.room_number} (Rp {r.price_per_month.toLocaleString('id-ID')}/bln)
+                      </option>
+                    ))}
+                </select>
+                {rooms.filter(r => r.status === 'available').length === 0 && (
+                  <p className="text-red-500 text-[11px] mt-1.5">Tidak ada kamar kosong yang tersedia saat ini.</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowChangeRoomModal(false)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[13px] font-bold transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isChangingRoom || rooms.filter(r => r.status === 'available').length === 0}
+                  className="px-4 py-2 bg-[#0e8a7a] hover:bg-[#0c7668] text-white rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2"
+                >
+                  {isChangingRoom && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Pindahkan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Extend Contract Modal */}
+      {showExtendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 shrink-0">
+              <h3 className="font-display font-extrabold text-[18px] text-brand-navy">Perpanjangan Kontrak</h3>
+              <button onClick={() => setShowExtendModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleExtendContractSubmit} className="p-6 space-y-4 flex-1">
+              <p className="text-[13px] text-gray-500 mb-4">
+                Form perpanjangan kontrak untuk <span className="font-bold text-gray-700">{tenant.name}</span> (Kamar {tenant.room?.room_number || '-'}). Kontrak baru akan membuat tagihan (payment) otomatis.
+              </p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Tanggal Mulai Kontrak Baru</label>
+                  <input
+                    type="date"
+                    required
+                    value={extendData.start_date}
+                    onChange={e => setExtendData({ ...extendData, start_date: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Durasi Kontrak Baru (Bulan)</label>
+                  <select
+                    required
+                    value={extendData.rental_duration}
+                    onChange={e => setExtendData({ ...extendData, rental_duration: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 12].map(num => (
+                      <option key={num} value={num.toString()}>{num} Bulan</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Sewa Bulanan</label>
+                  <input
+                    type="text"
+                    required
+                    value={extendData.monthly_rent}
+                    onChange={e => {
+                      const digits = e.target.value.replace(/\D/g, '');
+                      setExtendData({ ...extendData, monthly_rent: digits ? parseInt(digits, 10).toLocaleString('id-ID') : '' });
+                    }}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Jatuh Tempo (Tanggal)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="28"
+                    required
+                    value={extendData.payment_due_day}
+                    onChange={e => setExtendData({ ...extendData, payment_due_day: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4 mt-4">
+                <h4 className="font-bold text-[13px] text-brand-navy mb-3">Biaya-Biaya Tambahan Bulanan (Opsional)</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1">Tagihan Listrik</label>
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={extendData.electricity_bill}
+                      onChange={e => {
+                        const digits = e.target.value.replace(/\D/g, '');
+                        setExtendData({ ...extendData, electricity_bill: digits ? parseInt(digits, 10).toLocaleString('id-ID') : '' });
+                      }}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1">Tagihan Air</label>
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={extendData.water_bill}
+                      onChange={e => {
+                        const digits = e.target.value.replace(/\D/g, '');
+                        setExtendData({ ...extendData, water_bill: digits ? parseInt(digits, 10).toLocaleString('id-ID') : '' });
+                      }}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1">Biaya Lainnya</label>
+                    <input
+                      type="text"
+                      placeholder="0"
+                      value={extendData.other_bills}
+                      onChange={e => {
+                        const digits = e.target.value.replace(/\D/g, '');
+                        setExtendData({ ...extendData, other_bills: digits ? parseInt(digits, 10).toLocaleString('id-ID') : '' });
+                      }}
+                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Catatan Perpanjangan</label>
+                <textarea
+                  value={extendData.notes}
+                  onChange={e => setExtendData({ ...extendData, notes: e.target.value })}
+                  rows={2}
+                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setShowExtendModal(false)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[13px] font-bold transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isExtending}
+                  className="px-4 py-2 bg-[#0e8a7a] hover:bg-[#0c7668] text-white rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2"
+                >
+                  {isExtending && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Perpanjang Kontrak
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout Confirmation Modal */}
+      {showCheckoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+            <h3 className="font-display font-extrabold text-[18px] text-brand-navy mb-2">Konfirmasi Checkout</h3>
+            <p className="text-[13px] text-gray-500 mb-6">
+              Apakah Anda yakin ingin melakukan checkout untuk <span className="font-bold text-gray-700">{tenant.name}</span>? Tindakan ini akan menonaktifkan status penghuni, mengakhiri kontrak aktif, dan membebaskan kamar.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCheckoutModal(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[13px] font-bold transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleCheckoutSubmit}
+                disabled={isCheckingOut}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2"
+              >
+                {isCheckingOut && <Loader2 className="w-4 h-4 animate-spin" />}
+                Ya, Checkout
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Image Preview Modal */}
       {selectedImage && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSelectedImage(null)}>
           <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center justify-center animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setSelectedImage(null)}
-              className="absolute -top-12 right-0 md:-right-12 w-10 h-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
+              className="absolute -top-12 right-0 md:-right-12 w-10 h-10 bg-white/10 hover:bg-white text-white rounded-full flex items-center justify-center transition-colors backdrop-blur-md"
             >
               <X className="w-5 h-5" />
             </button>
