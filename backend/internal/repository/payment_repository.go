@@ -110,7 +110,7 @@ func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, fi
 		COALESCE(p.amount_rent, 0), COALESCE(p.amount_electricity, 0), COALESCE(p.amount_water, 0), COALESCE(p.amount_other, 0), 
 		COALESCE(p.total_paid, 0), COALESCE(p.payment_method, ''), p.status, COALESCE(p.proof_photo_url, ''), 
 		p.paid_at, p.due_date, COALESCE(p.notes, ''), p.created_at,
-		r.room_number, u.name
+		r.room_number, u.name, u.phone
 	FROM payments p
 	JOIN contracts c ON p.contract_id = c.id
 	LEFT JOIN rooms r ON c.room_id = r.id
@@ -165,13 +165,14 @@ func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, fi
 		var ownerID *uuid.UUID
 		var roomNum *string
 		var userName *string
+		var userPhone *string
 
 		err := rows.Scan(
 			&p.ID, &p.ContractID, &ownerID, &p.PeriodMonth, &p.PeriodYear,
 			&p.AmountRent, &p.AmountElectricity, &p.AmountWater, &p.AmountOther,
 			&p.TotalPaid, &p.PaymentMethod, &p.Status, &p.ProofPhotoURL,
 			&paidAt, &p.DueDate, &p.Notes, &p.CreatedAt,
-			&roomNum, &userName,
+			&roomNum, &userName, &userPhone,
 		)
 		if err != nil {
 			return nil, err
@@ -186,7 +187,11 @@ func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, fi
 			p.Contract.Room = &model.Room{RoomNumber: *roomNum}
 		}
 		if userName != nil {
-			p.Contract.User = &model.User{Name: *userName}
+			user := &model.User{Name: *userName}
+			if userPhone != nil {
+				user.Phone = *userPhone
+			}
+			p.Contract.User = user
 		}
 
 		payments = append(payments, p)
@@ -201,7 +206,7 @@ func (r *PaymentRepository) FindByUserID(ctx context.Context, userID uuid.UUID) 
 		COALESCE(p.amount_rent, 0), COALESCE(p.amount_electricity, 0), COALESCE(p.amount_water, 0), COALESCE(p.amount_other, 0), 
 		COALESCE(p.total_paid, 0), COALESCE(p.payment_method, ''), p.status, COALESCE(p.proof_photo_url, ''), 
 		p.paid_at, p.due_date, COALESCE(p.notes, ''), p.created_at,
-		r.room_number, u.name
+		r.room_number, u.name, u.phone
 	FROM payments p
 	JOIN contracts c ON p.contract_id = c.id
 	LEFT JOIN rooms r ON c.room_id = r.id
@@ -222,13 +227,14 @@ func (r *PaymentRepository) FindByUserID(ctx context.Context, userID uuid.UUID) 
 		var ownerID *uuid.UUID
 		var roomNum *string
 		var userName *string
+		var userPhone *string
 
 		err := rows.Scan(
 			&p.ID, &p.ContractID, &ownerID, &p.PeriodMonth, &p.PeriodYear,
 			&p.AmountRent, &p.AmountElectricity, &p.AmountWater, &p.AmountOther,
 			&p.TotalPaid, &p.PaymentMethod, &p.Status, &p.ProofPhotoURL,
 			&paidAt, &p.DueDate, &p.Notes, &p.CreatedAt,
-			&roomNum, &userName,
+			&roomNum, &userName, &userPhone,
 		)
 		if err != nil {
 			return nil, err
@@ -243,7 +249,11 @@ func (r *PaymentRepository) FindByUserID(ctx context.Context, userID uuid.UUID) 
 			p.Contract.Room = &model.Room{RoomNumber: *roomNum}
 		}
 		if userName != nil {
-			p.Contract.User = &model.User{Name: *userName}
+			user := &model.User{Name: *userName}
+			if userPhone != nil {
+				user.Phone = *userPhone
+			}
+			p.Contract.User = user
 		}
 
 		payments = append(payments, p)

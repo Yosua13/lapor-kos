@@ -118,7 +118,7 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, userID uuid.UUID)
 		SELECT 
 			u.id, u.name, u.email, u.phone, u.ktp_url, u.selfie_url, u.created_at,
 			c.id as contract_id, c.start_date, c.end_date, c.rental_duration, c.monthly_rent, c.total_price, c.deposit, c.payment_due_day, c.status as contract_status, c.notes as contract_notes,
-			r.id as room_id, r.room_number, r.price_per_month, r.description, r.status as room_status,
+			r.id as room_id, r.room_number, r.price_per_month, r.description, r.status as room_status, r.type as room_type, r.floor as room_floor,
 			(SELECT status FROM payments WHERE contract_id = c.id ORDER BY period_year DESC, period_month DESC, due_date DESC LIMIT 1) AS latest_payment_status,
 			(SELECT (amount_rent + amount_electricity + amount_water + amount_other) FROM payments WHERE contract_id = c.id ORDER BY period_year DESC, period_month DESC, due_date DESC LIMIT 1) AS latest_payment_amount
 		FROM users u
@@ -138,7 +138,7 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, userID uuid.UUID)
 	var rentalDuration, paymentDueDay *int
 	var monthlyRent, totalPrice, deposit *float64
 	var contractStatus, contractNotes *string
-	var roomNumber, roomDescription, roomStatus *string
+	var roomNumber, roomDescription, roomStatus, roomType, roomFloor *string
 	var roomPrice *float64
 	var latestPaymentStatus *string
 	var latestPaymentAmount *float64
@@ -146,7 +146,7 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, userID uuid.UUID)
 	err := r.db.QueryRow(ctx, query, userID).Scan(
 		&uID, &name, &email, &phone, &ktpURL, &selfieURL, &createdAt,
 		&contractID, &startDate, &endDate, &rentalDuration, &monthlyRent, &totalPrice, &deposit, &paymentDueDay, &contractStatus, &contractNotes,
-		&roomID, &roomNumber, &roomPrice, &roomDescription, &roomStatus,
+		&roomID, &roomNumber, &roomPrice, &roomDescription, &roomStatus, &roomType, &roomFloor,
 		&latestPaymentStatus, &latestPaymentAmount,
 	)
 	if err != nil {
@@ -189,6 +189,8 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, userID uuid.UUID)
 			"price_per_month": *roomPrice,
 			"description":     *roomDescription,
 			"status":          *roomStatus,
+			"type":            roomType,
+			"floor":           roomFloor,
 		}
 	} else {
 		result["room"] = nil
