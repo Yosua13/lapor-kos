@@ -162,13 +162,10 @@ func main() {
 
 
 		// Contract routes (Protected)
+		// Contract routes (Protected) - GET /api/contracts is used by dashboard, rooms, tenants, and payments
 		contracts := api.Group("/contracts", middleware.AuthMiddleware())
 		{
-			contracts.POST("", contractHandler.CreateContract)
 			contracts.GET("", contractHandler.GetContracts)
-			contracts.GET("/:id", contractHandler.GetContract)
-			contracts.PUT("/:id", contractHandler.UpdateContract)
-			contracts.DELETE("/:id", contractHandler.DeleteContract)
 		}
 
 		// Payment routes (Protected)
