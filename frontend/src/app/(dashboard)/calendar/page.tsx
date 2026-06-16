@@ -291,10 +291,10 @@ export default function CalendarPage() {
                 </button>
                 {selectedEvent.type === 'contract_expiry' ? (
                   <Link 
-                    href={`/contracts/${selectedEvent.id}`}
+                    href="/tenants"
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-brand-navy hover:bg-brand-navy-light text-white font-bold rounded-xl transition-colors"
                   >
-                    Lihat Kontrak
+                    Lihat Penghuni & Kontrak
                   </Link>
                 ) : (
                   <Link 

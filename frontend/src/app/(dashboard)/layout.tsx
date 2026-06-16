@@ -56,7 +56,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (userData && userData.role === 'tenant') {
-      const ownerOnlyPaths = ['/rooms', '/tenants', '/contracts', '/reports'];
+      const ownerOnlyPaths = ['/rooms', '/tenants', '/reports'];
       const isOwnerPath = ownerOnlyPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
       if (isOwnerPath) {
         router.push('/');
@@ -95,7 +95,6 @@ export default function DashboardLayout({
           { name: 'Dashboard', href: '/', icon: LayoutDashboard },
           { name: 'Manajemen Kamar', href: '/rooms', icon: DoorOpen },
           { name: 'Penghuni & Kontrak', href: '/tenants', icon: Users },
-          { name: 'Manajemen Kontrak', href: '/contracts', icon: FileText },
         ]},
         { section: 'KEUANGAN', items: [
           { name: 'Pembayaran', href: '/payments', icon: CreditCard },
