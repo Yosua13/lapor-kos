@@ -875,8 +875,8 @@ function ReceiptModal({ payment, onClose }: ReceiptModalProps) {
   };
 
   const roomNumber = payment.contract?.room?.room_number || '-';
-  const tenantName = payment.contract?.tenant?.name || '-';
-  const tenantPhone = payment.contract?.tenant?.phone || '-';
+  const tenantName = payment.contract?.user?.name || '-';
+  const tenantPhone = payment.contract?.user?.phone || '-';
 
   return (
     <div 

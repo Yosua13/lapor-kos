@@ -52,14 +52,28 @@ interface Tenant {
   room_id: string;
   ktp_url: string;
   selfie_url: string;
+  date_of_birth?: string;
+  gender?: string;
+  address?: string;
+  job?: string;
+  emergency_contact_name?: string;
+  emergency_contact_relation?: string;
+  emergency_contact_phone?: string;
+  notes?: string;
 
   contract?: {
+    id: string;
     start_date: string;
     end_date: string;
     rental_duration: number;
     status: string;
     latest_payment_status?: string | null;
     latest_payment_amount?: number | null;
+    monthly_rent: number;
+    total_price: number;
+    deposit: number;
+    payment_due_day: number;
+    notes?: string;
   };
   created_at: string;
   room?: {
@@ -68,8 +82,11 @@ interface Tenant {
     price_per_month: number;
     description: string;
     status: string;
+    type?: string;
+    floor?: string;
   };
 }
+
 
 interface Room {
   id: string;
@@ -88,6 +105,7 @@ export default function TenantProfilePage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activityFilter, setActivityFilter] = useState<'all' | 'pembayaran' | 'kontrak' | 'check-in' | 'checkout'>('all');
 
   // Edit mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -236,13 +254,54 @@ export default function TenantProfilePage() {
 
   if (!tenant) return null;
 
+  const formatContractNumber = (id?: string) => {
+    if (!id) return '-';
+    return `KTR-${id.substring(0, 8).toUpperCase()}`;
+  };
+
   // Calculations
   const entryDateObj = new Date(tenant.contract?.start_date || tenant.created_at);
   const endDateObj = new Date(tenant.contract?.end_date || tenant.created_at);
-  const isContractActive = endDateObj >= new Date();
-  const contractStatus = isContractActive ? 'Aktif' : 'Kontrak Habis';
-  const contractStatusColor = isContractActive ? 'text-green-500 bg-green-50' : 'text-red-500 bg-red-50';
+  const isContractActive = tenant.contract ? (endDateObj >= new Date() && tenant.contract.status === 'active') : false;
+  const contractStatus = tenant.contract ? (isContractActive ? 'Aktif' : 'Kontrak Habis') : 'Tidak Ada Kontrak';
+  const contractStatusColor = tenant.contract ? (isContractActive ? 'text-green-500 bg-green-50' : 'text-red-500 bg-red-50') : 'text-gray-500 bg-gray-50';
+  
+  const start = tenant.contract?.start_date ? new Date(tenant.contract.start_date).getTime() : 0;
+  const end = tenant.contract?.end_date ? new Date(tenant.contract.end_date).getTime() : 0;
+  const now = new Date().getTime();
+
+  let progressPercent = 0;
+  let daysRemaining = 0;
+  let totalDays = 0;
+  if (start && end) {
+    const totalDuration = end - start;
+    const elapsed = now - start;
+    progressPercent = Math.min(100, Math.max(0, Math.round((elapsed / totalDuration) * 100)));
+    daysRemaining = Math.max(0, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
+    totalDays = Math.ceil(totalDuration / (1000 * 60 * 60 * 24));
+  }
+
   const totalPembayaranReal = payments.reduce((acc, p) => acc + (p.total_paid || 0), 0);
+  const totalBilled = payments.reduce((acc, p) => acc + (p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other), 0);
+  const totalPaidSum = totalPembayaranReal;
+  const totalOutstanding = Math.max(0, totalBilled - totalPaidSum);
+  const hasUnpaid = payments.some(p => p.status !== 'paid');
+  const activeBill = payments.find(p => p.status !== 'paid') || payments[0] || null;
+
+  const paymentStatusColorCard = (!hasUnpaid && payments.length > 0) ? 'text-emerald-600 bg-emerald-50' : 'text-amber-600 bg-amber-50';
+  const paymentStatusLabelCard = (!hasUnpaid && payments.length > 0) ? 'Lunas' : 'Belum Lunas';
+
+  const activeBillStatusLabel = activeBill ? (
+    activeBill.status === 'paid' ? 'Lunas' :
+    activeBill.status === 'pending' ? 'Menunggu' :
+    activeBill.status === 'partial' ? 'Sebagian' : 'Belum Bayar'
+  ) : '-';
+  const activeBillStatusColor = activeBill ? (
+    activeBill.status === 'paid' ? 'text-emerald-600 bg-emerald-50' :
+    activeBill.status === 'pending' ? 'text-amber-700 bg-amber-100' :
+    activeBill.status === 'partial' ? 'text-blue-700 bg-blue-100' : 'text-red-700 bg-red-100'
+  ) : '';
+
   const initials = tenant.name.substring(0, 2).toUpperCase();
 
   const latestPayment = payments[0] || null;
@@ -266,7 +325,8 @@ export default function TenantProfilePage() {
         subtitle: `Rp ${p.total_paid.toLocaleString('id-ID')} - ${p.payment_method ? p.payment_method.toUpperCase() : 'TRANSFER'}`,
         date: dateStr,
         icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
-        color: 'bg-green-100'
+        color: 'bg-green-100',
+        type: 'pembayaran'
       };
     } else if (p.status === 'pending') {
       return {
@@ -275,7 +335,8 @@ export default function TenantProfilePage() {
         subtitle: `Rp ${p.total_paid.toLocaleString('id-ID')} - Menunggu persetujuan owner`,
         date: dateStr,
         icon: <Clock className="w-4 h-4 text-amber-500" />,
-        color: 'bg-amber-100'
+        color: 'bg-amber-100',
+        type: 'pembayaran'
       };
     } else if (p.status === 'partial') {
       return {
@@ -284,7 +345,8 @@ export default function TenantProfilePage() {
         subtitle: `Terbayar Rp ${p.total_paid.toLocaleString('id-ID')} dari Rp ${totalBill.toLocaleString('id-ID')}`,
         date: dateStr,
         icon: <AlertTriangle className="w-4 h-4 text-blue-500" />,
-        color: 'bg-blue-100'
+        color: 'bg-blue-100',
+        type: 'pembayaran'
       };
     } else {
       return {
@@ -293,7 +355,8 @@ export default function TenantProfilePage() {
         subtitle: `Tagihan Rp ${totalBill.toLocaleString('id-ID')} jatuh tempo`,
         date: dateStr,
         icon: <AlertTriangle className="w-4 h-4 text-red-500" />,
-        color: 'bg-red-100'
+        color: 'bg-red-100',
+        type: 'pembayaran'
       };
     }
   });
@@ -305,8 +368,35 @@ export default function TenantProfilePage() {
     subtitle: `Periode ${tenant.contract?.rental_duration || 1} bulan dimulai`,
     date: new Date(tenant.contract?.start_date || tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
     icon: <Clock className="w-4 h-4 text-brand-teal" />,
-    color: 'bg-brand-teal/10'
+    color: 'bg-brand-teal/10',
+    type: 'kontrak'
   });
+
+  // Dynamic Check-in Activity
+  if (tenant.contract?.start_date) {
+    activities.push({
+      id: 'check-in',
+      title: 'Check-in Kamar',
+      subtitle: `Penghuni masuk ke Kamar ${tenant.room?.room_number || '-'}`,
+      date: new Date(tenant.contract.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+      icon: <DoorOpen className="w-4 h-4 text-emerald-500" />,
+      color: 'bg-emerald-100',
+      type: 'check-in'
+    });
+  }
+
+  // Dynamic Checkout Activity (if contract is inactive or checked out)
+  if (tenant.contract?.status === 'checked_out' || tenant.contract?.status === 'inactive') {
+    activities.push({
+      id: 'checkout',
+      title: 'Checkout Kamar',
+      subtitle: `Penghuni telah keluar dari Kamar ${tenant.room?.room_number || '-'}`,
+      date: new Date(tenant.contract.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
+      icon: <LogOut className="w-4 h-4 text-red-500" />,
+      color: 'bg-red-100',
+      type: 'checkout'
+    });
+  }
 
   if (!tenant.selfie_url || !tenant.ktp_url) {
     activities.push({
@@ -315,7 +405,8 @@ export default function TenantProfilePage() {
       subtitle: 'Harap lengkapi KTP dan Selfie',
       date: new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }),
       icon: <AlertTriangle className="w-4 h-4 text-amber-500" />,
-      color: 'bg-amber-100'
+      color: 'bg-amber-100',
+      type: 'dokumen'
     });
   }
 
@@ -464,16 +555,21 @@ export default function TenantProfilePage() {
                     <h2 className="font-display font-extrabold text-[18px] text-[#1f2937]">Kamar {tenant.room?.room_number || '-'}</h2>
                     <span className="px-2 py-0.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Aktif</span>
                   </div>
-                  <p className="text-[12px] text-gray-500 mb-4 pb-4 border-b border-gray-100">Lantai 4 • Tipe Standard</p>
+                  <p className="text-[12px] text-gray-500 mb-4 pb-4 border-b border-gray-100">
+                    Lantai {tenant.room?.floor || '-'} • Tipe {tenant.room?.type || '-'}
+                  </p>
                   <p className="text-[12px] font-bold text-gray-700 mb-3">Fasilitas Kamar</p>
-                  <div className="grid grid-cols-2 gap-y-2 gap-x-2 text-[11px] font-medium text-gray-600 mt-auto">
-                    <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> Kasur</div>
-                    <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> K. Mandi Dalam</div>
-                    <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> Lemari</div>
-                    <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> AC</div>
-                    <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> Meja Belajar</div>
-                    <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> Wi-Fi</div>
-                  </div>
+                  {tenant.room?.description ? (
+                    <div className="grid grid-cols-2 gap-y-2 gap-x-2 text-[11px] font-medium text-gray-600">
+                      {tenant.room.description.split(',').map((f, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> {f.trim()}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-gray-400">Tidak ada fasilitas terdaftar.</p>
+                  )}
                 </div>
 
                 {/* Card 2: Kontrak Aktif */}
@@ -486,21 +582,36 @@ export default function TenantProfilePage() {
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></div> <span className="truncate">Kontrak berjalan dengan baik</span>
                   </div>
                   <div className="space-y-2 text-[12px] mb-4">
-                    <div className="flex justify-between"><span className="text-gray-500">Mulai</span><span className="font-bold text-[#1f2937]">{new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Berakhir</span><span className="font-bold text-[#1f2937]">3 Sep 2026</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Durasi</span><span className="font-bold text-[#1f2937]">3 Bulan</span></div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Mulai</span>
+                      <span className="font-bold text-[#1f2937]">
+                        {tenant.contract?.start_date ? new Date(tenant.contract.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Berakhir</span>
+                      <span className="font-bold text-[#1f2937]">
+                        {tenant.contract?.end_date ? new Date(tenant.contract.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Durasi</span>
+                      <span className="font-bold text-[#1f2937]">
+                        {tenant.contract?.rental_duration ? `${tenant.contract.rental_duration} Bulan` : '-'}
+                      </span>
+                    </div>
                   </div>
                   <div className="mt-auto">
                     <div className="flex justify-between text-[11px] mb-1">
                       <span className="text-gray-600 font-medium">Progres Kontrak</span>
-                      <span className="font-bold text-[#1f2937]">92%</span>
+                      <span className="font-bold text-[#1f2937]">{progressPercent}%</span>
                     </div>
                     <div className="w-full bg-gray-100 rounded-full h-1.5 mb-2 overflow-hidden">
-                      <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '92%' }}></div>
+                      <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${progressPercent}%` }}></div>
                     </div>
                     <div className="flex items-baseline gap-1 text-[11px]">
-                      <span className="font-bold text-[#1f2937]">85 hari tersisa</span>
-                      <span className="text-gray-400">dari total 92 hari</span>
+                      <span className="font-bold text-[#1f2937]">{daysRemaining} hari tersisa</span>
+                      <span className="text-gray-400">dari total {totalDays} hari</span>
                     </div>
                   </div>
                 </div>
@@ -513,23 +624,39 @@ export default function TenantProfilePage() {
                   </div>
 
                   <div className="mb-4">
-                    <p className="text-[11px] text-gray-500 mb-1">Total Pembayaran</p>
-                    <div className="flex items-center justify-between">
-                      <p className="text-[18px] font-display font-extrabold text-[#0e8a7a]">Rp 3.150.000</p>
-                      <span className="px-2 py-0.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Lunas</span>
-                    </div>
+                     <p className="text-[11px] text-gray-500 mb-1">Total Pembayaran</p>
+                     <div className="flex items-center justify-between">
+                       <p className="text-[18px] font-display font-extrabold text-[#0e8a7a]">
+                         Rp {totalPaidSum.toLocaleString('id-ID')}
+                       </p>
+                       <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${paymentStatusColorCard}`}>
+                         {paymentStatusLabelCard}
+                       </span>
+                     </div>
                   </div>
 
                   <div className="border-t border-gray-100 pt-4 mb-4 mt-auto">
                     <p className="text-[11px] text-gray-500 mb-1">Tagihan Bulan Ini</p>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-[14px] font-display font-extrabold text-[#1f2937]">Rp 3.500.000</p>
-                      <span className="px-2 py-0.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Lunas</span>
-                    </div>
-                    <p className="text-[10px] text-gray-400">Bayar Sebelum <span className="font-bold text-gray-600">3 Jul 2026</span></p>
+                    {activeBill ? (
+                      <>
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[14px] font-display font-extrabold text-[#1f2937]">
+                            Rp {(activeBill.amount_rent + activeBill.amount_electricity + activeBill.amount_water + activeBill.amount_other).toLocaleString('id-ID')}
+                          </p>
+                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${activeBillStatusColor}`}>
+                            {activeBillStatusLabel}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-gray-400">
+                          Bayar Sebelum <span className="font-bold text-gray-600">{new Date(activeBill.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-[12px] text-gray-400">Tidak ada tagihan aktif</p>
+                    )}
                   </div>
 
-                  <button className="w-full py-2 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[12px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
+                  <button onClick={() => setActiveMenu('pembayaran')} className="w-full py-2 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[12px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
                     Lihat Riwayat Pembayaran <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -549,8 +676,17 @@ export default function TenantProfilePage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-bold text-[#1f2937] truncate">KTP</p>
-                        <p className="text-[10px] text-gray-500 truncate">Diunggah {new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                        <span className="text-[9px] font-bold text-emerald-600">Terverifikasi</span>
+                        {tenant.ktp_url ? (
+                          <>
+                            <p className="text-[10px] text-gray-500 truncate">Diunggah {new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                            <span className="text-[9px] font-bold text-emerald-600">Terverifikasi</span>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-[10px] text-gray-400 truncate">Belum diunggah</p>
+                            <span className="text-[9px] font-bold text-gray-400">Belum Ada</span>
+                          </>
+                        )}
                       </div>
                       <button onClick={() => tenant.ktp_url && setSelectedImage(getImageUrl(tenant.ktp_url))} className="w-7 h-7 flex items-center justify-center border border-gray-200 rounded-md text-gray-400 hover:text-brand-navy hover:bg-gray-50 shrink-0 transition-colors">
                         <Eye className="w-3.5 h-3.5" />
@@ -564,8 +700,17 @@ export default function TenantProfilePage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[12px] font-bold text-[#1f2937] truncate">Selfie dengan KTP</p>
-                        <p className="text-[10px] text-gray-500 truncate">Diunggah {new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                        <span className="text-[9px] font-bold text-emerald-600">Terverifikasi</span>
+                        {tenant.selfie_url ? (
+                          <>
+                            <p className="text-[10px] text-gray-500 truncate">Diunggah {new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                            <span className="text-[9px] font-bold text-emerald-600">Terverifikasi</span>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-[10px] text-gray-400 truncate">Belum diunggah</p>
+                            <span className="text-[9px] font-bold text-gray-400">Belum Ada</span>
+                          </>
+                        )}
                       </div>
                       <button onClick={() => tenant.selfie_url && setSelectedImage(getImageUrl(tenant.selfie_url))} className="w-7 h-7 flex items-center justify-center border border-gray-200 rounded-md text-gray-400 hover:text-brand-navy hover:bg-gray-50 shrink-0 transition-colors">
                         <Eye className="w-3.5 h-3.5" />
@@ -587,18 +732,51 @@ export default function TenantProfilePage() {
                   <h3 className="font-bold text-[14px] text-[#1f2937] mb-4">Detail Kontrak & Sewa</h3>
 
                   <div className="space-y-3 text-[12px] mb-6 mt-auto">
-                    <div className="grid grid-cols-2"><span className="text-gray-500">Nomor Kontrak</span><span className="font-bold text-[#1f2937] text-right">KTR-A-999-060126</span></div>
-                    <div className="grid grid-cols-2"><span className="text-gray-500">Tipe Kontrak</span><span className="font-bold text-[#1f2937] text-right">Bulanan</span></div>
-                    <div className="grid grid-cols-2"><span className="text-gray-500">Tanggal Mulai</span><span className="font-bold text-[#1f2937] text-right">3 Jun 2026</span></div>
-                    <div className="grid grid-cols-2"><span className="text-gray-500">Tanggal Berakhir</span><span className="font-bold text-[#1f2937] text-right">3 Sep 2026</span></div>
-                    <div className="grid grid-cols-2"><span className="text-gray-500">Durasi</span><span className="font-bold text-[#1f2937] text-right">3 Bulan</span></div>
-                    <div className="grid grid-cols-2"><span className="text-gray-500">Sewa Bulanan</span><span className="font-bold text-[#1f2937] text-right">Rp 1.500.000</span></div>
-                    <div className="grid grid-cols-2"><span className="text-gray-500">Deposit</span><span className="font-bold text-[#1f2937] text-right">Rp 500.000</span></div>
-                    <div className="grid grid-cols-2"><span className="text-gray-500">Denda Keterlambatan</span><span className="font-bold text-[#1f2937] text-right">Rp 50.000 / hari</span></div>
-                    <div className="grid grid-cols-2"><span className="text-gray-500">Catatan</span><span className="font-bold text-[#1f2937] text-right">-</span></div>
+                    <div className="grid grid-cols-2">
+                      <span className="text-gray-500">Nomor Kontrak</span>
+                      <span className="font-bold text-[#1f2937] text-right truncate pl-2">{formatContractNumber(tenant.contract?.id)}</span>
+                    </div>
+                    <div className="grid grid-cols-2">
+                      <span className="text-gray-500">Tipe Kontrak</span>
+                      <span className="font-bold text-[#1f2937] text-right">{tenant.contract ? 'Bulanan' : '-'}</span>
+                    </div>
+                    <div className="grid grid-cols-2">
+                      <span className="text-gray-500">Tanggal Mulai</span>
+                      <span className="font-bold text-[#1f2937] text-right">
+                        {tenant.contract?.start_date ? new Date(tenant.contract.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2">
+                      <span className="text-gray-500">Tanggal Berakhir</span>
+                      <span className="font-bold text-[#1f2937] text-right">
+                        {tenant.contract?.end_date ? new Date(tenant.contract.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2">
+                      <span className="text-gray-500">Durasi</span>
+                      <span className="font-bold text-[#1f2937] text-right">
+                        {tenant.contract?.rental_duration ? `${tenant.contract.rental_duration} Bulan` : '-'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2">
+                      <span className="text-gray-500">Sewa Bulanan</span>
+                      <span className="font-bold text-[#1f2937] text-right">
+                        {tenant.contract?.monthly_rent ? `Rp ${tenant.contract.monthly_rent.toLocaleString('id-ID')}` : '-'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2">
+                      <span className="text-gray-500">Deposit</span>
+                      <span className="font-bold text-[#1f2937] text-right">
+                        {tenant.contract?.deposit ? `Rp ${tenant.contract.deposit.toLocaleString('id-ID')}` : '-'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2">
+                      <span className="text-gray-500">Catatan</span>
+                      <span className="font-bold text-[#1f2937] text-right truncate pl-2">{tenant.contract?.notes || '-'}</span>
+                    </div>
                   </div>
 
-                  <button className="w-full py-2.5 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
+                  <button onClick={() => setActiveMenu('kontrak')} className="w-full py-2.5 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
                     <FileText className="w-4 h-4" /> Lihat Detail Kontrak
                   </button>
                 </div>
@@ -608,19 +786,52 @@ export default function TenantProfilePage() {
                   <h3 className="font-bold text-[14px] text-[#1f2937] mb-4">Ringkasan Pembayaran</h3>
 
                   <div className="space-y-3 text-[12px] mb-4">
-                    <div className="flex justify-between"><span className="text-gray-500">Total Sewa (3 bulan)</span><span className="font-bold text-[#1f2937] text-right">Rp 4.500.000</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Deposit</span><span className="font-bold text-[#1f2937] text-right">Rp 500.000</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Diskon</span><span className="font-bold text-[#1f2937] text-right">-</span></div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Total Sewa</span>
+                      <span className="font-bold text-[#1f2937] text-right">
+                        {tenant.contract?.total_price ? `Rp ${tenant.contract.total_price.toLocaleString('id-ID')}` : '-'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Deposit</span>
+                      <span className="font-bold text-[#1f2937] text-right">
+                        {tenant.contract?.deposit ? `Rp ${tenant.contract.deposit.toLocaleString('id-ID')}` : '-'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Diskon</span>
+                      <span className="font-bold text-[#1f2937] text-right">-</span>
+                    </div>
                   </div>
 
                   <div className="border-t border-gray-100 pt-4 space-y-3 text-[12px] mb-6 mt-auto">
-                    <div className="flex justify-between"><span className="text-[#1f2937] font-bold">Total Pembayaran</span><span className="font-bold text-[#1f2937] text-right">Rp 5.000.000</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Sudah Dibayar</span><span className="font-bold text-[#0e8a7a] text-right">Rp 3.150.000</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Sisa Pembayaran</span><span className="font-bold text-[#f97316] text-right">Rp 1.850.000</span></div>
-                    <div className="flex justify-between"><span className="text-gray-500">Metode Pembayaran</span><span className="font-bold text-[#1f2937] text-right">Transfer Bank</span></div>
+                    <div className="flex justify-between">
+                      <span className="text-[#1f2937] font-bold">Total Pembayaran</span>
+                      <span className="font-bold text-[#1f2937] text-right">
+                        {tenant.contract ? `Rp ${(tenant.contract.total_price + tenant.contract.deposit).toLocaleString('id-ID')}` : '-'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Sudah Dibayar</span>
+                      <span className="font-bold text-[#0e8a7a] text-right">
+                        Rp {totalPembayaranReal.toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Sisa Pembayaran</span>
+                      <span className="font-bold text-[#f97316] text-right">
+                        Rp {Math.max(0, (tenant.contract ? (tenant.contract.total_price + tenant.contract.deposit) : 0) - totalPembayaranReal).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Metode Pembayaran</span>
+                      <span className="font-bold text-[#1f2937] text-right">
+                        {payments[0]?.payment_method || '-'}
+                      </span>
+                    </div>
                   </div>
 
-                  <button className="w-full py-2.5 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
+                  <button onClick={() => setActiveMenu('pembayaran')} className="w-full py-2.5 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
                     <Wallet className="w-4 h-4" /> Lihat Riwayat Pembayaran
                   </button>
                 </div>
@@ -633,64 +844,26 @@ export default function TenantProfilePage() {
                     {/* Vertical Line */}
                     <div className="absolute left-[15px] top-4 bottom-8 w-[1.5px] bg-gray-100"></div>
 
-                    {/* Item 1 */}
-                    <div className="flex gap-4 relative pb-5">
-                      <div className="w-[32px] h-[32px] bg-emerald-100 rounded-full flex items-center justify-center shrink-0 z-10 border-[3px] border-white">
-                        <Check className="w-4 h-4 text-emerald-600 stroke-[3]" />
-                      </div>
-                      <div className="flex-1 pt-0.5">
-                        <div className="flex justify-between items-start mb-0.5">
-                          <p className="text-[12px] font-bold text-[#1f2937]">Pembayaran bulan Juni 2026</p>
-                          <span className="text-[10px] text-gray-500 whitespace-nowrap ml-2">3 Jun 2026, 10:30</span>
+                    {activities.slice(0, 3).map((act) => (
+                      <div key={act.id} className="flex gap-4 relative pb-5">
+                        <div className={`w-[32px] h-[32px] ${act.color} rounded-full flex items-center justify-center shrink-0 z-10 border-[3px] border-white`}>
+                          {act.icon}
                         </div>
-                        <p className="text-[11px] text-gray-500">Pembayaran diterima sebesar Rp 1.500.000</p>
-                      </div>
-                    </div>
-
-                    {/* Item 2 */}
-                    <div className="flex gap-4 relative pb-5">
-                      <div className="w-[32px] h-[32px] bg-blue-100 rounded-full flex items-center justify-center shrink-0 z-10 border-[3px] border-white">
-                        <File className="w-3.5 h-3.5 text-blue-600" />
-                      </div>
-                      <div className="flex-1 pt-0.5">
-                        <div className="flex justify-between items-start mb-0.5">
-                          <p className="text-[12px] font-bold text-[#1f2937]">Kontrak diperbarui</p>
-                          <span className="text-[10px] text-gray-500 whitespace-nowrap ml-2">3 Jun 2026, 10:28</span>
+                        <div className="flex-1 pt-0.5">
+                          <div className="flex justify-between items-start mb-0.5">
+                            <p className="text-[12px] font-bold text-[#1f2937]">{act.title}</p>
+                            <span className="text-[10px] text-gray-500 whitespace-nowrap ml-2">{act.date}</span>
+                          </div>
+                          <p className="text-[11px] text-gray-500">{act.subtitle}</p>
                         </div>
-                        <p className="text-[11px] text-gray-500">Kontrak baru berlaku hingga 3 Sep 2026</p>
                       </div>
-                    </div>
-
-                    {/* Item 3 */}
-                    <div className="flex gap-4 relative pb-5">
-                      <div className="w-[32px] h-[32px] bg-purple-100 rounded-full flex items-center justify-center shrink-0 z-10 border-[3px] border-white">
-                        <UploadCloud className="w-3.5 h-3.5 text-purple-600" />
-                      </div>
-                      <div className="flex-1 pt-0.5">
-                        <div className="flex justify-between items-start mb-0.5">
-                          <p className="text-[12px] font-bold text-[#1f2937]">Dokumen diunggah</p>
-                          <span className="text-[10px] text-gray-500 whitespace-nowrap ml-2">3 Jun 2026, 10:15</span>
-                        </div>
-                        <p className="text-[11px] text-gray-500">KTP dan selfie berhasil diunggah</p>
-                      </div>
-                    </div>
-
-                    {/* Item 4 */}
-                    <div className="flex gap-4 relative">
-                      <div className="w-[32px] h-[32px] bg-amber-100 rounded-full flex items-center justify-center shrink-0 z-10 border-[3px] border-white">
-                        <User className="w-3.5 h-3.5 text-amber-600" />
-                      </div>
-                      <div className="flex-1 pt-0.5">
-                        <div className="flex justify-between items-start mb-0.5">
-                          <p className="text-[12px] font-bold text-[#1f2937]">Penyewa dibuat</p>
-                          <span className="text-[10px] text-gray-500 whitespace-nowrap ml-2">3 Jun 2026, 10:10</span>
-                        </div>
-                        <p className="text-[11px] text-gray-500">Akun penyewa berhasil dibuat</p>
-                      </div>
-                    </div>
+                    ))}
+                    {activities.length === 0 && (
+                      <p className="text-center text-[12px] text-gray-400 py-6">Belum ada aktivitas.</p>
+                    )}
                   </div>
 
-                  <button className="w-full py-2.5 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
+                  <button onClick={() => setActiveMenu('aktivitas')} className="w-full py-2.5 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
                     Lihat Semua Aktivitas <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -718,28 +891,45 @@ export default function TenantProfilePage() {
                      </div>
                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${contractStatusColor}`}>{contractStatus}</span>
                    </div>
-                   
                    <div className="space-y-2 text-[12px] mb-4 flex-1">
-                     <div className="flex justify-between"><span className="text-gray-500">Nomor Kontrak</span><span className="font-bold text-[#1f2937]">KTR-{tenant.room?.room_number || 'X'}-060126</span></div>
-                     <div className="flex justify-between"><span className="text-gray-500">Mulai</span><span className="font-bold text-[#1f2937]">{new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span></div>
-                     <div className="flex justify-between"><span className="text-gray-500">Berakhir</span><span className="font-bold text-[#1f2937]">3 Sep 2026</span></div>
-                     <div className="flex justify-between"><span className="text-gray-500">Durasi</span><span className="font-bold text-[#1f2937]">3 Bulan</span></div>
-                   </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Nomor Kontrak</span>
+                        <span className="font-bold text-[#1f2937] truncate pl-2">{formatContractNumber(tenant.contract?.id)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Mulai</span>
+                        <span className="font-bold text-[#1f2937]">
+                          {tenant.contract?.start_date ? new Date(tenant.contract.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Berakhir</span>
+                        <span className="font-bold text-[#1f2937]">
+                          {tenant.contract?.end_date ? new Date(tenant.contract.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Durasi</span>
+                        <span className="font-bold text-[#1f2937]">
+                          {tenant.contract?.rental_duration ? `${tenant.contract.rental_duration} Bulan` : '-'}
+                        </span>
+                      </div>
+                    </div>
 
-                   <div className="mt-auto">
-                     <div className="flex justify-between text-[11px] mb-1">
-                       <span className="text-gray-600 font-medium">Progres Kontrak</span>
-                       <span className="font-bold text-[#1f2937]">92%</span>
-                     </div>
-                     <div className="w-full bg-gray-100 rounded-full h-1.5 mb-2 overflow-hidden">
-                       <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '92%' }}></div>
-                     </div>
-                     <div className="flex items-baseline justify-between text-[11px]">
-                       <span className="font-bold text-[#1f2937]">85 hari tersisa</span>
-                       <span className="text-gray-400">dari 3 bulan</span>
-                     </div>
-                   </div>
-                 </div>
+                    <div className="mt-auto">
+                      <div className="flex justify-between text-[11px] mb-1">
+                        <span className="text-gray-600 font-medium">Progres Kontrak</span>
+                        <span className="font-bold text-[#1f2937]">{progressPercent}%</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-1.5 mb-2 overflow-hidden">
+                        <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${progressPercent}%` }}></div>
+                      </div>
+                      <div className="flex items-baseline justify-between text-[11px]">
+                        <span className="font-bold text-[#1f2937]">{daysRemaining} hari tersisa</span>
+                        <span className="text-gray-400">dari {tenant.contract?.rental_duration || 0} bulan</span>
+                      </div>
+                    </div>
+                  </div>
 
                  {/* Card 2: Informasi Kamar */}
                  <div className="bg-white rounded-[16px] shadow-sm p-5 border border-gray-100 flex flex-col">
@@ -750,16 +940,19 @@ export default function TenantProfilePage() {
                    <div className="flex justify-between items-center mb-1">
                      <h2 className="font-display font-extrabold text-[18px] text-[#1f2937]">Kamar {tenant.room?.room_number || '-'}</h2>
                    </div>
-                   <p className="text-[12px] text-gray-500 mb-4 pb-4 border-b border-gray-100">Lantai 4 • Tipe Standard</p>
+                   <p className="text-[12px] text-gray-500 mb-4 pb-4 border-b border-gray-100">Lantai {tenant.room?.floor || '-'} • Tipe {tenant.room?.type || '-'}</p>
                    <p className="text-[12px] font-bold text-gray-700 mb-3">Fasilitas Kamar</p>
-                   <div className="grid grid-cols-2 gap-y-2 gap-x-2 text-[11px] font-medium text-gray-600 mt-auto">
-                     <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> Kasur</div>
-                     <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> K. Mandi Dalam</div>
-                     <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> Lemari</div>
-                     <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> AC</div>
-                     <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> Meja Belajar</div>
-                     <div className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> Wi-Fi</div>
-                   </div>
+                   {tenant.room?.description ? (
+                     <div className="grid grid-cols-2 gap-y-2 gap-x-2 text-[11px] font-medium text-gray-600">
+                       {tenant.room.description.split(',').map((f, idx) => (
+                         <div key={idx} className="flex items-center gap-1.5">
+                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 fill-emerald-50" /> {f.trim()}
+                         </div>
+                       ))}
+                     </div>
+                   ) : (
+                     <p className="text-[11px] text-gray-400">Tidak ada fasilitas terdaftar.</p>
+                   )}
                  </div>
 
                  {/* Card 3: Detail Sewa */}
@@ -772,15 +965,21 @@ export default function TenantProfilePage() {
                    <div className="space-y-4 text-[12px] mt-2 mb-4 flex-1">
                      <div className="flex items-center justify-between">
                        <span className="text-gray-500">Harga Sewa Bulanan</span>
-                       <span className="font-bold text-[#1f2937]">Rp 1.500.000</span>
+                       <span className="font-bold text-[#1f2937]">
+                         {tenant.contract?.monthly_rent ? `Rp ${tenant.contract.monthly_rent.toLocaleString('id-ID')}` : '-'}
+                       </span>
                      </div>
                      <div className="flex items-center justify-between">
                        <span className="text-gray-500">Deposit</span>
-                       <span className="font-bold text-[#1f2937]">Rp 500.000</span>
+                       <span className="font-bold text-[#1f2937]">
+                         {tenant.contract?.deposit ? `Rp ${tenant.contract.deposit.toLocaleString('id-ID')}` : '-'}
+                       </span>
                      </div>
                      <div className="flex items-center justify-between">
                        <span className="text-gray-500">Jatuh Tempo</span>
-                       <span className="font-bold text-[#1f2937]">Setiap tanggal 3</span>
+                       <span className="font-bold text-[#1f2937]">
+                         {tenant.contract?.payment_due_day ? `Setiap tanggal ${tenant.contract.payment_due_day}` : '-'}
+                       </span>
                      </div>
                      <div className="flex items-center justify-between">
                        <span className="text-gray-500">Denda Keterlambatan</span>
@@ -811,27 +1010,31 @@ export default function TenantProfilePage() {
                          </tr>
                        </thead>
                        <tbody className="divide-y divide-gray-50">
-                         <tr>
-                           <td className="py-4 text-[#1f2937]">3 Jun 2026 - 3 Sep 2026</td>
-                           <td className="py-4 text-[#1f2937]">3 Bulan</td>
-                           <td className="py-4 text-[#1f2937]">Rp 1.500.000</td>
-                           <td className="py-4"><span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Aktif</span></td>
-                           <td className="py-4 text-[#1f2937]">3 Jun 2026, 10:30</td>
-                         </tr>
-                         <tr>
-                           <td className="py-4 text-[#1f2937]">3 Mar 2026 - 3 Jun 2026</td>
-                           <td className="py-4 text-[#1f2937]">3 Bulan</td>
-                           <td className="py-4 text-[#1f2937]">Rp 1.500.000</td>
-                           <td className="py-4"><span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Selesai</span></td>
-                           <td className="py-4 text-[#1f2937]">3 Mar 2026, 09:15</td>
-                         </tr>
-                         <tr>
-                           <td className="py-4 text-[#1f2937]">3 Des 2025 - 3 Mar 2026</td>
-                           <td className="py-4 text-[#1f2937]">3 Bulan</td>
-                           <td className="py-4 text-[#1f2937]">Rp 1.500.000</td>
-                           <td className="py-4"><span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Selesai</span></td>
-                           <td className="py-4 text-[#1f2937]">3 Des 2025, 09:10</td>
-                         </tr>
+                         {tenant.contract ? (
+                           <tr className="hover:bg-gray-50/50 transition-colors">
+                             <td className="py-4 text-[#1f2937]">
+                               {new Date(tenant.contract.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} - {new Date(tenant.contract.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                             </td>
+                             <td className="py-4 text-[#1f2937]">{tenant.contract.rental_duration} Bulan</td>
+                             <td className="py-4 text-[#1f2937]">
+                               {tenant.contract.monthly_rent ? `Rp ${tenant.contract.monthly_rent.toLocaleString('id-ID')}` : '-'}
+                             </td>
+                             <td className="py-4">
+                               <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md ${
+                                 tenant.contract.status === 'active' ? 'text-emerald-600 bg-emerald-50' : 'text-gray-500 bg-gray-50'
+                               }`}>
+                                 {tenant.contract.status === 'active' ? 'Aktif' : 'Selesai'}
+                               </span>
+                             </td>
+                             <td className="py-4 text-[#1f2937]">
+                               {new Date(tenant.contract.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                             </td>
+                           </tr>
+                         ) : (
+                           <tr>
+                             <td colSpan={5} className="py-8 text-center text-gray-400">Belum ada riwayat perpanjangan.</td>
+                           </tr>
+                         )}
                        </tbody>
                      </table>
                    </div>
@@ -859,25 +1062,13 @@ export default function TenantProfilePage() {
                        <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5">
                          <Check className="w-3 h-3 text-white stroke-[3]" />
                        </div>
-                       <p className="text-[13px] text-gray-600 leading-relaxed">Jatuh tempo pembayaran adalah setiap tanggal 3.</p>
+                       <p className="text-[13px] text-gray-600 leading-relaxed">Jatuh tempo pembayaran adalah sesuai ketentuan jatuh tempo kontrak.</p>
                      </div>
                      <div className="flex items-start gap-3">
                        <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5">
                          <Check className="w-3 h-3 text-white stroke-[3]" />
                        </div>
-                       <p className="text-[13px] text-gray-600 leading-relaxed">Jika pembayaran melewati jatuh tempo, akan dikenakan denda keterlambatan.</p>
-                     </div>
-                     <div className="flex items-start gap-3">
-                       <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                         <Check className="w-3 h-3 text-white stroke-[3]" />
-                       </div>
-                       <p className="text-[13px] text-gray-600 leading-relaxed">Denda keterlambatan sebesar Rp 50.000 per hari.</p>
-                     </div>
-                     <div className="flex items-start gap-3">
-                       <div className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center shrink-0 mt-0.5">
-                         <Check className="w-3 h-3 text-white stroke-[3]" />
-                       </div>
-                       <p className="text-[13px] text-gray-600 leading-relaxed">Pembayaran dapat dilakukan melalui transfer bank atau metode yang disepakati.</p>
+                       <p className="text-[13px] text-gray-600 leading-relaxed">Pembayaran sewa dapat dilakukan melalui transfer bank atau metode pembayaran yang tersedia.</p>
                      </div>
                    </div>
                  </div>
@@ -918,19 +1109,19 @@ export default function TenantProfilePage() {
                      </div>
                      <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Tanggal Lahir</span>
-                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> -</span>
+                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.date_of_birth ? new Date(tenant.date_of_birth).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</span>
                      </div>
                      <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Jenis Kelamin</span>
-                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> -</span>
+                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.gender || '-'}</span>
                      </div>
                      <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Alamat</span>
-                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> -</span>
+                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.address || '-'}</span>
                      </div>
                      <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Pekerjaan</span>
-                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> -</span>
+                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.job || '-'}</span>
                      </div>
                    </div>
 
@@ -949,15 +1140,15 @@ export default function TenantProfilePage() {
                    <div className="space-y-4 text-[13px] text-gray-500 flex-1">
                      <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Nama Kontak</span>
-                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> -</span>
+                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.emergency_contact_name || '-'}</span>
                      </div>
                      <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Hubungan</span>
-                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> -</span>
+                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.emergency_contact_relation || '-'}</span>
                      </div>
                      <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Nomor HP/WA</span>
-                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> -</span>
+                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.phone || '-'}</span>
                      </div>
                    </div>
 
@@ -1006,7 +1197,7 @@ export default function TenantProfilePage() {
                    </div>
                    
                    <div className="w-full h-[120px] bg-white border border-gray-200 rounded-xl p-4 mb-6 flex-1">
-                     <p className="text-[13px] text-gray-400">Belum ada catatan dari owner.</p>
+                     <p className="text-[13px] text-gray-400">{tenant.notes || 'Belum ada catatan dari owner.'}</p>
                    </div>
 
                    <button className="w-full py-2.5 border border-[#0e8a7a] text-[#0e8a7a] hover:bg-[#0e8a7a]/5 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
@@ -1038,24 +1229,48 @@ export default function TenantProfilePage() {
                   <div className="bg-white rounded-[16px] shadow-sm p-5 border border-gray-100 flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-bold text-[14px] text-[#1f2937]">KTP</h3>
-                      <span className="px-2 py-0.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Terverifikasi</span>
+                      {tenant.ktp_url ? (
+                        <span className="px-2 py-0.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Terverifikasi</span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-[10px] font-bold text-gray-400 bg-gray-100 rounded-md">Belum Diunggah</span>
+                      )}
                     </div>
                     <div className="w-full h-[120px] bg-gray-100 rounded-xl mb-4 overflow-hidden relative cursor-pointer group" onClick={() => tenant.ktp_url && setSelectedImage(getImageUrl(tenant.ktp_url))}>
-                      <img src={tenant.ktp_url ? getImageUrl(tenant.ktp_url) : "https://via.placeholder.com/300x200?text=KTP"} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="KTP" />
-                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <Eye className="w-6 h-6 text-white" />
-                      </div>
+                      {tenant.ktp_url ? (
+                        <img src={getImageUrl(tenant.ktp_url)} className="w-full h-full object-cover transition-transform group-hover:scale-105" alt="KTP" />
+                      ) : (
+                        <div className="w-full h-full bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center">
+                          <ImageIcon className="w-8 h-8 text-gray-300" />
+                        </div>
+                      )}
+                      {tenant.ktp_url && (
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Eye className="w-6 h-6 text-white" />
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2 text-[11px] text-gray-500 mb-6">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-3.5 h-3.5" />
                         <span className="w-20">Diunggah</span>
-                        <span className="text-[#1f2937] font-medium">{new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, 10:15</span>
+                        <span className="text-[#1f2937] font-medium">
+                          {tenant.ktp_url ? `${new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, 10:15` : '-'}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        <span className="w-20">Status</span>
-                        <span className="text-emerald-600 font-bold flex items-center gap-1">Terverifikasi <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div></span>
+                        {tenant.ktp_url ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="w-20">Status</span>
+                            <span className="text-emerald-600 font-bold flex items-center gap-1">Terverifikasi <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div></span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="w-3.5 h-3.5 text-gray-400" />
+                            <span className="w-20">Status</span>
+                            <span className="text-gray-400 font-bold flex items-center gap-1">Belum Ada <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div></span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="mt-auto space-y-2">
@@ -1075,24 +1290,48 @@ export default function TenantProfilePage() {
                   <div className="bg-white rounded-[16px] shadow-sm p-5 border border-gray-100 flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                       <h3 className="font-bold text-[14px] text-[#1f2937]">Selfie dengan KTP</h3>
-                      <span className="px-2 py-0.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Terverifikasi</span>
+                      {tenant.selfie_url ? (
+                        <span className="px-2 py-0.5 text-[10px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Terverifikasi</span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-[10px] font-bold text-gray-400 bg-gray-100 rounded-md">Belum Diunggah</span>
+                      )}
                     </div>
                     <div className="w-full h-[120px] bg-gray-100 rounded-xl mb-4 overflow-hidden relative cursor-pointer group" onClick={() => tenant.selfie_url && setSelectedImage(getImageUrl(tenant.selfie_url))}>
-                      <img src={tenant.selfie_url ? getImageUrl(tenant.selfie_url) : "https://via.placeholder.com/300x200?text=Selfie"} className="w-full h-full object-cover object-top transition-transform group-hover:scale-105" alt="Selfie" />
-                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <Eye className="w-6 h-6 text-white" />
-                      </div>
+                      {tenant.selfie_url ? (
+                        <img src={getImageUrl(tenant.selfie_url)} className="w-full h-full object-cover object-top transition-transform group-hover:scale-105" alt="Selfie" />
+                      ) : (
+                        <div className="w-full h-full bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center">
+                          <ImageIcon className="w-8 h-8 text-gray-300" />
+                        </div>
+                      )}
+                      {tenant.selfie_url && (
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Eye className="w-6 h-6 text-white" />
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2 text-[11px] text-gray-500 mb-6">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-3.5 h-3.5" />
                         <span className="w-20">Diunggah</span>
-                        <span className="text-[#1f2937] font-medium">{new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, 10:16</span>
+                        <span className="text-[#1f2937] font-medium">
+                          {tenant.selfie_url ? `${new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, 10:16` : '-'}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        <span className="w-20">Status</span>
-                        <span className="text-emerald-600 font-bold flex items-center gap-1">Terverifikasi <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div></span>
+                        {tenant.selfie_url ? (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="w-20">Status</span>
+                            <span className="text-emerald-600 font-bold flex items-center gap-1">Terverifikasi <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div></span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="w-3.5 h-3.5 text-gray-400" />
+                            <span className="w-20">Status</span>
+                            <span className="text-gray-400 font-bold flex items-center gap-1">Belum Ada <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div></span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="mt-auto space-y-2">
@@ -1114,22 +1353,19 @@ export default function TenantProfilePage() {
                       <h3 className="font-bold text-[14px] text-[#1f2937]">Dokumen Tambahan</h3>
                       <span className="px-2 py-0.5 text-[10px] font-medium text-gray-500 bg-gray-100 rounded-md">Opsional</span>
                     </div>
-                    <div className="w-full h-[120px] bg-gray-50 border border-gray-200 rounded-xl mb-4 overflow-hidden relative cursor-pointer group flex items-center justify-center">
+                    <div className="w-full h-[120px] bg-gray-50 border border-gray-200 rounded-xl mb-4 overflow-hidden relative flex items-center justify-center">
                       <FileText className="w-10 h-10 text-gray-300" />
-                      <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <Eye className="w-6 h-6 text-white" />
-                      </div>
                     </div>
                     <div className="space-y-2 text-[11px] text-gray-500 mb-6">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-3.5 h-3.5" />
                         <span className="w-20">Diunggah</span>
-                        <span className="text-[#1f2937] font-medium">{new Date(tenant.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, 10:20</span>
+                        <span className="text-gray-400 font-medium">-</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        <AlertTriangle className="w-3.5 h-3.5 text-gray-400" />
                         <span className="w-20">Status</span>
-                        <span className="text-emerald-600 font-bold flex items-center gap-1">Terverifikasi <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div></span>
+                        <span className="text-gray-400 font-bold flex items-center gap-1">Belum Ada <div className="w-1.5 h-1.5 rounded-full bg-gray-400"></div></span>
                       </div>
                     </div>
                     <div className="mt-auto space-y-2">
@@ -1150,32 +1386,69 @@ export default function TenantProfilePage() {
                 {/* Right Side: Info & Upload */}
                 <div className="flex flex-col gap-6">
                   {/* Status Lengkap */}
-                  <div className="bg-[#f0fdf4] border border-emerald-100 rounded-[16px] shadow-sm p-6">
-                    <div className="flex items-start gap-4 mb-6">
-                      <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
-                        <Check className="w-5 h-5 text-white stroke-[3]" />
+                  {tenant.ktp_url && tenant.selfie_url ? (
+                    <div className="bg-[#f0fdf4] border border-emerald-100 rounded-[16px] shadow-sm p-6">
+                      <div className="flex items-start gap-4 mb-6">
+                        <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center shrink-0">
+                          <Check className="w-5 h-5 text-white stroke-[3]" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[15px] text-emerald-900 mb-1">Dokumen Lengkap</h3>
+                          <p className="text-[12px] text-emerald-700 leading-relaxed">Semua dokumen wajib telah diunggah dan terverifikasi.</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-bold text-[15px] text-emerald-900 mb-1">Dokumen Lengkap</h3>
-                        <p className="text-[12px] text-emerald-700 leading-relaxed">Semua dokumen wajib telah diunggah dan terverifikasi.</p>
+                      
+                      <div className="bg-white rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between text-[12px]">
+                          <span className="text-gray-600">KTP</span>
+                          <span className="text-emerald-600 font-bold">Terverifikasi</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[12px]">
+                          <span className="text-gray-600">Selfie dengan KTP</span>
+                          <span className="text-emerald-600 font-bold">Terverifikasi</span>
+                        </div>
+                        <div className="flex items-center justify-between text-[12px]">
+                          <span className="text-gray-600">Dokumen Tambahan</span>
+                          <span className="text-gray-400 font-bold">Belum Ada</span>
+                        </div>
                       </div>
                     </div>
-                    
-                    <div className="bg-white rounded-xl p-4 space-y-3">
-                      <div className="flex items-center justify-between text-[12px]">
-                        <span className="text-gray-600">KTP</span>
-                        <span className="text-emerald-600 font-bold">Terverifikasi</span>
+                  ) : (
+                    <div className="bg-[#fffbeb] border border-amber-100 rounded-[16px] shadow-sm p-6">
+                      <div className="flex items-start gap-4 mb-6">
+                        <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                          <AlertTriangle className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-[15px] text-amber-900 mb-1">Dokumen Belum Lengkap</h3>
+                          <p className="text-[12px] text-amber-700 leading-relaxed">Beberapa dokumen identitas wajib belum diunggah.</p>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-[12px]">
-                        <span className="text-gray-600">Selfie dengan KTP</span>
-                        <span className="text-emerald-600 font-bold">Terverifikasi</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[12px]">
-                        <span className="text-gray-600">Dokumen Tambahan</span>
-                        <span className="text-emerald-600 font-bold">Terverifikasi</span>
+                      
+                      <div className="bg-white rounded-xl p-4 space-y-3">
+                        <div className="flex items-center justify-between text-[12px]">
+                          <span className="text-gray-600">KTP</span>
+                          {tenant.ktp_url ? (
+                            <span className="text-emerald-600 font-bold">Terverifikasi</span>
+                          ) : (
+                            <span className="text-amber-600 font-bold">Belum Diunggah</span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between text-[12px]">
+                          <span className="text-gray-600">Selfie dengan KTP</span>
+                          {tenant.selfie_url ? (
+                            <span className="text-emerald-600 font-bold">Terverifikasi</span>
+                          ) : (
+                            <span className="text-amber-600 font-bold">Belum Diunggah</span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between text-[12px]">
+                          <span className="text-gray-600">Dokumen Tambahan</span>
+                          <span className="text-gray-400 font-bold">Belum Ada</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -1206,7 +1479,7 @@ export default function TenantProfilePage() {
                   </div>
                   <div>
                     <h3 className="text-[12px] text-gray-500 font-medium mb-1">Total Tagihan</h3>
-                    <p className="font-extrabold text-[18px] text-[#1f2937] mb-1">Rp 3.150.000</p>
+                    <p className="font-extrabold text-[18px] text-[#1f2937] mb-1">Rp {totalBilled.toLocaleString('id-ID')}</p>
                     <p className="text-[11px] text-gray-400">Total seluruh tagihan</p>
                   </div>
                 </div>
@@ -1217,7 +1490,7 @@ export default function TenantProfilePage() {
                   </div>
                   <div>
                     <h3 className="text-[12px] text-gray-500 font-medium mb-1">Sudah Dibayar</h3>
-                    <p className="font-extrabold text-[18px] text-[#1f2937] mb-1">Rp 3.150.000</p>
+                    <p className="font-extrabold text-[18px] text-[#1f2937] mb-1">Rp {totalPaidSum.toLocaleString('id-ID')}</p>
                     <p className="text-[11px] text-gray-400">Total pembayaran masuk</p>
                   </div>
                 </div>
@@ -1228,55 +1501,82 @@ export default function TenantProfilePage() {
                   </div>
                   <div>
                     <h3 className="text-[12px] text-gray-500 font-medium mb-1">Sisa Pembayaran</h3>
-                    <p className="font-extrabold text-[18px] text-[#1f2937] mb-1">Rp 0</p>
+                    <p className="font-extrabold text-[18px] text-[#1f2937] mb-1">Rp {totalOutstanding.toLocaleString('id-ID')}</p>
                     <p className="text-[11px] text-gray-400">Masih harus dibayar</p>
                   </div>
                 </div>
 
                 <div className="bg-white rounded-[16px] shadow-sm p-6 border border-gray-100 flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full border-2 border-emerald-500 flex items-center justify-center shrink-0">
-                    <Check className="w-5 h-5 text-emerald-500 stroke-[3]" />
+                    <Check className={`w-5 h-5 ${!hasUnpaid && payments.length > 0 ? 'text-emerald-500' : 'text-amber-500'} stroke-[3]`} />
                   </div>
                   <div>
                     <h3 className="text-[12px] text-gray-500 font-medium mb-1">Status Pembayaran</h3>
-                    <div className="mb-1"><span className="px-2.5 py-0.5 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Lunas</span></div>
-                    <p className="text-[11px] text-gray-400 mt-1">Tidak ada tunggakan</p>
+                    <div className="mb-1">
+                      <span className={`px-2.5 py-0.5 text-[11px] font-bold rounded-md ${paymentStatusColorCard}`}>
+                        {paymentStatusLabelCard}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-1">{hasUnpaid ? 'Ada tunggakan pembayaran' : 'Tidak ada tunggakan'}</p>
                   </div>
                 </div>
               </div>
 
               {/* Tagihan Berjalan */}
-              <div className="bg-white rounded-[16px] shadow-sm p-6 border border-emerald-500 flex flex-col xl:flex-row items-center justify-between gap-6">
-                <div className="flex items-center gap-4 w-full xl:w-auto">
-                  <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
-                    <FileText className="w-5 h-5 text-emerald-700" />
+              {activeBill ? (
+                <div className="bg-white rounded-[16px] shadow-sm p-6 border border-emerald-500 flex flex-col xl:flex-row items-center justify-between gap-6">
+                  <div className="flex items-center gap-4 w-full xl:w-auto">
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                      <FileText className="w-5 h-5 text-emerald-700" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-[13px] text-emerald-600 mb-1">Tagihan Berjalan</h3>
+                      <p className="font-bold text-[16px] text-[#1f2937] mb-1">Pembayaran Sewa Bulan {activeBill.period_month} - {activeBill.period_year}</p>
+                      <p className="text-[12px] text-gray-500">Periode Bulan {activeBill.period_month} - {activeBill.period_year}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-bold text-[13px] text-emerald-600 mb-1">Tagihan Berjalan</h3>
-                    <p className="font-bold text-[16px] text-[#1f2937] mb-1">Pembayaran Sewa Agustus 2026</p>
-                    <p className="text-[12px] text-gray-500">Periode 1 Agu 2026 - 31 Agu 2026</p>
-                  </div>
-                </div>
 
-                <div className="flex w-full xl:w-auto gap-8 justify-between xl:justify-end">
-                  <div className="w-px bg-gray-200 hidden md:block"></div>
-                  <div>
-                    <p className="text-[12px] text-gray-500 mb-1">Jatuh Tempo</p>
-                    <p className="font-bold text-[14px] text-[#1f2937] mb-1">3 Agu 2026</p>
-                    <p className="text-[11px] font-bold text-red-500">H-5 hari</p>
-                  </div>
-                  <div className="w-px bg-gray-200 hidden md:block"></div>
-                  <div>
-                    <p className="text-[12px] text-gray-500 mb-1">Nominal Tagihan</p>
-                    <p className="font-bold text-[14px] text-[#1f2937] mb-1">Rp 150.000</p>
-                  </div>
-                  <div className="w-px bg-gray-200 hidden md:block"></div>
-                  <div>
-                    <p className="text-[12px] text-gray-500 mb-1">Status</p>
-                    <div className="mt-1"><span className="px-2.5 py-1 text-[11px] font-bold text-amber-700 bg-amber-100 rounded-md">Menunggu</span></div>
+                  <div className="flex w-full xl:w-auto gap-8 justify-between xl:justify-end">
+                    <div className="w-px bg-gray-200 hidden md:block"></div>
+                    <div>
+                      <p className="text-[12px] text-gray-500 mb-1">Jatuh Tempo</p>
+                      <p className="font-bold text-[14px] text-[#1f2937] mb-1">
+                        {new Date(activeBill.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                      {(() => {
+                        const daysDiff = Math.ceil((new Date(activeBill.due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                        if (daysDiff > 0) {
+                          return <p className="text-[11px] font-bold text-emerald-600">H-{daysDiff} hari</p>;
+                        } else if (daysDiff === 0) {
+                          return <p className="text-[11px] font-bold text-amber-500">Hari ini</p>;
+                        } else {
+                          return <p className="text-[11px] font-bold text-red-500">Terlambat {Math.abs(daysDiff)} hari</p>;
+                        }
+                      })()}
+                    </div>
+                    <div className="w-px bg-gray-200 hidden md:block"></div>
+                    <div>
+                      <p className="text-[12px] text-gray-500 mb-1">Nominal Tagihan</p>
+                      <p className="font-bold text-[14px] text-[#1f2937] mb-1">
+                        Rp {(activeBill.amount_rent + activeBill.amount_electricity + activeBill.amount_water + activeBill.amount_other).toLocaleString('id-ID')}
+                      </p>
+                    </div>
+                    <div className="w-px bg-gray-200 hidden md:block"></div>
+                    <div>
+                      <p className="text-[12px] text-gray-500 mb-1">Status</p>
+                      <div className="mt-1">
+                        <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md ${activeBillStatusColor}`}>
+                          {activeBillStatusLabel}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-white rounded-[16px] shadow-sm p-6 border border-gray-100 flex items-center justify-center py-8">
+                  <p className="text-[13px] text-gray-400">Tidak ada tagihan berjalan.</p>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -1311,51 +1611,47 @@ export default function TenantProfilePage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      <tr className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-4 text-gray-600 font-medium">3 Jun 2026</td>
-                        <td className="px-5 py-4 text-[#1f2937]">Pembayaran Sewa Juni 2026</td>
-                        <td className="px-5 py-4 text-gray-600">Transfer Bank</td>
-                        <td className="px-5 py-4 text-[#1f2937] font-medium">Rp 1.500.000</td>
-                        <td className="px-5 py-4"><span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Lunas</span></td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2">
-                            <button className="p-1.5 border border-gray-200 hover:bg-gray-50 rounded-md text-gray-500 transition-colors"><Eye className="w-4 h-4" /></button>
-                            <button className="p-1.5 border border-gray-200 hover:bg-gray-50 rounded-md text-gray-500 transition-colors"><Download className="w-4 h-4" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                      <tr className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-4 text-gray-600 font-medium">3 Jul 2026</td>
-                        <td className="px-5 py-4 text-[#1f2937]">Pembayaran Sewa Juli 2026</td>
-                        <td className="px-5 py-4 text-gray-600">Transfer Bank</td>
-                        <td className="px-5 py-4 text-[#1f2937] font-medium">Rp 1.500.000</td>
-                        <td className="px-5 py-4"><span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Lunas</span></td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2">
-                            <button className="p-1.5 border border-gray-200 hover:bg-gray-50 rounded-md text-gray-500 transition-colors"><Eye className="w-4 h-4" /></button>
-                            <button className="p-1.5 border border-gray-200 hover:bg-gray-50 rounded-md text-gray-500 transition-colors"><Download className="w-4 h-4" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                      <tr className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-4 text-gray-600 font-medium">3 Agu 2026</td>
-                        <td className="px-5 py-4 text-[#1f2937]">Pembayaran Sewa Agustus 2026</td>
-                        <td className="px-5 py-4 text-gray-600">Transfer Bank</td>
-                        <td className="px-5 py-4 text-[#1f2937] font-medium">Rp 150.000</td>
-                        <td className="px-5 py-4"><span className="px-2.5 py-1 text-[11px] font-bold text-amber-700 bg-amber-50 rounded-md">DP</span></td>
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-2">
-                            <button className="p-1.5 border border-gray-200 hover:bg-gray-50 rounded-md text-gray-500 transition-colors"><Eye className="w-4 h-4" /></button>
-                            <button className="p-1.5 border border-gray-200 hover:bg-gray-50 rounded-md text-gray-500 transition-colors"><Download className="w-4 h-4" /></button>
-                          </div>
-                        </td>
-                      </tr>
+                      {payments.length > 0 ? (
+                        payments.map((p) => {
+                          const totalBill = p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other;
+                          return (
+                            <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+                              <td className="px-5 py-4 text-gray-600 font-medium">
+                                {new Date(p.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </td>
+                              <td className="px-5 py-4 text-[#1f2937]">Pembayaran Sewa Bulan {p.period_month} - {p.period_year}</td>
+                              <td className="px-5 py-4 text-gray-600">{p.payment_method || '-'}</td>
+                              <td className="px-5 py-4 text-[#1f2937] font-medium">Rp {totalBill.toLocaleString('id-ID')}</td>
+                              <td className="px-5 py-4">
+                                <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md ${
+                                  p.status === 'paid' ? 'text-emerald-600 bg-emerald-50' :
+                                  p.status === 'pending' ? 'text-amber-700 bg-amber-100' :
+                                  p.status === 'partial' ? 'text-blue-700 bg-blue-100' : 'text-red-700 bg-red-100'
+                                }`}>{
+                                  p.status === 'paid' ? 'Lunas' :
+                                  p.status === 'pending' ? 'Menunggu' :
+                                  p.status === 'partial' ? 'Sebagian' : 'Belum Bayar'
+                                }</span>
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-400 text-xs">-</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-gray-400">Belum ada riwayat pembayaran.</td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
                 
                 <div className="p-4 border-t border-gray-100 flex items-center justify-between">
-                  <span className="text-[12px] text-gray-500 font-medium">Menampilkan 3 dari 3 data</span>
+                  <span className="text-[12px] text-gray-500 font-medium">Menampilkan {payments.length} dari {payments.length} data</span>
                   <div className="flex items-center gap-1">
                     <button className="p-1.5 border border-gray-200 rounded-md text-gray-400 hover:bg-gray-50 transition-colors" disabled><ChevronLeft className="w-4 h-4" /></button>
                     <button className="w-7 h-7 bg-[#0e8a7a] text-white rounded-md text-[13px] font-bold flex items-center justify-center">1</button>
@@ -1382,22 +1678,54 @@ export default function TenantProfilePage() {
 
               {/* Filters */}
               <div className="flex items-center gap-3 overflow-x-auto pb-2 no-scrollbar">
-                <button className="px-4 py-2 bg-emerald-50 border border-emerald-500 text-emerald-700 rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setActivityFilter('all')}
+                  className={`px-4 py-2 rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2 shrink-0 ${
+                    activityFilter === 'all'
+                      ? 'bg-[#0e8a7a]/10 border border-[#0e8a7a] text-[#0e8a7a]'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium'
+                  }`}
+                >
                   <CheckCircle2 className="w-4 h-4" /> Semua
                 </button>
-                <button className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-[13px] font-medium transition-colors flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setActivityFilter('pembayaran')}
+                  className={`px-4 py-2 rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2 shrink-0 ${
+                    activityFilter === 'pembayaran'
+                      ? 'bg-[#0e8a7a]/10 border border-[#0e8a7a] text-[#0e8a7a]'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium'
+                  }`}
+                >
                   <Calendar className="w-4 h-4" /> Pembayaran
                 </button>
-                <button className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-[13px] font-medium transition-colors flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setActivityFilter('kontrak')}
+                  className={`px-4 py-2 rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2 shrink-0 ${
+                    activityFilter === 'kontrak'
+                      ? 'bg-[#0e8a7a]/10 border border-[#0e8a7a] text-[#0e8a7a]'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium'
+                  }`}
+                >
                   <File className="w-4 h-4" /> Kontrak
                 </button>
-                <button className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-[13px] font-medium transition-colors flex items-center gap-2 shrink-0">
-                  <FileText className="w-4 h-4" /> Dokumen
-                </button>
-                <button className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-[13px] font-medium transition-colors flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setActivityFilter('check-in')}
+                  className={`px-4 py-2 rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2 shrink-0 ${
+                    activityFilter === 'check-in'
+                      ? 'bg-[#0e8a7a]/10 border border-[#0e8a7a] text-[#0e8a7a]'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium'
+                  }`}
+                >
                   <DoorOpen className="w-4 h-4" /> Check-in
                 </button>
-                <button className="px-4 py-2 border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-[13px] font-medium transition-colors flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setActivityFilter('checkout')}
+                  className={`px-4 py-2 rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2 shrink-0 ${
+                    activityFilter === 'checkout'
+                      ? 'bg-[#0e8a7a]/10 border border-[#0e8a7a] text-[#0e8a7a]'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium'
+                  }`}
+                >
                   <LogOut className="w-4 h-4" /> Checkout
                 </button>
               </div>
@@ -1408,96 +1736,27 @@ export default function TenantProfilePage() {
                 <div className="absolute left-[20px] top-4 bottom-4 w-px bg-gray-200"></div>
 
                 <div className="space-y-4">
-                  {/* Item 1: Pembayaran */}
-                  <div className="relative flex items-start gap-4 xl:gap-6">
-                    <div className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 z-10 border-[3px] border-white shadow-sm mt-1">
-                      <Check className="w-4 h-4 stroke-[3]" />
-                    </div>
-                    <div className="flex-1 bg-white border border-gray-100 rounded-[12px] shadow-sm p-4 xl:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-[14px] text-[#1f2937] mb-1">Pembayaran bulan Juni 2026 diterima</h3>
-                        <p className="text-[12px] text-gray-500">Pembayaran diterima sebesar Rp 1.500.000 melalui Transfer Bank.</p>
+                  {activities
+                    .filter((act) => activityFilter === 'all' || act.type === activityFilter)
+                    .map((act) => (
+                      <div key={act.id} className="relative flex items-start gap-4 xl:gap-6">
+                        <div className={`w-10 h-10 rounded-full ${act.color} text-[#1f2937] flex items-center justify-center shrink-0 z-10 border-[3px] border-white shadow-sm mt-1`}>
+                          {act.icon}
+                        </div>
+                        <div className="flex-1 bg-white border border-gray-100 rounded-[12px] shadow-sm p-4 xl:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                          <div className="flex-1">
+                            <h3 className="font-bold text-[14px] text-[#1f2937] mb-1">{act.title}</h3>
+                            <p className="text-[12px] text-gray-500">{act.subtitle}</p>
+                          </div>
+                          <div className="flex items-center flex-wrap xl:flex-nowrap gap-4 xl:gap-6 shrink-0 text-[12px]">
+                            <div className="flex items-center gap-2 text-gray-500 w-[140px]"><Calendar className="w-4 h-4" /> {act.date}</div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center flex-wrap xl:flex-nowrap gap-4 xl:gap-6 shrink-0 text-[12px]">
-                        <span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Berhasil</span>
-                        <div className="flex items-center gap-2 text-gray-500 w-[140px]"><Calendar className="w-4 h-4" /> 3 Jun 2026, 10:30</div>
-                        <div className="flex items-center gap-2 text-[#1f2937] font-medium w-[120px]"><User className="w-4 h-4" /> Sistem</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Item 2: Kontrak */}
-                  <div className="relative flex items-start gap-4 xl:gap-6">
-                    <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center shrink-0 z-10 border-[3px] border-white shadow-sm mt-1">
-                      <File className="w-4 h-4 stroke-[3]" />
-                    </div>
-                    <div className="flex-1 bg-white border border-gray-100 rounded-[12px] shadow-sm p-4 xl:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-[14px] text-[#1f2937] mb-1">Kontrak diperpanjang hingga 3 Sep 2026</h3>
-                        <p className="text-[12px] text-gray-500">Kontrak baru telah dibuat hingga tanggal 3 Sep 2026.</p>
-                      </div>
-                      <div className="flex items-center flex-wrap xl:flex-nowrap gap-4 xl:gap-6 shrink-0 text-[12px]">
-                        <span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Berhasil</span>
-                        <div className="flex items-center gap-2 text-gray-500 w-[140px]"><Calendar className="w-4 h-4" /> 3 Jun 2026, 10:28</div>
-                        <div className="flex items-center gap-2 text-[#1f2937] font-medium w-[120px]"><User className="w-4 h-4" /> Yosua (Owner)</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Item 3: Dokumen */}
-                  <div className="relative flex items-start gap-4 xl:gap-6">
-                    <div className="w-10 h-10 rounded-full bg-purple-500 text-white flex items-center justify-center shrink-0 z-10 border-[3px] border-white shadow-sm mt-1">
-                      <FileText className="w-4 h-4 stroke-[3]" />
-                    </div>
-                    <div className="flex-1 bg-white border border-gray-100 rounded-[12px] shadow-sm p-4 xl:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-[14px] text-[#1f2937] mb-1">Dokumen KTP diunggah</h3>
-                        <p className="text-[12px] text-gray-500">KTP atas nama {tenant.name} berhasil diunggah.</p>
-                      </div>
-                      <div className="flex items-center flex-wrap xl:flex-nowrap gap-4 xl:gap-6 shrink-0 text-[12px]">
-                        <span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Berhasil</span>
-                        <div className="flex items-center gap-2 text-gray-500 w-[140px]"><Calendar className="w-4 h-4" /> 3 Jun 2026, 10:15</div>
-                        <div className="flex items-center gap-2 text-[#1f2937] font-medium w-[120px]"><User className="w-4 h-4" /> Yosua (Owner)</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Item 4: Kamar */}
-                  <div className="relative flex items-start gap-4 xl:gap-6">
-                    <div className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center shrink-0 z-10 border-[3px] border-white shadow-sm mt-1">
-                      <ArrowRightLeft className="w-4 h-4 stroke-[3]" />
-                    </div>
-                    <div className="flex-1 bg-white border border-gray-100 rounded-[12px] shadow-sm p-4 xl:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-[14px] text-[#1f2937] mb-1">Penyewa pindah kamar</h3>
-                        <p className="text-[12px] text-gray-500">Penyewa dipindahkan dari Kamar A-888 ke Kamar {tenant.room?.room_number || 'A-999'}.</p>
-                      </div>
-                      <div className="flex items-center flex-wrap xl:flex-nowrap gap-4 xl:gap-6 shrink-0 text-[12px]">
-                        <span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Berhasil</span>
-                        <div className="flex items-center gap-2 text-gray-500 w-[140px]"><Calendar className="w-4 h-4" /> 1 Jun 2026, 14:45</div>
-                        <div className="flex items-center gap-2 text-[#1f2937] font-medium w-[120px]"><User className="w-4 h-4" /> Yosua (Owner)</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Item 5: Akun */}
-                  <div className="relative flex items-start gap-4 xl:gap-6">
-                    <div className="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 z-10 border-[3px] border-white shadow-sm mt-1">
-                      <User className="w-4 h-4 stroke-[3]" />
-                    </div>
-                    <div className="flex-1 bg-white border border-gray-100 rounded-[12px] shadow-sm p-4 xl:p-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-[14px] text-[#1f2937] mb-1">Akun penyewa dibuat</h3>
-                        <p className="text-[12px] text-gray-500">Akun penyewa baru berhasil dibuat.</p>
-                      </div>
-                      <div className="flex items-center flex-wrap xl:flex-nowrap gap-4 xl:gap-6 shrink-0 text-[12px]">
-                        <span className="px-2.5 py-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-md">Berhasil</span>
-                        <div className="flex items-center gap-2 text-gray-500 w-[140px]"><Calendar className="w-4 h-4" /> 1 Jun 2026, 14:30</div>
-                        <div className="flex items-center gap-2 text-[#1f2937] font-medium w-[120px]"><User className="w-4 h-4" /> Sistem</div>
-                      </div>
-                    </div>
-                  </div>
-
+                    ))}
+                  {activities.filter((act) => activityFilter === 'all' || act.type === activityFilter).length === 0 && (
+                    <p className="text-center text-gray-400 py-8">Belum ada riwayat aktivitas untuk kategori ini.</p>
+                  )}
                 </div>
               </div>
 
