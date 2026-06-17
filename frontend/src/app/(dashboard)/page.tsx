@@ -307,12 +307,11 @@ export default function DashboardPage() {
     };
 
     return (
-      <div className="space-y-6 animate-slide-up pb-10">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full space-y-6 animate-slide-up -mt-4 lg:-mt-8 pb-10">
+        <div className="shrink-0 mb-3 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">PORTAL PENGHUNI KOS</p>
-            <h1 className="text-3xl font-display font-bold text-brand-navy">Halo, {tenantProfile?.name || user?.name || 'Penghuni'}! 👋</h1>
-            <p className="text-sm text-gray-500 mt-1">Kamar {tenantProfile?.room?.room_number || '-'} • Selamat datang kembali di portal kos Anda • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <h1 className="text-[28px] font-display font-extrabold text-brand-navy">Halo, {tenantProfile?.name || user?.name || 'Penghuni'}! 👋</h1>
+            <p className="text-[15px] text-gray-500 mt-1">Kamar {tenantProfile?.room?.room_number || '-'} • Selamat datang kembali di portal kos Anda • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
           </div>
         </div>
 
@@ -573,13 +572,12 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6 animate-slide-up pb-10">
+    <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full space-y-6 animate-slide-up -mt-4 lg:-mt-8 pb-10">
       {/* Header Section */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+      <div className="shrink-0 mb-3 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">RINGKASAN PROPERTI</p>
-          <h1 className="text-3xl font-display font-bold text-brand-navy">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">Pantau status kos Anda dalam satu tampilan • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <h1 className="text-[28px] font-display font-extrabold text-brand-navy">Dashboard</h1>
+          <p className="text-[15px] text-gray-500 mt-1">Pantau status kos Anda dalam satu tampilan • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <Link href="/tenants" className="px-5 py-2 bg-white hover:bg-gray-50 text-brand-navy text-[13px] font-bold rounded-full border border-gray-200 shadow-sm transition-all flex items-center gap-2">

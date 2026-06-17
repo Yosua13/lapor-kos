@@ -54,7 +54,6 @@ interface Tenant {
   selfie_url: string;
   date_of_birth?: string;
   gender?: string;
-  address?: string;
   job?: string;
   emergency_contact_name?: string;
   emergency_contact_relation?: string;
@@ -249,6 +248,23 @@ export default function TenantProfilePage() {
       if (digits.length > 7) formatted += '-' + digits.slice(7, 12);
     }
     setFormData({ ...formData, phone: formatted });
+  };
+
+  const formatPhoneNumber = (val: string) => {
+    if (val === '' || val === '+62' || val === '+62-') return '';
+    let digits = val.replace(/\D/g, '');
+    if (digits.startsWith('62')) digits = digits.slice(2);
+    else if (digits.startsWith('0')) digits = digits.slice(1);
+    digits = digits.slice(0, 13);
+
+    let formatted = '';
+    if (digits.length > 0) {
+      formatted = '+62';
+      formatted += '-' + digits.slice(0, 3);
+      if (digits.length > 3) formatted += '-' + digits.slice(3, 7);
+      if (digits.length > 7) formatted += '-' + digits.slice(7, 13);
+    }
+    return formatted;
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'ktp' | 'selfie') => {
@@ -1338,10 +1354,6 @@ export default function TenantProfilePage() {
                        <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.gender || '-'}</span>
                      </div>
                      <div className="grid grid-cols-[140px_1fr] items-start">
-                       <span>Alamat</span>
-                       <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.address || '-'}</span>
-                     </div>
-                     <div className="grid grid-cols-[140px_1fr] items-start">
                        <span>Pekerjaan</span>
                        <span className="font-medium text-[#1f2937] flex gap-2"><span className="text-gray-400">:</span> {tenant.job || '-'}</span>
                      </div>
@@ -2047,7 +2059,7 @@ export default function TenantProfilePage() {
                     type="text"
                     required
                     value={editFormData.phone}
-                    onChange={e => setEditFormData({ ...editFormData, phone: e.target.value })}
+                    onChange={e => setEditFormData({ ...editFormData, phone: formatPhoneNumber(e.target.value) })}
                     className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
                   />
                 </div>
@@ -2082,15 +2094,6 @@ export default function TenantProfilePage() {
                     className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
                   />
                 </div>
-                <div>
-                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Alamat Asal</label>
-                  <input
-                    type="text"
-                    value={editFormData.address}
-                    onChange={e => setEditFormData({ ...editFormData, address: e.target.value })}
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
-                  />
-                </div>
               </div>
 
               {/* Emergency Contact Group */}
@@ -2120,7 +2123,7 @@ export default function TenantProfilePage() {
                     <input
                       type="text"
                       value={editFormData.emergency_contact_phone}
-                      onChange={e => setEditFormData({ ...editFormData, emergency_contact_phone: e.target.value })}
+                      onChange={e => setEditFormData({ ...editFormData, emergency_contact_phone: formatPhoneNumber(e.target.value) })}
                       className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
                     />
                   </div>
@@ -2139,6 +2142,9 @@ export default function TenantProfilePage() {
                       onChange={e => e.target.files && setEditFiles({ ...editFiles, ktp: e.target.files[0] })}
                       className="text-[11px] w-full"
                     />
+                    {editFiles.ktp && editFiles.ktp.type.startsWith('image/') && (
+                      <img src={URL.createObjectURL(editFiles.ktp)} alt="Preview" className="mt-2 w-full max-h-24 object-cover rounded-xl border border-gray-200" />
+                    )}
                   </div>
                   <div>
                     <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Ganti Foto Selfie</label>
@@ -2148,6 +2154,9 @@ export default function TenantProfilePage() {
                       onChange={e => e.target.files && setEditFiles({ ...editFiles, selfie: e.target.files[0] })}
                       className="text-[11px] w-full"
                     />
+                    {editFiles.selfie && editFiles.selfie.type.startsWith('image/') && (
+                      <img src={URL.createObjectURL(editFiles.selfie)} alt="Preview" className="mt-2 w-full max-h-24 object-cover rounded-xl border border-gray-200" />
+                    )}
                   </div>
                   <div>
                     <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Ganti Dokumen Tambahan</label>
@@ -2157,6 +2166,14 @@ export default function TenantProfilePage() {
                       onChange={e => e.target.files && setEditFiles({ ...editFiles, additional_doc: e.target.files[0] })}
                       className="text-[11px] w-full"
                     />
+                    {editFiles.additional_doc && editFiles.additional_doc.type.startsWith('image/') && (
+                      <img src={URL.createObjectURL(editFiles.additional_doc)} alt="Preview" className="mt-2 w-full max-h-24 object-cover rounded-xl border border-gray-200" />
+                    )}
+                    {editFiles.additional_doc && editFiles.additional_doc.type === 'application/pdf' && (
+                      <div className="mt-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-[10px] text-gray-600 flex items-center gap-2">
+                        <FileText className="w-3.5 h-3.5" /> File PDF terpilih
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2267,112 +2284,227 @@ export default function TenantProfilePage() {
               <p className="text-[13px] text-gray-500 mb-4">
                 Form perpanjangan kontrak untuk <span className="font-bold text-gray-700">{tenant.name}</span> (Kamar {tenant.room?.room_number || '-'}). Kontrak baru akan membuat tagihan (payment) otomatis.
               </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-start gap-3 mb-6">
+                <Info className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
                 <div>
-                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Tanggal Mulai Kontrak Baru</label>
-                  <input
-                    type="date"
+                  <h4 className="font-bold text-amber-800 text-[13px]">Sistem Pembayaran Bulanan / Per Kontrak</h4>
+                  <p className="text-[12px] text-amber-700 mt-1">Jika memilih Per Bulan, sistem akan membuat tagihan rutin setiap bulan. Jika Per Kontrak, semua tagihan akan dikalikan durasi sewa dan dilunasi di muka.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Interval Pembayaran <span className="text-red-500">*</span></label>
+                  <select
                     required
-                    value={extendData.start_date}
-                    onChange={e => setExtendData({ ...extendData, start_date: e.target.value })}
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
-                  />
+                    value={extendData.payment_interval}
+                    onChange={e => setExtendData({ ...extendData, payment_interval: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                  >
+                    <option value="">Silahkan pilih...</option>
+                    <option value="monthly">Bulanan (Per Bulan)</option>
+                    <option value="per_contract">Lunas di Depan (Per Kontrak)</option>
+                  </select>
                 </div>
                 <div>
-                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Durasi Kontrak Baru (Bulan)</label>
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Deposito (Uang Jaminan) <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">Rp</span>
+                    <input
+                      type="text"
+                      required
+                      value={extendData.deposit}
+                      onChange={e => {
+                        const rawValue = e.target.value.replace(/\D/g, '');
+                        const formattedValue = rawValue ? parseInt(rawValue, 10).toLocaleString('id-ID') : '';
+                        setExtendData({ ...extendData, deposit: formattedValue });
+                      }}
+                      placeholder="0"
+                      className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Tanggal Mulai <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <Calendar className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="date"
+                      required
+                      value={extendData.start_date}
+                      onChange={e => setExtendData({ ...extendData, start_date: e.target.value })}
+                      className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Durasi Kontrak (Bulan) <span className="text-red-500">*</span></label>
                   <select
                     required
                     value={extendData.rental_duration}
                     onChange={e => setExtendData({ ...extendData, rental_duration: e.target.value })}
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
+                    className="w-full bg-white border border-gray-200 rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
                   >
                     {[1, 2, 3, 4, 5, 6, 12].map(num => (
                       <option key={num} value={num.toString()}>{num} Bulan</option>
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 <div>
-                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Sewa Bulanan</label>
-                  <input
-                    type="text"
-                    required
-                    value={extendData.monthly_rent}
-                    onChange={e => {
-                      const digits = e.target.value.replace(/\D/g, '');
-                      setExtendData({ ...extendData, monthly_rent: digits ? parseInt(digits, 10).toLocaleString('id-ID') : '' });
-                    }}
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Jatuh Tempo (Tanggal)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="28"
-                    required
-                    value={extendData.payment_due_day}
-                    onChange={e => setExtendData({ ...extendData, payment_due_day: e.target.value })}
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
-                  />
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Sewa Bulanan <span className="text-red-500">*</span></label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">Rp</span>
+                    <input
+                      type="text"
+                      required
+                      value={extendData.monthly_rent}
+                      onChange={e => {
+                        const rawValue = e.target.value.replace(/\D/g, '');
+                        const formattedValue = rawValue ? parseInt(rawValue, 10).toLocaleString('id-ID') : '';
+                        setExtendData({ ...extendData, monthly_rent: formattedValue });
+                      }}
+                      className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="border-t border-gray-100 pt-4 mt-4">
-                <h4 className="font-bold text-[13px] text-brand-navy mb-3">Biaya-Biaya Tambahan Bulanan (Opsional)</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-700 mb-1">Tagihan Listrik</label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                <div>
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Tagihan Listrik</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">Rp</span>
                     <input
                       type="text"
                       placeholder="0"
                       value={extendData.electricity_bill}
                       onChange={e => {
-                        const digits = e.target.value.replace(/\D/g, '');
-                        setExtendData({ ...extendData, electricity_bill: digits ? parseInt(digits, 10).toLocaleString('id-ID') : '' });
+                        const rawValue = e.target.value.replace(/\D/g, '');
+                        const formattedValue = rawValue ? parseInt(rawValue, 10).toLocaleString('id-ID') : '';
+                        setExtendData({ ...extendData, electricity_bill: formattedValue });
                       }}
-                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px]"
+                      className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-700 mb-1">Tagihan Air</label>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Tagihan Air</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">Rp</span>
                     <input
                       type="text"
                       placeholder="0"
                       value={extendData.water_bill}
                       onChange={e => {
-                        const digits = e.target.value.replace(/\D/g, '');
-                        setExtendData({ ...extendData, water_bill: digits ? parseInt(digits, 10).toLocaleString('id-ID') : '' });
+                        const rawValue = e.target.value.replace(/\D/g, '');
+                        const formattedValue = rawValue ? parseInt(rawValue, 10).toLocaleString('id-ID') : '';
+                        setExtendData({ ...extendData, water_bill: formattedValue });
                       }}
-                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px]"
+                      className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-bold text-gray-700 mb-1">Biaya Lainnya</label>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Biaya Lainnya</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-500">Rp</span>
                     <input
                       type="text"
                       placeholder="0"
                       value={extendData.other_bills}
                       onChange={e => {
-                        const digits = e.target.value.replace(/\D/g, '');
-                        setExtendData({ ...extendData, other_bills: digits ? parseInt(digits, 10).toLocaleString('id-ID') : '' });
+                        const rawValue = e.target.value.replace(/\D/g, '');
+                        const formattedValue = rawValue ? parseInt(rawValue, 10).toLocaleString('id-ID') : '';
+                        setExtendData({ ...extendData, other_bills: formattedValue });
                       }}
-                      className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px]"
+                      className="w-full bg-white border border-gray-200 rounded-[14px] pl-12 pr-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
                     />
                   </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Catatan Perpanjangan</label>
-                <textarea
-                  value={extendData.notes}
-                  onChange={e => setExtendData({ ...extendData, notes: e.target.value })}
-                  rows={2}
-                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                <div>
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Jatuh Tempo (Tanggal) <span className="text-red-500">*</span></label>
+                  <select
+                    required
+                    value={extendData.payment_due_day}
+                    onChange={e => setExtendData({ ...extendData, payment_due_day: e.target.value })}
+                    className="w-full bg-white border border-gray-200 rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                  >
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map(num => (
+                      <option key={num} value={num}>Tanggal {num}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[13px] font-bold text-gray-700 mb-2">Catatan Tambahan</label>
+                  <input
+                    type="text"
+                    value={extendData.notes}
+                    onChange={e => setExtendData({ ...extendData, notes: e.target.value })}
+                    placeholder="Catatan kontrak..."
+                    className="w-full bg-white border border-gray-200 rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors"
+                  />
+                </div>
               </div>
+
+              {/* Tagihan Summary */}
+              {(() => {
+                const rent = parseInt(extendData.monthly_rent.replace(/\D/g, '') || '0', 10);
+                const electricity = parseInt(extendData.electricity_bill.replace(/\D/g, '') || '0', 10);
+                const water = parseInt(extendData.water_bill.replace(/\D/g, '') || '0', 10);
+                const other = parseInt(extendData.other_bills.replace(/\D/g, '') || '0', 10);
+                const duration = parseInt(extendData.rental_duration, 10) || 1;
+                const deposit = parseInt(extendData.deposit.replace(/\D/g, '') || '0', 10);
+                const isPerContract = extendData.payment_interval === 'per_contract';
+                
+                const multiplier = isPerContract ? duration : 1;
+                const totalRent = rent * multiplier;
+                const totalElectricity = electricity * multiplier;
+                const totalWater = water * multiplier;
+                const totalOther = other * multiplier;
+                const totalBill = totalRent + totalElectricity + totalWater + totalOther + deposit;
+
+                return (
+                  <div className="bg-[#f0f9f8] border border-[#0e8a7a]/20 rounded-[16px] p-5 mt-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[13px] font-bold text-gray-600">Sewa {isPerContract ? 'Total' : 'Bulanan'} ({multiplier} Bulan)</span>
+                      <span className="text-[14px] font-bold text-brand-navy">Rp {totalRent.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[13px] font-bold text-gray-600">Tagihan Listrik {isPerContract && `(x${duration})`}</span>
+                      <span className="text-[14px] font-bold text-brand-navy">Rp {totalElectricity.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[13px] font-bold text-gray-600">Tagihan Air {isPerContract && `(x${duration})`}</span>
+                      <span className="text-[14px] font-bold text-brand-navy">Rp {totalWater.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[13px] font-bold text-gray-600">Biaya Lainnya {isPerContract && `(x${duration})`}</span>
+                      <span className="text-[14px] font-bold text-brand-navy">Rp {totalOther.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-[13px] font-bold text-gray-600">Deposito (Bayar Sekali)</span>
+                      <span className="text-[14px] font-bold text-brand-navy">Rp {deposit.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="h-px bg-[#0e8a7a]/20 w-full mb-4"></div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[15px] font-extrabold text-brand-navy">Total Tagihan Awal</span>
+                      <span className="text-[20px] font-extrabold text-[#0e8a7a]">
+                        Rp {totalBill.toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
                 <button

@@ -20,7 +20,12 @@ import {
   Copy,
   Check,
   ChevronRight,
-  Info
+  Info,
+  CheckSquare,
+  Clock,
+  ChevronDown,
+  AlertCircle,
+  ChevronLeft
 } from 'lucide-react';
 import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
 import { getToken } from '@/lib/auth';
@@ -51,6 +56,14 @@ export default function PaymentsPage() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterMonth, setFilterMonth] = useState('');
   const [filterYear, setFilterYear] = useState('');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Derived Pagination
+  const totalPages = Math.ceil(payments.length / itemsPerPage);
+  const paginatedPayments = payments.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Modals
   const [showCreateBillModal, setShowCreateBillModal] = useState(false);
@@ -123,6 +136,7 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     setMounted(true);
+    setCurrentPage(1);
     fetchPayments();
   }, [filterStatus, filterMonth, filterYear]);
 
@@ -251,174 +265,233 @@ export default function PaymentsPage() {
   }
 
   return (
-    <div className="space-y-6 animate-slide-up pb-10">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full animate-slide-up -mt-4 lg:-mt-8">
+      {/* HEADER */}
+      <div className="shrink-0 mb-3 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">PENGELOLAAN KEUANGAN</p>
-          <h1 className="text-3xl font-display font-bold text-brand-navy">
+          <h1 className="text-[28px] font-display font-extrabold text-brand-navy">
             {role === 'tenant' ? 'Tagihan & Pembayaran Saya' : 'Manajemen Pembayaran'}
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-[15px] text-gray-500 mt-1">
             {role === 'tenant' 
-              ? 'Tinjau tagihan bulanan kos Anda dan laporkan pembayaran di sini' 
-              : 'Verifikasi bukti transfer penghuni kos dan kelola histori keuangan'}
+              ? 'Tinjau tagihan bulanan kos Anda dan laporkan pembayaran di sini.' 
+              : 'Verifikasi bukti transfer penghuni kos dan kelola histori keuangan.'}
           </p>
         </div>
-
-        {role === 'owner' && (
-          <button 
-            onClick={() => setShowCreateBillModal(true)}
-            className="px-4 py-2 bg-brand-teal text-white font-bold text-sm rounded-xl hover:bg-brand-teal-light transition-all flex items-center gap-2 shadow-sm group w-full md:w-auto justify-center"
-          >
-            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" /> Buat Tagihan Baru
-          </button>
-        )}
       </div>
 
-      {/* Filters (Owner Only) */}
+      {/* TABS (Pills) for Owner */}
       {role === 'owner' && (
-        <div className="bg-white dark:bg-[#0F172A] border-[1.5px] border-gray-200 dark:border-slate-800 p-6 rounded-[24px] shadow-sm flex flex-wrap gap-4 items-center justify-between">
-          <div className="flex flex-wrap items-center gap-4 flex-1">
-            <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800/50 px-4 py-2.5 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:bg-white dark:focus-within:bg-slate-800 transition-all text-sm w-full sm:w-48">
-              <Filter className="w-4 h-4 text-gray-400" />
-              <select 
-                value={filterStatus} 
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="bg-transparent border-none focus:outline-none w-full font-semibold text-brand-navy dark:text-slate-200 cursor-pointer"
-              >
-                <option value="" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Semua Status</option>
-                <option value="unpaid" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Belum Bayar</option>
-                <option value="pending" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Menunggu Verifikasi</option>
-                <option value="paid" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Lunas</option>
-                <option value="partial" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Bayar Sebagian</option>
-                <option value="overdue" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Terlambat</option>
-              </select>
-            </div>
+        <div className="flex flex-wrap items-center gap-3 mt-2 mb-6 shrink-0">
+          <button
+            onClick={() => setFilterStatus('')}
+            className={`px-4 py-2 rounded-[10px] border text-[13px] font-bold flex items-center gap-2 transition-all ${
+              filterStatus === '' 
+                ? 'border-emerald-200 bg-emerald-50/50 text-[#0e8a7a]' 
+                : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
+            }`}
+          >
+            <CheckSquare className={`w-4 h-4 ${filterStatus === '' ? 'text-[#0e8a7a]' : 'text-emerald-500'}`} /> Semua 
+          </button>
+          
+          <button
+            onClick={() => setFilterStatus('pending')}
+            className={`px-4 py-2 rounded-[10px] border text-[13px] font-bold flex items-center gap-2 transition-all ${
+              filterStatus === 'pending' 
+                ? 'border-amber-200 bg-amber-50 text-amber-600' 
+                : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
+            }`}
+          >
+            <Clock className={`w-4 h-4 ${filterStatus === 'pending' ? 'text-amber-500' : 'text-amber-500'}`} /> Menunggu Verifikasi
+          </button>
 
-            <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800/50 px-4 py-2.5 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:bg-white dark:focus-within:bg-slate-800 transition-all text-sm w-full sm:w-40">
-              <select 
-                value={filterMonth} 
-                onChange={(e) => setFilterMonth(e.target.value)}
-                className="bg-transparent border-none focus:outline-none w-full font-semibold text-brand-navy dark:text-slate-200 cursor-pointer"
-              >
-                <option value="" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Semua Bulan</option>
-                {Array.from({ length: 12 }, (_, i) => (
-                  <option key={i+1} value={i+1} className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Bulan {i+1}</option>
-                ))}
-              </select>
-            </div>
+          <button
+            onClick={() => setFilterStatus('paid')}
+            className={`px-4 py-2 rounded-[10px] border text-[13px] font-bold flex items-center gap-2 transition-all ${
+              filterStatus === 'paid' 
+                ? 'border-emerald-200 bg-emerald-50/50 text-[#0e8a7a]' 
+                : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
+            }`}
+          >
+            <CheckCircle2 className={`w-4 h-4 ${filterStatus === 'paid' ? 'text-emerald-500' : 'text-emerald-500'}`} /> Lunas
+          </button>
 
-            <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800/50 px-4 py-2.5 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:bg-white dark:focus-within:bg-slate-800 transition-all text-sm w-full sm:w-auto min-w-[140px]">
-              <select 
-                value={filterYear} 
-                onChange={(e) => setFilterYear(e.target.value)}
-                className="bg-transparent border-none focus:outline-none w-full font-semibold text-brand-navy dark:text-slate-200 cursor-pointer"
-              >
-                <option value="" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">Semua Tahun</option>
-                <option value="2026" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">2026</option>
-                <option value="2027" className="bg-white dark:bg-[#1E293B] text-brand-navy dark:text-slate-200">2027</option>
-              </select>
-            </div>
-          </div>
+          <button
+            onClick={() => setFilterStatus('unpaid')}
+            className={`px-4 py-2 rounded-[10px] border text-[13px] font-bold flex items-center gap-2 transition-all ${
+              filterStatus === 'unpaid' 
+                ? 'border-red-200 bg-red-50 text-red-600' 
+                : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
+            }`}
+          >
+            <AlertCircle className={`w-4 h-4 ${filterStatus === 'unpaid' ? 'text-red-500' : 'text-red-500'}`} /> Belum Bayar
+          </button>
         </div>
       )}
 
-      {/* Main Table Card */}
-      <div className="bg-white border-[1.5px] border-gray-200 rounded-[24px] overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-gray-50 border-b border-gray-200 text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">
-              <tr>
-                <th className="px-6 py-4">PERIODE</th>
-                <th className="px-6 py-4">{role === 'tenant' ? 'METODE' : 'KAMAR / NAMA'}</th>
-                <th className="px-6 py-4">STATUS</th>
-                <th className="px-6 py-4 text-right">TOTAL TAGIHAN</th>
-                <th className="px-6 py-4 text-right">DIBAYAR</th>
-                <th className="px-6 py-4 text-right">AKSI</th>
+      {/* MAIN WHITE CARD CONTAINER */}
+      <div className="flex-1 bg-white rounded-[24px] border border-gray-200 shadow-sm flex flex-col overflow-hidden">
+        
+        {/* TOOLBAR */}
+        <div className="shrink-0 flex flex-col lg:flex-row items-center justify-between gap-4 p-6 lg:px-8 border-b border-gray-100">
+          
+          <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto flex-1">
+            {role === 'owner' && (
+              <>
+                {/* Month Dropdown */}
+                <div className="relative w-full sm:w-[150px]">
+                  <label className="absolute -top-2 left-3 bg-white px-1 text-[10px] text-gray-500 font-medium z-10">Bulan</label>
+                  <select 
+                    value={filterMonth}
+                    onChange={(e) => setFilterMonth(e.target.value)}
+                    className="w-full bg-white border border-gray-200 rounded-[10px] pl-3 pr-8 py-2.5 text-[13px] font-medium text-[#1f2937] focus:outline-none focus:border-[#0e8a7a] transition-colors appearance-none relative cursor-pointer"
+                  >
+                    <option value="">Semua Bulan</option>
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i+1} value={i+1}>Bulan {i+1}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+
+                {/* Year Dropdown */}
+                <div className="relative w-full sm:w-[150px]">
+                  <label className="absolute -top-2 left-3 bg-white px-1 text-[10px] text-gray-500 font-medium z-10">Tahun</label>
+                  <select 
+                    value={filterYear}
+                    onChange={(e) => setFilterYear(e.target.value)}
+                    className="w-full bg-white border border-gray-200 rounded-[10px] pl-3 pr-8 py-2.5 text-[13px] font-medium text-[#1f2937] focus:outline-none focus:border-[#0e8a7a] transition-colors appearance-none relative cursor-pointer"
+                  >
+                    <option value="">Semua Tahun</option>
+                    <option value="2026">2026</option>
+                    <option value="2027">2027</option>
+                  </select>
+                  <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 w-full lg:w-auto shrink-0 justify-end">
+            <button className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-[#1f2937] font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm bg-white">
+              <Download className="w-4 h-4" /> Export Data
+            </button>
+            {role === 'owner' && (
+              <button
+                type="button"
+                onClick={() => setShowCreateBillModal(true)}
+                className="flex-1 sm:flex-none px-4 py-2.5 bg-[#0e8a7a] hover:bg-[#0c7567] text-white font-bold text-[13px] rounded-[10px] transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Plus className="w-4 h-4" /> Buat Tagihan
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* CONTENT VIEW */}
+        <div className="flex-1 overflow-y-auto no-scrollbar px-6 lg:px-8 pb-6 bg-slate-50 pt-0">
+          <table className="w-full text-left text-sm border-separate border-spacing-y-4 min-w-[1000px]">
+            <thead className="sticky top-0 bg-slate-50 z-20">
+              <tr className="text-[13px] font-bold text-gray-500 tracking-wide">
+                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200">Periode</th>
+                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200">{role === 'tenant' ? 'Metode' : 'Kamar / Penghuni'}</th>
+                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200">Status</th>
+                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200 text-right">Total Tagihan</th>
+                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200 text-right">Dibayar</th>
+                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200 text-right">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-              {payments.map((p) => {
+            <tbody>
+              {paginatedPayments.map((p) => {
                 const totalBill = p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other;
                 const roomNum = p.contract?.room?.room_number || '-';
                 const tenantName = p.contract?.user?.name || '-';
+                const isPaid = p.status === 'paid';
+                const isPending = p.status === 'pending';
+                const isUnpaid = p.status === 'unpaid' || p.status === 'overdue';
+                const isPartial = p.status === 'partial';
                 
                 return (
-                  <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-sm text-brand-navy">
-                      Bulan {p.period_month} - {p.period_year}
-                      <p className="text-[10px] text-gray-400 font-normal mt-0.5">Tempo: {new Date(p.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</p>
+                  <tr key={p.id} className="bg-white group relative">
+                    <td 
+                      className="px-6 py-5 rounded-l-[16px] border-y border-l border-gray-200 align-middle bg-white"
+                    >
+                      <p className="font-bold text-brand-navy text-[15px]">Bulan {p.period_month} - {p.period_year}</p>
+                      <p className="text-[12px] text-gray-500 mt-0.5">Tempo: {new Date(p.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</p>
                     </td>
-                    <td className="px-6 py-4 text-sm">
+
+                    <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white">
                       {role === 'tenant' ? (
-                        <span className="font-semibold uppercase text-gray-500">{p.payment_method || '-'}</span>
+                        <span className="font-bold uppercase text-gray-600 text-[14px]">{p.payment_method || '-'}</span>
                       ) : (
                         <div>
-                          <p className="font-bold text-brand-navy text-brand-teal">Kamar {roomNum}</p>
-                          <p className="text-xs text-gray-500 font-bold mt-0.5">{tenantName}</p>
+                          <p className="font-bold text-brand-navy text-[14px]">Kamar {roomNum}</p>
+                          <p className="text-[13px] text-gray-500 mt-0.5">{tenantName}</p>
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold ${
-                        p.status === 'paid' 
-                          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' 
-                          : p.status === 'pending'
-                          ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                          : p.status === 'partial'
-                          ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
-                          : 'bg-red-50 text-red-700 ring-1 ring-red-200'
+
+                    <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                        isPaid 
+                          ? 'bg-teal-50 text-[#0e8a7a]' 
+                          : isPending
+                          ? 'bg-amber-50 text-amber-600'
+                          : isPartial
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'bg-red-50 text-red-600'
                       }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          p.status === 'paid' ? 'bg-emerald-500' :
-                          p.status === 'pending' ? 'bg-amber-500' :
-                          p.status === 'partial' ? 'bg-blue-500' : 'bg-red-500'
-                        }`} />
-                        {p.status === 'paid' ? 'LUNAS' : p.status === 'pending' ? 'TERTUNDA' : p.status === 'partial' ? 'SEBAGIAN' : 'BELUM BAYAR'}
+                        {isPaid && <CheckCircle2 className="w-3.5 h-3.5" />}
+                        {isPending && <Clock className="w-3.5 h-3.5" />}
+                        {isPartial && <CheckSquare className="w-3.5 h-3.5" />}
+                        {isUnpaid && <AlertCircle className="w-3.5 h-3.5" />}
+                        {isPaid ? 'LUNAS' : isPending ? 'MENUNGGU VERIFIKASI' : isPartial ? 'SEBAGIAN' : 'BELUM BAYAR'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right font-bold text-sm text-brand-navy">
+
+                    <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white text-right font-bold text-[14px] text-brand-navy">
                       Rp {totalBill.toLocaleString('id-ID')}
                     </td>
-                    <td className="px-6 py-4 text-right font-bold text-sm text-brand-teal">
+
+                    <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white text-right font-bold text-[14px] text-[#0e8a7a]">
                       Rp {p.total_paid.toLocaleString('id-ID')}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {role === 'tenant' && (p.status === 'unpaid' || p.status === 'overdue' || p.status === 'partial') && (
+
+                    <td className="px-6 py-5 rounded-r-[16px] border-y border-r border-gray-200 align-middle text-right bg-white">
+                      <div className="flex items-center justify-end gap-2.5 relative">
+                        {role === 'tenant' && (isUnpaid || isPartial) && (
                           <button 
                             onClick={() => openPayModal(p)}
-                            className="bg-brand-teal hover:bg-brand-teal-light text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-md shadow-brand-teal/10"
+                            className="px-3.5 py-2 text-[11px] font-bold text-white bg-[#0e8a7a] hover:bg-[#0c7567] rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm"
                           >
                             Bayar
                           </button>
                         )}
-                        {role === 'owner' && p.status === 'pending' && (
+                        {role === 'owner' && isPending && (
                           <button 
                             onClick={() => openVerifyModal(p)}
-                            className="bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1.5"
+                            className="px-3.5 py-2 text-[11px] font-bold text-amber-600 border border-amber-500 hover:bg-amber-50 rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm bg-white"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" /> Verifikasi
                           </button>
                         )}
-                        {role === 'owner' && p.status !== 'pending' && (
+                        {role === 'owner' && !isPending && (
                           <button 
                             onClick={() => openVerifyModal(p)}
-                            className="px-2.5 py-1.5 text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors inline-flex items-center gap-1"
+                            className="px-3.5 py-2 text-[11px] font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors inline-flex items-center gap-1"
                           >
                             <Eye className="w-3.5 h-3.5" /> Lihat
                           </button>
                         )}
-                         {p.status === 'paid' && (
-                           <button 
-                             onClick={() => setSelectedReceipt(p)}
-                             className="px-2.5 py-1.5 text-xs font-bold text-brand-teal bg-brand-teal/10 hover:bg-brand-teal/20 rounded-lg transition-colors inline-flex items-center gap-1"
-                             title="Lihat Kwitansi"
-                           >
-                             <FileText className="w-3.5 h-3.5" /> Kwitansi
-                           </button>
-                         )}
+                        {isPaid && (
+                          <button 
+                            onClick={() => setSelectedReceipt(p)}
+                            className="px-3.5 py-2 text-[11px] font-bold text-[#0e8a7a] bg-teal-50 hover:bg-teal-100 rounded-xl transition-colors inline-flex items-center gap-1"
+                            title="Lihat Kwitansi"
+                          >
+                            <FileText className="w-3.5 h-3.5" /> Kwitansi
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -426,11 +499,71 @@ export default function PaymentsPage() {
               })}
               {payments.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-gray-400 font-medium text-sm">Tidak ada tagihan atau transaksi pembayaran ditemukan.</td>
+                  <td colSpan={6} className="py-12">
+                    <div className="min-h-[200px] flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-[20px] p-8 text-center bg-white w-full">
+                      <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-gray-400">
+                        <DollarSign className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-sm font-bold text-brand-navy mb-1">Tidak ada transaksi</h3>
+                      <p className="text-xs text-gray-500 max-w-sm mx-auto">Data pembayaran tidak ditemukan berdasarkan filter bulan/tahun.</p>
+                    </div>
+                  </td>
                 </tr>
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* PAGINATION */}
+        <div className="shrink-0 p-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100 bg-white">
+          <div className="flex items-center gap-6">
+            <div className="text-[14px] text-gray-500 font-medium">
+              Menampilkan {payments.length > 0 ? Math.min((currentPage - 1) * itemsPerPage + 1, payments.length) : 0} - {Math.min(currentPage * itemsPerPage, payments.length)} dari {payments.length} transaksi
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[14px] text-gray-500">Tampilkan:</span>
+              <select
+                value={itemsPerPage}
+                onChange={e => { setItemsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                className="border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none bg-white text-brand-navy font-bold cursor-pointer shadow-sm text-sm"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1 || payments.length === 0}
+              className="w-10 h-10 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-colors bg-white"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            {Array.from({ length: Math.max(1, totalPages) }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrentPage(i + 1)}
+                className={`w-10 h-10 rounded-xl text-[14px] font-bold transition-colors ${currentPage === i + 1
+                  ? 'bg-[#0e8a7a] text-white border border-[#0e8a7a]'
+                  : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages || payments.length === 0}
+              className="w-10 h-10 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white transition-colors bg-white"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 

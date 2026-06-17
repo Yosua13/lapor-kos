@@ -29,7 +29,8 @@ import {
   ExternalLink,
   Wallet,
   UploadCloud,
-  ChevronDown
+  ChevronDown,
+  CheckSquare
 } from 'lucide-react';
 import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
 
@@ -434,7 +435,7 @@ export default function RoomsPage() {
               : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
           }`}
         >
-          <LayoutGrid className={`w-4 h-4 ${activeTab === 'all' ? 'text-[#0e8a7a]' : 'text-emerald-500'}`} /> Semua 
+          <CheckSquare className={`w-4 h-4 ${activeTab === 'all' ? 'text-[#0e8a7a]' : 'text-emerald-500'}`} /> Semua 
           <span className={`px-2 py-0.5 rounded-md ${activeTab === 'all' ? 'bg-emerald-100/50 text-[#0e8a7a]' : 'bg-gray-100 text-gray-600'}`}>{stats.total}</span>
         </button>
         
@@ -446,7 +447,7 @@ export default function RoomsPage() {
               : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
           }`}
         >
-          <div className="w-2 h-2 rounded-full bg-emerald-500"></div> Terisi 
+          <CheckCircle2 className={`w-4 h-4 ${activeTab === 'occupied' ? 'text-[#0e8a7a]' : 'text-emerald-500'}`} /> Terisi 
           <span className={`px-2 py-0.5 rounded-md ${activeTab === 'occupied' ? 'bg-emerald-100/50 text-[#0e8a7a]' : 'bg-gray-100 text-gray-600'}`}>{stats.occupied}</span>
         </button>
 
@@ -458,7 +459,7 @@ export default function RoomsPage() {
               : 'border-gray-200 bg-white text-[#1f2937] hover:bg-gray-50'
           }`}
         >
-          <div className="w-2 h-2 rounded-full bg-red-500"></div> Kosong 
+          <DoorOpen className={`w-4 h-4 ${activeTab === 'available' ? 'text-red-600' : 'text-red-500'}`} /> Kosong 
           <span className={`px-2 py-0.5 rounded-md ${activeTab === 'available' ? 'bg-red-100/50 text-red-600' : 'bg-gray-100 text-gray-600'}`}>{stats.available}</span>
         </button>
 
@@ -714,7 +715,6 @@ export default function RoomsPage() {
                     <tr key={room.id} className="bg-white group relative">
                       <td 
                         className="px-6 py-5 rounded-l-[16px] border-y border-l border-gray-200 align-middle bg-white"
-                        style={{ borderLeft: `4px solid ${isOccupied ? '#0e8a7a' : '#f59e0b'}` }}
                       >
                         <div>
                           <p className="font-bold text-brand-navy text-[15px]">Kamar {room.room_number} {room.type && <span className="font-medium text-[11px] text-gray-400">· {room.type}</span>}</p>
