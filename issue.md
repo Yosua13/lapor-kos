@@ -1,76 +1,38 @@
-# Rencana Implementasi Modul 8: Pengaturan Aplikasi
+Searched for "owner_id"
+Viewed 003_add_rooms_and_tenants.sql:1-22
 
-Modul ini mencakup pembuatan fitur pengaturan aplikasi yang dapat digunakan oleh **Owner (Pemilik Kos)** maupun **Penghuni**. Fitur ini meliputi pembaruan informasi profil, perubahan kata sandi, pengaturan tema tampilan (gelap/terang), serta dasar untuk pengaturan lainnya di masa depan.
+Berdasarkan struktur SQL yang Anda lampirkan dan kode *backend* yang sudah kita bangun, saya telah melakukan analisis menyeluruh terkait arsitektur dan normalisasi databasenya. 
 
----
+Berikut adalah temuan, kolom yang repetitif, serta saran perbaikannya dari segi efektivitas dan normalisasi:
 
-## 1. Fitur Utama
+### 🚨 1. Kelemahan Fatal: Tidak ada `owner_id` di tabel `Rooms`
+- **Analisis:** Tabel `rooms` saat ini berdiri sendiri tanpa adanya referensi kepemilikan. Kolom `owner_id` memang ada di tabel `contracts` dan `complaints`, namun bayangkan skenario ini: *Pemilik A baru saja menambahkan kamar kosong (available)*. Karena belum ada penghuni/kontrak, sistem tidak akan tahu kamar tersebut milik siapa.
+- **Saran:** Segera tambahkan kolom `owner_id (UUID)` sebagai *foreign key* di tabel `rooms` yang merujuk ke tabel `users`.
 
-### A. Pengaturan Profil
-*   **Tujuan:** Memungkinkan pengguna untuk melihat dan memperbarui informasi dasar akun mereka.
-*   **Informasi yang Dapat Diubah:**
-    *   Nama Lengkap
-    *   Email
-    *   Nomor Handphone (HP)
-*   **Validasi Input:**
-    *   Nama tidak boleh kosong.
-    *   Format email harus valid.
-    *   Nomor HP harus berupa angka yang valid.
+### 🔄 2. Tabel `Users`: Terlalu Banyak Beban (*Overloaded Table*)
+- **Analisis:** Tabel `users` saat ini menampung dua *role* yang bertolak belakang fungsinya, yaitu Pemilik (*owner*) dan Anak Kos (*tenant*).
+  - Kolom `whatsapp_group_link` hanya berguna untuk *owner*.
+  - Kolom `ktp_url` dan `selfie_url` hanya berguna untuk *tenant*.
+- **Saran:** Untuk aplikasi skala kecil/menengah ini disebut pola *Single Table Inheritance* dan masih dapat ditoleransi. Namun, untuk **normalisasi sejati**, Anda sebaiknya memisahkannya menjadi 3 tabel:
+  - `users`: (id, email, password, role)
+  - `owner_profiles`: (user_id, name, phone, whatsapp_group_link, bank_details)
+  - `tenant_profiles`: (user_id, name, phone, ktp_url, selfie_url, emergency_contact)
 
-### B. Keamanan (Ubah Kata Sandi)
-*   **Tujuan:** Memungkinkan pengguna mengganti kata sandi demi keamanan akun.
-*   **Kebutuhan Input:**
-    *   Kata Sandi Saat Ini (untuk verifikasi)
-    *   Kata Sandi Baru
-    *   Konfirmasi Kata Sandi Baru
-*   **Validasi Input:**
-    *   Kata sandi baru harus cocok dengan konfirmasi kata sandi baru.
-    *   Kata sandi baru memiliki panjang minimal yang aman (misalnya, 6 atau 8 karakter).
+### 📊 3. Tabel `Contracts` vs `Payments`: Apakah Redundan?
+- **Analisis:** Di tabel `contracts` ada tagihan (`monthly_rent`, `electricity_bill`, dll), lalu di tabel `payments` juga ada (`amount_rent`, `amount_electricity`, dll).
+- **Kesimpulan:** Ini **BUKAN** redudansi yang buruk, melainkan **Praktik Historis yang Benar**. Tabel `contracts` menyimpan "harga default" atau kesepakatan awal, sedangkan tabel `payments` menyimpan "tagihan aktual" per bulan. Jika bulan depan biaya air naik, Anda cukup mengubahnya di tagihan bulan tersebut tanpa merusak kesepakatan kontrak awal.
+- **Kolom Kurang Efektif:** Kolom `total_price` di `contracts` sebenarnya adalah hasil kalkulasi (`monthly_rent * rental_duration`). Secara teori normalisasi, ini bisa dihapus karena bisa dihitung langsung menggunakan operasi matematika saat *query*. Namun, menyimpannya di DB (*denormalization*) berguna jika Anda butuh *query* pelaporan/dashboard yang cepat tanpa harus selalu menjumlahkan (*sum*) data.
 
-### C. Pengaturan Tampilan (Tema Gelap / Terang)
-*   **Tujuan:** Meningkatkan kenyamanan pengguna dengan opsi tema visual.
-*   **Kebutuhan:**
-    *   Tombol toggle atau pilihan untuk berganti antara **Tema Terang (Light Mode)** dan **Tema Gelap (Dark Mode)**.
-    *   Tema yang dipilih harus langsung diterapkan ke seluruh aplikasi.
-    *   Pilihan tema harus disimpan agar ketika halaman dimuat ulang (reload), tema pilihan terakhir tetap aktif (disimpan di LocalStorage atau database).
+### 🛋️ 4. Tabel `Rooms`: Kolom `description` (Fasilitas)
+- **Analisis:** Saat ini Anda menyimpan fasilitas sebagai teks koma, contoh: `"AC, Lemari, Kasur"`.
+- **Kesimpulan:** Jika aplikasi Anda kelak memiliki fitur **Filter Pencarian** (*"Cari kos yang punya kamar mandi dalam"*), maka menyimpan dengan koma sangat memberatkan performa pencarian database (*full-text scan*).
+- **Saran Normalisasi:** Hapus kolom `description` dan buatkan relasi *Many-to-Many*:
+  - Tabel `facilities` (id, name, icon)
+  - Tabel `room_facilities` (room_id, facility_id)
 
-### D. Pengaturan Lainnya (Ekstensi Masa Depan)
-*   **Tujuan:** Menyediakan struktur/layout menu untuk pengaturan tambahan lainnya di masa depan (contoh: toggle notifikasi).
+### ✂️ Kesimpulan Rekomendasi Eksekusi
+Jika Anda ingin menerapkan perbaikan tercepat yang paling **krusial**, fokuslah pada:
+1. Menambahkan `owner_id` pada tabel `rooms` agar kamar tidak salah kepemilikan.
+2. Menghapus kolom perhitungan seperti `total_price` di `contracts` jika dirasa tidak terlalu dibutuhkan secara persisten.
 
----
-
-## 2. Tugas Bagian Depan (Frontend - Next.js)
-
-1.  **Halaman / Tab Baru untuk Pengaturan:**
-    *   Buat halaman/menu baru dengan nama "Pengaturan" atau "Settings" di dashboard Owner dan dashboard Penghuni.
-2.  **Formulir Profil & Keamanan:**
-    *   Buat komponen UI formulir yang bersih dan responsif.
-    *   Tampilkan data profil pengguna saat ini secara otomatis (pre-filled).
-    *   Tampilkan pesan sukses atau pesan error yang jelas setelah pengguna menekan tombol simpan.
-3.  **Toggle Switch Tema:**
-    *   Pasang saklar (toggle switch) atau tombol khusus untuk pergantian tema gelap/terang.
-    *   Pastikan ada integrasi dengan CSS / tailwind theme variable yang digunakan pada proyek untuk mengubah warna dasar aplikasi saat mode gelap aktif.
-
----
-
-## 3. Tugas Bagian Belakang (Backend - Go)
-
-1.  **Endpoint Mengambil Profil:**
-    *   Sediakan API endpoint untuk mengambil data profil pengguna yang sedang login (berdasarkan token autentikasi/session).
-2.  **Endpoint Update Profil:**
-    *   Sediakan API endpoint untuk memperbarui data profil (Nama, Email, Nomor HP).
-    *   Lakukan pengecekan validasi data sebelum menyimpannya ke database.
-3.  **Endpoint Ubah Kata Sandi:**
-    *   Sediakan API endpoint untuk mengubah kata sandi.
-    *   Backend harus memverifikasi terlebih dahulu apakah Kata Sandi Saat Ini yang dimasukkan pengguna sudah benar.
-    *   Jika benar, lakukan enkripsi (hashing) pada Kata Sandi Baru dan simpan ke database.
-
----
-
-## 4. Kriteria Keberhasilan (Acceptance Criteria)
-
-- [x] Pengguna (Owner & Penghuni) dapat memperbarui Nama, Email, dan No HP mereka dan perubahan tersimpan di database.
-- [x] Pengguna dapat mengubah kata sandi mereka dengan memverifikasi kata sandi lama terlebih dahulu.
-- [x] Pengguna dapat berganti tema dari Terang ke Gelap dan sebaliknya secara instan di layar.
-- [x] Pilihan tema pengguna tidak hilang setelah halaman di-refresh.
-- [x] Tampilan antarmuka (UI) halaman pengaturan rapi, ramah pengguna, dan responsif di perangkat mobile maupun desktop.
+Apakah Anda ingin saya membantu mengimplementasikan penambahan **`owner_id` pada tabel `rooms`** sekarang juga, karena ini merupakan bug arsitektur yang cukup fatal untuk fitur-fitur selanjutnya?

@@ -56,7 +56,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (userData && userData.role === 'tenant') {
-      const ownerOnlyPaths = ['/rooms', '/tenants', '/contracts', '/reports'];
+      const ownerOnlyPaths = ['/rooms', '/tenants', '/reports'];
       const isOwnerPath = ownerOnlyPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
       if (isOwnerPath) {
         router.push('/');
@@ -93,16 +93,15 @@ export default function DashboardLayout({
     : [
         { section: 'MENU UTAMA', items: [
           { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-          { name: 'Kalender', href: '/calendar', icon: Calendar },
           { name: 'Manajemen Kamar', href: '/rooms', icon: DoorOpen },
-          { name: 'Data Penghuni', href: '/tenants', icon: Users },
-          { name: 'Manajemen Kontrak', href: '/contracts', icon: FileText },
+          { name: 'Penghuni & Kontrak', href: '/tenants', icon: Users },
         ]},
         { section: 'KEUANGAN', items: [
           { name: 'Pembayaran', href: '/payments', icon: CreditCard },
           { name: 'Laporan', href: '/reports', icon: Home },
         ]},
         { section: 'LAINNYA', items: [
+          { name: 'Kalender', href: '/calendar', icon: Calendar },
           { name: 'Komplain', href: '/complaints', icon: MessageSquare },
           { name: 'Pengaturan', href: '/settings', icon: Settings },
         ]}
@@ -171,13 +170,16 @@ export default function DashboardLayout({
         </nav>
 
         <div className="p-5 border-t border-white-fixed/5">
-          <div className="flex items-center gap-3 mb-4 px-3">
-             <div className="w-10 h-10 bg-white-fixed/10 rounded-full flex items-center justify-center border border-white-fixed/5">
+          <div 
+            onClick={() => router.push('/settings')}
+            className="flex items-center gap-3 mb-4 px-3 cursor-pointer group"
+          >
+             <div className="w-10 h-10 bg-white-fixed/10 rounded-full flex items-center justify-center border border-white-fixed/5 group-hover:bg-brand-teal/20 transition-colors">
                 <User className="text-brand-teal w-5 h-5" />
              </div>
-             <div className="overflow-hidden">
+             <div className="overflow-hidden group-hover:text-brand-teal transition-colors">
                 <p className="text-sm font-bold truncate text-white-fixed">{userData?.name || 'Yosua R.'}</p>
-                <p className="text-[10px] text-white-fixed/40 uppercase tracking-widest">
+                <p className="text-[10px] text-white-fixed/40 uppercase tracking-widest group-hover:text-brand-teal/70">
                   {userData?.role === 'tenant' ? 'Penghuni Kamar' : 'Property Owner'}
                 </p>
              </div>
@@ -210,17 +212,23 @@ export default function DashboardLayout({
                 <button className="p-2.5 text-brand-navy/40 dark:text-white-fixed/60 hover:text-brand-teal dark:hover:text-brand-teal hover:bg-brand-teal/5 dark:hover:bg-brand-teal/10 rounded-xl transition-all">
                   <Bell className="w-5 h-5" />
                 </button>
-                <button className="p-2.5 text-brand-navy/40 dark:text-white-fixed/60 hover:text-brand-teal dark:hover:text-brand-teal hover:bg-brand-teal/5 dark:hover:bg-brand-teal/10 rounded-xl transition-all">
+                <button 
+                  onClick={() => router.push('/settings')}
+                  className="p-2.5 text-brand-navy/40 dark:text-white-fixed/60 hover:text-brand-teal dark:hover:text-brand-teal hover:bg-brand-teal/5 dark:hover:bg-brand-teal/10 rounded-xl transition-all"
+                >
                     <Settings className="w-5 h-5" />
                 </button>
              </div>
              <div className="w-[1px] h-6 bg-brand-navy/10 mx-2" />
-             <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center text-white-fixed font-bold text-sm shadow-lg shadow-brand-teal/10">
+             <div 
+               onClick={() => router.push('/settings')}
+               className="flex items-center gap-3 cursor-pointer group"
+             >
+                 <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center text-white-fixed font-bold text-sm shadow-lg shadow-brand-teal/10 group-hover:scale-105 transition-transform">
                    {userData?.name ? userData.name.substring(0, 2).toUpperCase() : 'YR'}
                  </div>
                  <div className="hidden sm:block">
-                    <p className="text-xs font-bold leading-none mb-1">{userData?.name || 'User'}</p>
+                    <p className="text-xs font-bold leading-none mb-1 group-hover:text-brand-teal transition-colors">{userData?.name || 'User'}</p>
                     <p className="text-[10px] text-brand-teal font-bold uppercase tracking-widest">
                        {userData?.role === 'tenant' ? 'Penghuni' : 'Owner'}
                     </p>

@@ -33,3 +33,6 @@ backend/main.exe~
 *.exe
 *.exe~
 *.bak
+
+# Notes
+noted.md

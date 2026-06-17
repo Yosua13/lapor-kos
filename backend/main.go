@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/cron"
 	"github.com/Yosua13/lapor-kos/backend/internal/handler"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
@@ -39,6 +40,10 @@ func main() {
 	}
 	defer dbPool.Close()
 
+	// Start Background Cron Jobs
+	billingCron := cron.NewBillingCron(dbPool)
+	billingCron.Start()
+
 	// Verify connection
 	if err := dbPool.Ping(context.Background()); err != nil {
 		log.Fatalf("Database ping failed: %v\n", err)
@@ -53,6 +58,43 @@ func main() {
 		log.Println("Inline migration: users.phone column verified/created")
 	}
 
+	_, err = dbPool.Exec(context.Background(), `
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT true;
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS gender VARCHAR(50);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS job VARCHAR(100);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone VARCHAR(50);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_relation VARCHAR(50);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name VARCHAR(100);
+		ALTER TABLE users ADD COLUMN IF NOT EXISTS additional_doc_url TEXT;
+	`)
+	if err != nil {
+		log.Printf("Warning: Failed to run inline migration for user profile details: %v", err)
+	} else {
+		log.Println("Inline migration: users profile detail columns verified/created")
+	}
+
+	_, err = dbPool.Exec(context.Background(), `
+		ALTER TABLE contracts 
+		ADD COLUMN IF NOT EXISTS electricity_bill DECIMAL(10,2) NOT NULL DEFAULT 0, 
+		ADD COLUMN IF NOT EXISTS water_bill DECIMAL(10,2) NOT NULL DEFAULT 0, 
+		ADD COLUMN IF NOT EXISTS other_bills DECIMAL(10,2) NOT NULL DEFAULT 0,
+		ADD COLUMN IF NOT EXISTS payment_interval VARCHAR(50) NOT NULL DEFAULT 'monthly',
+		ADD COLUMN IF NOT EXISTS deposit DECIMAL(10,2) NOT NULL DEFAULT 0;
+	`)
+	if err != nil {
+		log.Printf("Warning: Failed to run inline migration to add billing columns to contracts: %v", err)
+	} else {
+		log.Println("Inline migration: contracts billing columns verified/created")
+	}
+
+	_, err = dbPool.Exec(context.Background(), `ALTER TABLE rooms ADD COLUMN IF NOT EXISTS floor VARCHAR(50) NOT NULL DEFAULT '1', ADD COLUMN IF NOT EXISTS is_draft BOOLEAN NOT NULL DEFAULT false, ADD COLUMN IF NOT EXISTS type VARCHAR(100) NOT NULL DEFAULT '';`)
+	if err != nil {
+		log.Printf("Warning: Failed to run inline migration to add floor, is_draft, and type to rooms: %v", err)
+	} else {
+		log.Println("Inline migration: rooms floor, is_draft, and type columns verified/created")
+	}
+
 	// Initialize services
 	emailServ := service.NewEmailService()
 	aiServ := service.NewAIService()
@@ -62,18 +104,16 @@ func main() {
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(dbPool)
 	roomRepo := repository.NewRoomRepository(dbPool)
-	tenantRepo := repository.NewTenantRepository(dbPool)
 	contractRepo := repository.NewContractRepository(dbPool)
 	paymentRepo := repository.NewPaymentRepository(dbPool)
 	calendarRepo := repository.NewCalendarRepository(dbPool)
 	complaintRepo := repository.NewComplaintRepository(dbPool)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(userRepo, emailServ)
+	authHandler := handler.NewAuthHandler(userRepo, emailServ, storageServ)
 	roomHandler := handler.NewRoomHandler(roomRepo, storageServ)
-	tenantHandler := handler.NewTenantHandler(tenantRepo, storageServ)
 	contractHandler := handler.NewContractHandler(contractRepo)
-	paymentHandler := handler.NewPaymentHandler(paymentRepo, tenantRepo, storageServ)
+	paymentHandler := handler.NewPaymentHandler(paymentRepo, storageServ)
 	calendarHandler := handler.NewCalendarHandler(calendarRepo)
 	complaintHandler := handler.NewComplaintHandler(complaintRepo, userRepo, aiServ, waServ, storageServ)
 
@@ -112,6 +152,14 @@ func main() {
 			})
 		})
 
+		api.POST("/cron/trigger", func(c *gin.Context) {
+			billingCron.Trigger()
+			c.JSON(http.StatusOK, gin.H{
+				"status":  "success",
+				"message": "Billing cron triggered successfully",
+			})
+		})
+
 		auth := api.Group("/auth")
 		{
 			auth.POST("/register", authHandler.Register)
@@ -130,6 +178,7 @@ func main() {
 		{
 			rooms.POST("", roomHandler.CreateRoom)
 			rooms.POST("/with-tenant", roomHandler.CreateRoomWithTenant)
+			rooms.POST("/:id/assign-tenant", roomHandler.AssignTenant)
 			rooms.GET("", roomHandler.GetRooms)
 			rooms.GET("/:id", roomHandler.GetRoom)
 			rooms.PUT("/:id", roomHandler.UpdateRoom)
@@ -139,22 +188,23 @@ func main() {
 		// Tenant routes (Protected)
 		tenants := api.Group("/tenants", middleware.AuthMiddleware())
 		{
-			tenants.GET("/me", middleware.RoleMiddleware(dbPool, "tenant"), tenantHandler.GetMyTenantProfile)
-			tenants.POST("", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.CreateTenant)
-			tenants.GET("", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.GetTenants)
-			tenants.GET("/:id", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.GetTenant)
-			tenants.PUT("/:id", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.UpdateTenant)
-			tenants.DELETE("/:id", middleware.RoleMiddleware(dbPool, "owner"), tenantHandler.DeleteTenant)
+			tenants.GET("/me", middleware.RoleMiddleware(dbPool, "tenant"), authHandler.GetMyTenantProfile)
+			tenants.GET("/:id", middleware.RoleMiddleware(dbPool, "owner"), authHandler.GetTenantProfileByID)
+			tenants.PUT("/:id", middleware.RoleMiddleware(dbPool, "owner"), authHandler.UpdateTenantProfileByID)
+			tenants.DELETE("/:id", middleware.RoleMiddleware(dbPool, "owner"), authHandler.DeleteTenantByID)
+			tenants.POST("/:id/checkout", middleware.RoleMiddleware(dbPool, "owner"), authHandler.CheckoutTenant)
+			tenants.POST("/:id/change-room", middleware.RoleMiddleware(dbPool, "owner"), authHandler.ChangeRoom)
+			tenants.POST("/:id/extend-contract", middleware.RoleMiddleware(dbPool, "owner"), authHandler.ExtendContract)
 		}
 
+
+
+
 		// Contract routes (Protected)
+		// Contract routes (Protected) - GET /api/contracts is used by dashboard, rooms, tenants, and payments
 		contracts := api.Group("/contracts", middleware.AuthMiddleware())
 		{
-			contracts.POST("", contractHandler.CreateContract)
 			contracts.GET("", contractHandler.GetContracts)
-			contracts.GET("/:id", contractHandler.GetContract)
-			contracts.PUT("/:id", contractHandler.UpdateContract)
-			contracts.DELETE("/:id", contractHandler.DeleteContract)
 		}
 
 		// Payment routes (Protected)

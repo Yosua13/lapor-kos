@@ -38,9 +38,9 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid room ID"})
 		return
 	}
-	tenantID, err := uuid.Parse(req.TenantID)
+	userID, err := uuid.Parse(req.UserID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
 
@@ -56,18 +56,19 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 	}
 
 	contract := &model.Contract{
-		RoomID:         &roomID,
-		TenantID:       &tenantID,
-		OwnerID:        ownerID,
-		StartDate:      startDate,
-		EndDate:        endDate,
-		RentalDuration: req.RentalDuration,
-		MonthlyRent:    req.MonthlyRent,
-		TotalPrice:     req.MonthlyRent * float64(req.RentalDuration),
-		Deposit:        req.Deposit,
-		PaymentDueDay:  req.PaymentDueDay,
-		Status:         "active",
-		Notes:          req.Notes,
+		RoomID:          &roomID,
+		UserID:          &userID,
+		OwnerID:         ownerID,
+		StartDate:       startDate,
+		EndDate:         endDate,
+		RentalDuration:  req.RentalDuration,
+		MonthlyRent:     req.MonthlyRent,
+		TotalPrice:      req.MonthlyRent * float64(req.RentalDuration),
+		Deposit:         req.Deposit,
+		PaymentInterval: req.PaymentInterval,
+		PaymentDueDay:   req.PaymentDueDay,
+		Status:          "active",
+		Notes:           req.Notes,
 	}
 
 	if err := h.repo.Create(c.Request.Context(), contract); err != nil {

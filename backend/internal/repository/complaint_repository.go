@@ -17,47 +17,46 @@ func NewComplaintRepository(db *pgxpool.Pool) *ComplaintRepository {
 	return &ComplaintRepository{db: db}
 }
 
-func (r *ComplaintRepository) FindActiveContractByTenantUser(ctx context.Context, tenantUserID uuid.UUID) (tenantID uuid.UUID, roomID uuid.UUID, ownerID uuid.UUID, err error) {
+func (r *ComplaintRepository) FindActiveContractByTenantUser(ctx context.Context, userID uuid.UUID) (roomID uuid.UUID, ownerID uuid.UUID, err error) {
 	query := `
-		SELECT t.id, c.room_id, c.owner_id
-		FROM tenants t
-		JOIN contracts c ON c.tenant_id = t.id
-		WHERE t.user_id = $1 AND c.status = 'active'
+		SELECT c.room_id, c.owner_id
+		FROM contracts c
+		WHERE c.user_id = $1 AND c.status = 'active'
 		LIMIT 1
 	`
-	err = r.db.QueryRow(ctx, query, tenantUserID).Scan(&tenantID, &roomID, &ownerID)
+	err = r.db.QueryRow(ctx, query, userID).Scan(&roomID, &ownerID)
 	if err != nil {
-		return uuid.Nil, uuid.Nil, uuid.Nil, fmt.Errorf("active contract not found: %w", err)
+		return uuid.Nil, uuid.Nil, fmt.Errorf("active contract not found: %w", err)
 	}
-	return tenantID, roomID, ownerID, nil
+	return roomID, ownerID, nil
 }
 
 func (r *ComplaintRepository) Create(ctx context.Context, c *model.Complaint) error {
 	query := `
 		INSERT INTO complaints (
-			tenant_id, owner_id, room_id, title, description, category, status, photo_url, ai_response, wa_sent, wa_message
+			user_id, owner_id, room_id, title, description, category, status, photo_url, ai_response, wa_sent, wa_message
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id, created_at, updated_at
 	`
 	return r.db.QueryRow(ctx, query,
-		c.TenantID, c.OwnerID, c.RoomID, c.Title, c.Description, c.Category, c.Status,
+		c.UserID, c.OwnerID, c.RoomID, c.Title, c.Description, c.Category, c.Status,
 		c.PhotoURL, c.AIResponse, c.WASent, c.WAMessage,
 	).Scan(&c.ID, &c.CreatedAt, &c.UpdatedAt)
 }
 
-func (r *ComplaintRepository) FindByTenant(ctx context.Context, tenantUserID uuid.UUID) ([]model.Complaint, error) {
+func (r *ComplaintRepository) FindByTenant(ctx context.Context, userID uuid.UUID) ([]model.Complaint, error) {
 	query := `
 		SELECT 
-			c.id, c.tenant_id, c.owner_id, c.room_id, c.title, c.description, c.category, c.status, 
+			c.id, c.user_id, c.owner_id, c.room_id, c.title, c.description, c.category, c.status, 
 			c.photo_url, c.ai_response, c.wa_sent, c.wa_message, c.created_at, c.updated_at,
-			rm.room_number, t.name
+			rm.room_number, u.name
 		FROM complaints c
-		JOIN tenants t ON c.tenant_id = t.id
+		JOIN users u ON c.user_id = u.id
 		JOIN rooms rm ON c.room_id = rm.id
-		WHERE t.user_id = $1
+		WHERE c.user_id = $1
 		ORDER BY c.created_at DESC
 	`
-	rows, err := r.db.Query(ctx, query, tenantUserID)
+	rows, err := r.db.Query(ctx, query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -67,9 +66,9 @@ func (r *ComplaintRepository) FindByTenant(ctx context.Context, tenantUserID uui
 	for rows.Next() {
 		var comp model.Complaint
 		err := rows.Scan(
-			&comp.ID, &comp.TenantID, &comp.OwnerID, &comp.RoomID, &comp.Title, &comp.Description, &comp.Category, &comp.Status,
+			&comp.ID, &comp.UserID, &comp.OwnerID, &comp.RoomID, &comp.Title, &comp.Description, &comp.Category, &comp.Status,
 			&comp.PhotoURL, &comp.AIResponse, &comp.WASent, &comp.WAMessage, &comp.CreatedAt, &comp.UpdatedAt,
-			&comp.RoomNumber, &comp.TenantName,
+			&comp.RoomNumber, &comp.UserName,
 		)
 		if err != nil {
 			return nil, err
@@ -83,11 +82,11 @@ func (r *ComplaintRepository) FindByTenant(ctx context.Context, tenantUserID uui
 func (r *ComplaintRepository) FindByOwner(ctx context.Context, ownerID uuid.UUID) ([]model.Complaint, error) {
 	query := `
 		SELECT 
-			c.id, c.tenant_id, c.owner_id, c.room_id, c.title, c.description, c.category, c.status, 
+			c.id, c.user_id, c.owner_id, c.room_id, c.title, c.description, c.category, c.status, 
 			c.photo_url, c.ai_response, c.wa_sent, c.wa_message, c.created_at, c.updated_at,
-			rm.room_number, t.name
+			rm.room_number, u.name
 		FROM complaints c
-		JOIN tenants t ON c.tenant_id = t.id
+		JOIN users u ON c.user_id = u.id
 		JOIN rooms rm ON c.room_id = rm.id
 		WHERE c.owner_id = $1
 		ORDER BY c.created_at DESC
@@ -102,9 +101,9 @@ func (r *ComplaintRepository) FindByOwner(ctx context.Context, ownerID uuid.UUID
 	for rows.Next() {
 		var comp model.Complaint
 		err := rows.Scan(
-			&comp.ID, &comp.TenantID, &comp.OwnerID, &comp.RoomID, &comp.Title, &comp.Description, &comp.Category, &comp.Status,
+			&comp.ID, &comp.UserID, &comp.OwnerID, &comp.RoomID, &comp.Title, &comp.Description, &comp.Category, &comp.Status,
 			&comp.PhotoURL, &comp.AIResponse, &comp.WASent, &comp.WAMessage, &comp.CreatedAt, &comp.UpdatedAt,
-			&comp.RoomNumber, &comp.TenantName,
+			&comp.RoomNumber, &comp.UserName,
 		)
 		if err != nil {
 			return nil, err

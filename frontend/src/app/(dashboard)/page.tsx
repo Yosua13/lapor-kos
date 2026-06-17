@@ -25,7 +25,8 @@ import {
   Check,
   X,
   Building2,
-  UserCheck
+  UserCheck,
+  MessageSquare
 } from 'lucide-react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
@@ -37,10 +38,14 @@ export default function DashboardPage() {
   const [tenantPayments, setTenantPayments] = useState<any[]>([]);
   const [rooms, setRooms] = useState<any[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [payments, setPayments] = useState<any[]>([]);
+  const [complaints, setComplaints] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [copiedText, setCopiedText] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<any>(null);
+  const [revenuePeriod, setRevenuePeriod] = useState<number>(6);
 
   useEffect(() => {
     setMounted(true);
@@ -58,12 +63,21 @@ export default function DashboardPage() {
           setTenantProfile(profileData);
           setTenantPayments(paymentsData || []);
         } else {
-          const [roomsData, tenantsData] = await Promise.all([
+          const [roomsData, contractsData, paymentsData, complaintsData] = await Promise.all([
             apiFetch('/api/rooms'),
-            apiFetch('/api/tenants')
+            apiFetch('/api/contracts'),
+            apiFetch('/api/payments'),
+            apiFetch('/api/complaints')
           ]);
           setRooms(roomsData || []);
-          setTenants(tenantsData || []);
+          setContracts(contractsData || []);
+          setPayments(paymentsData || []);
+          setComplaints(complaintsData || []);
+          
+          // Map unique users with active contracts to simulate 'tenants' count
+          const activeContracts = (contractsData || []).filter((c: any) => c.status === 'active');
+          const uniqueTenantIds = new Set(activeContracts.map((c: any) => c.user_id));
+          setTenants(Array.from(uniqueTenantIds));
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
@@ -78,67 +92,181 @@ export default function DashboardPage() {
   const occupiedRooms = rooms.filter(r => r.status === 'occupied').length;
   const vacantRooms = totalRooms - occupiedRooms;
   const totalTenants = tenants.length;
-  
-  // Calculate revenue (dummy calculation based on occupied rooms)
-  const monthlyRevenue = occupiedRooms * 1.5; // Assuming 1.5jt per room avg
-  const revenueTarget = 16.0;
+  const totalComplaints = complaints.length;
+  const resolvedComplaints = complaints.filter(c => c.status === 'resolved').length;
 
+  const currentMonth = new Date().getMonth() + 1;
+  const currentYear = new Date().getFullYear();
+  
+  const monthlyPaidPayments = payments.filter((p: any) => 
+    p.status === 'paid' && 
+    p.period_month === currentMonth && 
+    p.period_year === currentYear
+  );
+  
+  const monthlyRevenue = monthlyPaidPayments.reduce((sum: number, p: any) => sum + p.total_paid, 0);
   const occupancyPercent = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
-  const revenuePercent = revenueTarget > 0 ? Math.round((monthlyRevenue / revenueTarget) * 100) : 0;
+  const resolutionPercent = totalComplaints > 0 ? Math.round((resolvedComplaints / totalComplaints) * 100) : 0;
+
+  // Calculate action triggers dynamically
+  const overduePaymentsCount = payments.filter((p: any) => {
+    if (p.status === 'overdue') return true;
+    if (p.status === 'unpaid' || p.status === 'partial') {
+      return new Date(p.due_date).getTime() < new Date().getTime();
+    }
+    return false;
+  }).length;
+
+  const contractsExpiringSoonCount = contracts.filter((c: any) => {
+    if (c.status !== 'active' || !c.end_date) return false;
+    const diffTime = new Date(c.end_date).getTime() - new Date().getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 && diffDays <= 30;
+  }).length;
+
+  const activeContracts = contracts.filter((c: any) => c.status === 'active');
+  const incompleteDocsCount = activeContracts.filter((c: any) => {
+    const userObj = c.user;
+    return !userObj?.ktp_url || !userObj?.selfie_url;
+  }).length;
+
+  // Map 5 rooms with active tenants
+  const roomsWithTenants = rooms.slice(0, 5).map(room => {
+    const activeContract = contracts.find((c: any) => c.room_id === room.id && c.status === 'active');
+    return {
+      ...room,
+      tenantName: activeContract?.user?.name || '—',
+      tenantPhone: activeContract?.user?.phone || '',
+      checkInDate: activeContract?.start_date 
+        ? new Date(activeContract.start_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+        : 'Belum ada penghuni'
+    };
+  });
+
+  // Calculate past months revenue dynamically
+  const getPastMonthsData = (period: number) => {
+    const months = [];
+    const now = new Date();
+    for (let i = period - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        month: d.getMonth() + 1,
+        year: d.getFullYear(),
+        label: d.toLocaleDateString('id-ID', { month: 'short' }),
+        revenue: 0,
+      });
+    }
+    
+    months.forEach(m => {
+      const paidInMonth = payments.filter((p: any) => 
+        p.status === 'paid' && 
+        p.period_month === m.month && 
+        p.period_year === m.year
+      );
+      m.revenue = paidInMonth.reduce((sum, p) => sum + p.total_paid, 0);
+    });
+    
+    return months;
+  };
+  const lastMonths = getPastMonthsData(revenuePeriod);
+  const totalPeriodRevenue = lastMonths.reduce((sum, m) => sum + m.revenue, 0);
+  const maxRevenue = Math.max(...lastMonths.map(m => m.revenue), 1000000);
+
+  const formatMillion = (amount: number) => {
+    if (amount === 0) return 'Rp 0';
+    const inMillions = amount / 1000000;
+    return `Rp ${inMillions.toFixed(1).replace('.', ',')} jt`;
+  };
+
+  const currentMonthPayments = payments.filter((p: any) => 
+    p.period_month === currentMonth && 
+    p.period_year === currentYear
+  );
+
+  const totalBilled = currentMonthPayments.reduce((sum: number, p: any) => {
+    return sum + (p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other);
+  }, 0);
+
+  const collectionPercent = totalBilled > 0 ? Math.round((monthlyRevenue / totalBilled) * 100) : 0;
+
+  const prevMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+  const prevYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+  const prevMonthPayments = payments.filter((p: any) => 
+    p.status === 'paid' && 
+    p.period_month === prevMonth && 
+    p.period_year === prevYear
+  );
+  const prevMonthRevenue = prevMonthPayments.reduce((sum: number, p: any) => sum + p.total_paid, 0);
+  const revenueGrowth = prevMonthRevenue > 0 
+    ? Math.round(((monthlyRevenue - prevMonthRevenue) / prevMonthRevenue) * 100)
+    : 0;
+
+  const revenueSub = totalBilled > 0 
+    ? `Terkumpul ${collectionPercent}% dari tagihan bulan ini`
+    : (prevMonthRevenue > 0 
+        ? `${revenueGrowth >= 0 ? '+' : ''}${revenueGrowth}% dari bulan lalu`
+        : `${monthlyPaidPayments.length} pembayaran lunas bulan ini`);
 
   const stats = [
     { 
-      label: 'Total Kamar', 
-      value: totalRooms, 
-      target: totalRooms, 
-      sub: `${totalRooms} terdaftar`, 
-      icon: Building2, 
-      iconBg: 'bg-slate-100', 
-      iconColor: 'text-slate-600',
-      badge: `Total: ${totalRooms}`, 
-      badgeClass: 'bg-gray-100 text-gray-600',
-      barColor: 'bg-slate-400',
-      barBgColor: 'group-hover:bg-slate-400',
-    },
-    { 
       label: 'Kamar Terisi', 
-      value: occupiedRooms, 
+      value: `${occupiedRooms}`, 
       target: totalRooms, 
-      sub: `${vacantRooms} kamar kosong`, 
+      sub: `${occupiedRooms} dari ${totalRooms} kamar terisi`, 
       icon: Users, 
       iconBg: 'bg-teal-50', 
       iconColor: 'text-teal-600',
       badge: `${occupancyPercent}%`, 
-      badgeClass: occupancyPercent >= 50 ? 'bg-teal-50 text-teal-700' : 'bg-amber-50 text-amber-700',
+      badgeClass: occupancyPercent >= 50 ? 'bg-teal-50 text-teal-700 border border-teal-100' : 'bg-amber-50 text-amber-700 border border-amber-100',
       barColor: occupancyPercent >= 50 ? 'bg-brand-teal' : 'bg-amber-500',
       barBgColor: 'group-hover:bg-brand-teal',
+      percent: occupancyPercent,
     },
     { 
       label: 'Total Penghuni', 
-      value: totalTenants, 
+      value: `${totalTenants}`, 
       target: totalRooms, 
       sub: 'Aktif menghuni', 
       icon: UserCheck, 
-      iconBg: 'bg-emerald-50', 
-      iconColor: 'text-emerald-600',
+      iconBg: 'bg-indigo-50', 
+      iconColor: 'text-indigo-600',
       badge: 'Aktif', 
-      badgeClass: 'bg-emerald-50 text-emerald-700',
-      barColor: 'bg-emerald-500',
-      barBgColor: 'group-hover:bg-emerald-500',
+      badgeClass: 'bg-indigo-50 text-indigo-700 border border-indigo-100',
+      barColor: 'bg-indigo-500',
+      barBgColor: 'group-hover:bg-indigo-500',
+      percent: totalRooms > 0 ? Math.round((totalTenants / totalRooms) * 100) : 0,
     },
     { 
-      label: 'Pendapatan (Bln)', 
-      value: monthlyRevenue, 
-      target: revenueTarget, 
-      sub: `Target Rp ${revenueTarget.toFixed(1)}jt`, 
+      label: 'Total Komplain', 
+      value: `${totalComplaints}`, 
+      target: totalComplaints, 
+      sub: `${resolvedComplaints} komplain selesai`, 
+      icon: MessageSquare, 
+      iconBg: 'bg-rose-50', 
+      iconColor: 'text-rose-600',
+      badge: `${resolvedComplaints}/${totalComplaints}`, 
+      badgeClass: 'bg-rose-50 text-rose-700 border border-rose-100',
+      barColor: 'bg-rose-500',
+      barBgColor: 'group-hover:bg-rose-500',
+      percent: resolutionPercent,
+    },
+    { 
+      label: 'Pendapatan Bulan Ini', 
+      value: `Rp ${monthlyRevenue.toLocaleString('id-ID')}`, 
+      target: totalBilled || prevMonthRevenue || 1, 
+      sub: revenueSub, 
       icon: Wallet, 
-      iconBg: 'bg-orange-50', 
-      iconColor: 'text-orange-600',
-      badge: `${revenuePercent}% target`, 
-      badgeClass: revenuePercent >= 80 ? 'bg-emerald-50 text-emerald-700' : revenuePercent >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-700',
-      barColor: revenuePercent >= 80 ? 'bg-emerald-500' : revenuePercent >= 50 ? 'bg-amber-500' : 'bg-red-500',
-      barBgColor: 'group-hover:bg-amber-500',
-      isCurrency: true 
+      iconBg: 'bg-emerald-50', 
+      iconColor: 'text-emerald-600',
+      badge: totalBilled > 0 
+        ? `${collectionPercent}%`
+        : (prevMonthRevenue > 0 ? `${revenueGrowth >= 0 ? '+' : ''}${revenueGrowth}%` : 'Bulan Ini'), 
+      badgeClass: 'bg-emerald-50 text-emerald-700 border border-emerald-100',
+      barColor: 'bg-emerald-500',
+      barBgColor: 'group-hover:bg-emerald-500',
+      percent: totalBilled > 0
+        ? Math.min(100, collectionPercent)
+        : (prevMonthRevenue > 0 ? Math.min(100, Math.max(0, Math.round((monthlyRevenue / prevMonthRevenue) * 100))) : 0),
     },
   ];
 
@@ -179,12 +307,11 @@ export default function DashboardPage() {
     };
 
     return (
-      <div className="space-y-6 animate-slide-up pb-10">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full space-y-6 animate-slide-up -mt-4 lg:-mt-8 pb-10">
+        <div className="shrink-0 mb-3 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">PORTAL PENGHUNI KOS</p>
-            <h1 className="text-3xl font-display font-bold text-brand-navy">Halo, {tenantProfile?.name || user?.name || 'Penghuni'}! 👋</h1>
-            <p className="text-sm text-gray-500 mt-1">Kamar {tenantProfile?.room?.room_number || '-'} • Selamat datang kembali di portal kos Anda • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <h1 className="text-[28px] font-display font-extrabold text-brand-navy">Halo, {tenantProfile?.name || user?.name || 'Penghuni'}! 👋</h1>
+            <p className="text-[15px] text-gray-500 mt-1">Kamar {tenantProfile?.room?.room_number || '-'} • Selamat datang kembali di portal kos Anda • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
           </div>
         </div>
 
@@ -445,21 +572,21 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6 animate-slide-up pb-10">
+    <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full space-y-6 animate-slide-up -mt-4 lg:-mt-8 pb-10">
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="shrink-0 mb-3 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">RINGKASAN PROPERTI</p>
-          <h1 className="text-3xl font-display font-bold text-brand-navy">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">Pantau status kos Anda dalam satu tampilan • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          <h1 className="text-[28px] font-display font-extrabold text-brand-navy">Dashboard</h1>
+          <p className="text-[15px] text-gray-500 mt-1">Pantau status kos Anda dalam satu tampilan • {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/tenants" className="px-4 py-2 bg-white hover:bg-gray-50 text-brand-navy text-sm font-bold rounded-xl border-[1.5px] border-gray-200 transition-all flex items-center gap-2 shadow-sm">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Link href="/tenants" className="px-5 py-2 bg-white hover:bg-gray-50 text-brand-navy text-[13px] font-bold rounded-full border border-gray-200 shadow-sm transition-all flex items-center gap-2">
              <Users className="w-4 h-4 text-brand-teal" />
              Data Penghuni
           </Link>
-          <Link href="/rooms" className="px-4 py-2 bg-brand-teal hover:bg-brand-teal-light text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm group">
-            <Plus className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" /> Manajemen Kamar
+          <Link href="/rooms" className="px-5 py-2 bg-brand-teal hover:bg-brand-teal-light text-white text-[13px] font-bold rounded-full shadow-sm transition-all flex items-center gap-2 group">
+             <Plus className="w-4 h-4" />
+             Manajemen Kamar
           </Link>
         </div>
       </div>
@@ -503,167 +630,349 @@ export default function DashboardPage() {
             <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1">{stat.label}</p>
             <div className="flex items-baseline gap-1.5">
                <h3 className="text-3xl font-display font-bold text-brand-navy">
-                 {stat.isCurrency ? `Rp ${stat.value.toFixed(1)}jt` : stat.value}
+                 {stat.value}
                </h3>
-               {!stat.isCurrency && <span className="text-brand-navy/20 font-bold text-lg">/{stat.target || 0}</span>}
             </div>
-            
             <div className="relative h-1.5 bg-gray-100 rounded-full overflow-hidden mt-3.5">
-               <div 
-                 className={`absolute inset-y-0 left-0 rounded-full animate-grow-width ${stat.barColor}`}
-                 style={{ '--final-width': `${stat.target ? (stat.value / stat.target) * 100 : 0}%` } as any}
-               />
-            </div>
-            <p className="text-[11px] text-gray-400 font-medium mt-3">{stat.sub}</p>
+                <div 
+                  className={`absolute inset-y-0 left-0 rounded-full animate-grow-width ${stat.barColor}`}
+                  style={{ '--final-width': `${stat.percent}%` } as any}
+                />
+             </div>
+             <p className="text-[11px] text-gray-400 font-medium mt-3">{stat.sub}</p>
           </div>
         ))}
       </div>
 
-      {/* Table & Chart Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Table Area */}
-        <div className="lg:col-span-2 glass-panel p-8 rounded-[40px] animate-slide-up [animation-delay:600ms]">
-          <div className="flex items-center justify-between mb-8">
-             <div>
-                <h3 className="text-xl font-display font-bold text-brand-navy">Kamar Terbaru</h3>
-                <p className="text-xs text-brand-navy/40 mt-1">{totalRooms} kamar terdaftar • {occupiedRooms} terisi • {vacantRooms} kosong</p>
-             </div>
-             <Link href="/rooms" className="text-xs font-bold text-brand-teal hover:underline">Lihat Semua</Link>
-          </div>
+      {/* Middle Grid Row: 3 columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Table Area (Kamar Terbaru) */}
+        <div className="glass-panel rounded-[40px] flex flex-col overflow-hidden animate-slide-up [animation-delay:600ms]">
+          <div className="p-6 flex-1">
+            <div className="flex items-center justify-between mb-6">
+               <div>
+                  <h3 className="text-xl font-display font-bold text-brand-navy">Kamar Terbaru</h3>
+                  <p className="text-xs text-brand-navy/40 mt-1">{totalRooms} kamar terdaftar • {occupiedRooms} terisi • {vacantRooms} kosong</p>
+               </div>
+               <Link href="/rooms" className="text-xs font-bold text-brand-teal hover:underline">Lihat Semua</Link>
+            </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-[10px] text-brand-navy/30 font-bold uppercase tracking-[0.2em] border-b border-brand-navy/5">
-                  <th className="pb-4 text-left font-bold">NO.</th>
-                  <th className="pb-4 text-left font-bold">KAMAR</th>
-                  <th className="pb-4 text-left font-bold">STATUS</th>
-                  <th className="pb-4 text-right font-bold">HARGA</th>
-                  <th className="pb-4"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand-navy/5">
-                {rooms.slice(0, 5).map((room, i) => (
-                  <tr 
-                    key={room.id} 
-                    className="group hover:bg-brand-cream/50 transition-colors ledger-border animate-slide-up"
-                    style={{ animationDelay: `${700 + i * 50}ms` }}
-                  >
-                    <td className="py-5">
-                       <div className="w-10 h-10 bg-brand-navy/5 rounded-xl flex items-center justify-center font-bold text-brand-navy group-hover:bg-brand-teal group-hover:text-white transition-all duration-300">
-                          {room.room_number.slice(-2)}
-                       </div>
-                    </td>
-                    <td className="py-5">
-                       <p className="text-sm font-bold text-brand-navy">Kamar {room.room_number}</p>
-                       <p className="text-[10px] text-brand-navy/40 uppercase tracking-widest">{room.description || 'Tidak ada deskripsi'}</p>
-                    </td>
-                    <td className="py-5">
-                       <span className={`inline-block px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${
-                         room.status === 'occupied' 
-                           ? 'bg-brand-teal/10 text-brand-teal animate-pulse-teal' 
-                           : 'bg-amber-500/10 text-amber-600'
-                       }`}>
-                          {room.status === 'occupied' ? 'TERISI' : 'KOSONG'}
-                       </span>
-                    </td>
-                    <td className="py-5 text-right text-sm font-bold text-brand-navy">Rp {room.price_per_month?.toLocaleString('id-ID')}</td>
-                    <td className="py-5 text-right">
-                       <button className="p-2 text-brand-navy/20 hover:text-brand-navy transition-colors">
-                          <MoreHorizontal className="w-5 h-5" />
-                       </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-[10px] text-brand-navy/30 font-bold uppercase tracking-[0.2em] border-b border-brand-navy/5">
+                    <th className="pb-4 text-left font-bold">KAMAR</th>
+                    <th className="pb-4 text-left font-bold">PENGHUNI</th>
+                    <th className="pb-4 text-left font-bold">STATUS</th>
+                    <th className="pb-4 text-right font-bold">HARGA / BLN</th>
+                    <th className="pb-4"></th>
                   </tr>
-                ))}
-                {rooms.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-10 text-center text-brand-navy/30 text-sm">Belum ada data kamar terdaftar.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-brand-navy/5">
+                  {roomsWithTenants.map((room, i) => (
+                    <tr 
+                      key={room.id} 
+                      className="group hover:bg-brand-cream/50 transition-colors ledger-border animate-slide-up"
+                      style={{ animationDelay: `${700 + i * 50}ms` }}
+                    >
+                      <td className="py-3">
+                         <p className="text-sm font-bold text-brand-navy">Kamar {room.room_number}</p>
+                         <p className="text-[10px] text-brand-navy/40 uppercase tracking-widest">{room.floor ? `Lantai ${room.floor}` : '-'}</p>
+                      </td>
+                      <td className="py-3">
+                         <p className="text-sm font-bold text-brand-navy">{room.tenantName}</p>
+                         <p className="text-[10px] text-brand-navy/40 font-medium">
+                           {room.tenantName !== '—' ? `Masuk ${room.checkInDate}` : 'Belum ada penghuni'}
+                         </p>
+                      </td>
+                      <td className="py-3">
+                         <span className={`inline-block px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${
+                           room.status === 'occupied' 
+                             ? 'bg-emerald-500/10 text-emerald-600' 
+                             : 'bg-amber-500/10 text-amber-600'
+                         }`}>
+                            {room.status === 'occupied' ? 'TERISI' : 'KOSONG'}
+                         </span>
+                      </td>
+                      <td className="py-3 text-right text-sm font-bold text-brand-navy">
+                        Rp {room.price_per_month?.toLocaleString('id-ID')}
+                      </td>
+                      <td className="py-3 text-right">
+                         <button className="p-2 text-brand-navy/20 hover:text-brand-navy transition-colors">
+                            <MoreHorizontal className="w-5 h-5" />
+                         </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {rooms.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-10 text-center text-brand-navy/30 text-sm">Belum ada data kamar terdaftar.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
           
-          <Link href="/rooms" className="w-full mt-8 py-4 border-t border-brand-navy/5 flex items-center justify-center gap-2 text-xs font-bold text-brand-teal hover:bg-brand-teal/5 transition-all rounded-b-3xl group">
+          <Link href="/rooms" className="w-full py-4 border-t border-brand-navy/5 flex items-center justify-center gap-2 text-xs font-bold text-brand-teal hover:bg-brand-teal/5 transition-all group">
              KELOLA SELURUH KAMAR <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Link>
         </div>
 
-        {/* Right Sidebar Area */}
-        <div className="space-y-6 animate-slide-up [animation-delay:900ms]">
-          {/* Revenue Mini Card */}
-          <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-6 shadow-sm hover:shadow-md transition-all">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-500">
-                  <Activity className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-brand-navy">Estimasi Pendapatan</h4>
-                  <p className="text-[10px] text-gray-400">6 bulan terakhir</p>
-                </div>
+        {/* Action Needed Card */}
+        <div className="glass-panel p-6 rounded-[40px] animate-slide-up [animation-delay:800ms]">
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-display font-bold text-brand-navy">Perlu Ditindaklanjuti</h3>
+                <p className="text-xs text-brand-navy/40 mt-1">Tugas penting yang memerlukan perhatian Anda</p>
               </div>
-              <span className="text-lg font-display font-bold text-brand-navy">Rp {monthlyRevenue.toFixed(1)}<span className="text-xs text-gray-400 font-normal">jt</span></span>
+              <Link href="/tenants" className="text-xs font-bold text-brand-teal hover:underline">Lihat Semua</Link>
             </div>
-            <div className="h-20 flex items-end gap-1.5">
-               {[40, 25, 60, 45, 80, 55].map((h, i) => (
-                 <div key={i} className="flex-1 group/bar relative h-full flex items-end">
-                    <div 
-                      className="w-full bg-brand-teal/20 hover:bg-brand-teal rounded-t-md transition-all duration-300 animate-grow-height origin-bottom" 
-                      style={{ height: `${h}%`, animationDelay: `${1100 + i * 100}ms` } as any}
-                    />
-                 </div>
-               ))}
-            </div>
-            <div className="flex justify-between mt-2 text-[9px] font-bold text-gray-300 tracking-wider">
-               <span>Des</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>Mei</span>
+
+            <div className="space-y-3">
+              {/* Overdue Payments */}
+              <Link href="/payments" className="flex items-center justify-between p-4 bg-rose-50/50 hover:bg-rose-50 border border-rose-100/50 rounded-2xl transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center text-rose-600">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-brand-navy text-xs">Pembayaran Terlambat</h4>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{overduePaymentsCount} penghuni memiliki pembayaran yang terlambat</p>
+                  </div>
+                </div>
+                <div className="w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold">
+                  {overduePaymentsCount}
+                </div>
+              </Link>
+
+              {/* Expiring Contracts */}
+              <Link href="/tenants" className="flex items-center justify-between p-4 bg-amber-50/50 hover:bg-amber-50 border border-amber-100/50 rounded-2xl transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-brand-navy text-xs">Kontrak Akan Berakhir</h4>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{contractsExpiringSoonCount} kontrak berakhir dalam 30 hari ke depan</p>
+                  </div>
+                </div>
+                <div className="w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold">
+                  {contractsExpiringSoonCount}
+                </div>
+              </Link>
+
+              {/* Incomplete Documents */}
+              <Link href="/tenants" className="flex items-center justify-between p-4 bg-blue-50/50 hover:bg-blue-50 border border-blue-100/50 rounded-2xl transition-all">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-brand-navy text-xs">Dokumen Belum Lengkap</h4>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{incompleteDocsCount} penghuni belum melengkapi dokumen</p>
+                  </div>
+                </div>
+                <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold">
+                  {incompleteDocsCount}
+                </div>
+              </Link>
             </div>
           </div>
 
-          {/* Occupancy Donut Card */}
-          <div className="bg-white border-[1.5px] border-gray-200 rounded-[20px] p-6 shadow-sm hover:shadow-md transition-all">
-             <h4 className="text-xs font-bold text-brand-navy mb-5">Tingkat Hunian</h4>
-             <div className="flex items-center gap-6">
-               <div className="relative w-24 h-24 shrink-0">
-                  <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                    <path
-                      className="text-gray-100"
-                      stroke="currentColor"
-                      strokeWidth="3.5"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    />
-                    <path
-                      className="text-brand-teal animate-stroke-fill"
-                      stroke="currentColor"
-                      strokeWidth="3.5"
-                      strokeDasharray="0, 100"
-                      strokeLinecap="round"
-                      fill="none"
-                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                      style={{ '--final-stroke': totalRooms ? (occupiedRooms / totalRooms) * 100 : 0, animationDelay: '1500ms' } as any}
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                     <h3 className="text-xl font-display font-bold text-brand-navy leading-none">
-                       {occupancyPercent}<span className="text-sm">%</span>
-                     </h3>
-                  </div>
-               </div>
-               <div className="flex-1 space-y-2.5">
-                  <div className="flex justify-between items-center text-xs p-2.5 rounded-xl bg-teal-50/60 border border-teal-100">
-                     <div className="flex items-center gap-2"><div className="w-2 h-2 bg-brand-teal rounded-full" /> <span className="font-medium text-gray-600">Terisi</span></div>
-                     <span className="font-bold text-brand-teal">{occupiedRooms}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs p-2.5 rounded-xl border border-gray-100">
-                     <div className="flex items-center gap-2"><div className="w-2 h-2 bg-gray-200 rounded-full" /> <span className="font-medium text-gray-600">Kosong</span></div>
-                     <span className="font-bold text-gray-400">{vacantRooms}</span>
-                  </div>
-               </div>
+          <Link href="/tenants" className="w-full mt-5 py-3 border border-brand-teal/20 text-brand-teal bg-brand-teal/5 hover:bg-brand-teal hover:text-white rounded-2xl text-center text-xs font-bold transition-all block">
+            Tindaklanjuti Sekarang
+          </Link>
+        </div>
+
+        {/* Keluhan & Komplain Card (Replaces Portal Tenant) */}
+        <div className="glass-panel rounded-[40px] flex flex-col overflow-hidden animate-slide-up [animation-delay:900ms]">
+          <div className="p-6 flex-1">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-display font-bold text-brand-navy">Keluhan & Komplain</h3>
+                <p className="text-xs text-brand-navy/40 mt-1">Daftar laporan keluhan dari penyewa</p>
+              </div>
+              <span className="bg-brand-teal/10 text-brand-teal text-[10px] font-bold px-3 py-1.5 rounded-xl uppercase tracking-widest border border-brand-teal/20">
+                Pratinjau
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              {complaints.slice(0, 3).map((item) => {
+                const getCategoryLabelAndColor = (cat: string) => {
+                  switch (cat) {
+                    case 'noisy': return { label: 'Keributan', bg: 'bg-amber-50 text-amber-600 border-amber-100' };
+                    case 'facility': return { label: 'Fasilitas', bg: 'bg-rose-50 text-rose-600 border-rose-100' };
+                    case 'cleanliness': return { label: 'Kebersihan', bg: 'bg-emerald-50 text-emerald-600 border-emerald-100' };
+                    case 'security': return { label: 'Keamanan', bg: 'bg-indigo-50 text-indigo-600 border-indigo-100' };
+                    default: return { label: 'Lainnya', bg: 'bg-slate-50 text-slate-600 border-slate-100' };
+                  }
+                };
+                const getStatusLabelAndColor = (status: string) => {
+                  switch (status) {
+                    case 'pending': return { label: 'Baru', bg: 'bg-rose-500/10 text-rose-600' };
+                    case 'processed': return { label: 'Diproses', bg: 'bg-blue-500/10 text-blue-600' };
+                    default: return { label: 'Selesai', bg: 'bg-emerald-500/10 text-emerald-600' };
+                  }
+                };
+
+                const catInfo = getCategoryLabelAndColor(item.category);
+                const statusInfo = getStatusLabelAndColor(item.status);
+
+                return (
+                  <Link 
+                    href={`/complaints/${item.id}`} 
+                    key={item.id}
+                    className="block p-3.5 bg-brand-navy/5 hover:bg-brand-cream/40 border border-brand-navy/5 rounded-2xl transition-all"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="font-bold text-brand-navy text-sm truncate max-w-[150px]">{item.title}</h4>
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider ${statusInfo.bg}`}>
+                        {statusInfo.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] text-brand-navy/50 font-medium">
+                      <span>Kamar {item.room_number || '-'}</span>
+                      <span>•</span>
+                      <span>{item.tenant_name || item.user_name || 'Penghuni'}</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-2">
+                      {new Date(item.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                  </Link>
+                );
+              })}
+              {complaints.length === 0 && (
+                <div className="py-12 text-center text-brand-navy/30 text-xs border border-dashed border-brand-navy/10 rounded-2xl flex flex-col items-center justify-center gap-2">
+                  <MessageSquare className="w-8 h-8 text-brand-navy/20" />
+                  <span>Belum ada laporan komplain.</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <Link href="/complaints" className="w-full py-4 border-t border-brand-navy/5 flex items-center justify-center gap-2 text-xs font-bold text-brand-teal hover:bg-brand-teal/5 transition-all group">
+            KELOLA SELURUH KOMPLAIN <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          </Link>
+        </div>
+      </div>
+
+      {/* Bottom Grid Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Occupancy Donut Card */}
+        <div className="lg:col-span-4 bg-white border-[1.5px] border-gray-200 rounded-[30px] p-6 shadow-sm hover:shadow-md transition-all">
+           <h4 className="text-sm font-extrabold text-brand-navy uppercase tracking-wider mb-5">Okupansi Kamar</h4>
+           <div className="flex items-center gap-6">
+             <div className="relative w-28 h-28 shrink-0">
+                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                  <path
+                    className="text-gray-100"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                  />
+                  <path
+                    className="text-emerald-500 animate-stroke-fill"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    strokeDasharray="0, 100"
+                    strokeLinecap="round"
+                    fill="none"
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    style={{ '--final-stroke': totalRooms ? (occupiedRooms / totalRooms) * 100 : 0, animationDelay: '1500ms' } as any}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                   <h3 className="text-2xl font-display font-bold text-brand-navy leading-none">
+                     {occupancyPercent}<span className="text-sm">%</span>
+                   </h3>
+                   <span className="text-[10px] text-gray-400 font-bold mt-1 uppercase">Terisi</span>
+                </div>
              </div>
+             <div className="flex-1 space-y-3">
+                <div className="flex justify-between items-center text-xs">
+                   <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full" /> 
+                      <span className="font-semibold text-gray-600">Terisi</span>
+                   </div>
+                   <span className="font-bold text-emerald-600">{occupiedRooms} ({occupancyPercent}%)</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                   <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 bg-amber-500 rounded-full" /> 
+                      <span className="font-semibold text-gray-600">Kosong</span>
+                   </div>
+                   <span className="font-bold text-amber-500">{vacantRooms} ({totalRooms > 0 ? Math.round((vacantRooms / totalRooms) * 100) : 0}%)</span>
+                </div>
+                <div className="border-t border-gray-100 pt-2 flex justify-between items-center text-xs font-bold text-brand-navy">
+                   <span>Total Kamar</span>
+                   <span>{totalRooms} kamar</span>
+                </div>
+             </div>
+           </div>
+        </div>
+
+        {/* Revenue Card (Dynamic period) */}
+        <div className="lg:col-span-8 bg-white border-[1.5px] border-gray-200 rounded-[30px] p-6 shadow-sm hover:shadow-md transition-all">
+          <div>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h4 className="text-sm font-extrabold text-brand-navy uppercase tracking-wider">Pendapatan ({revenuePeriod} Bulan Terakhir)</h4>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <select 
+                    value={revenuePeriod} 
+                    onChange={(e) => setRevenuePeriod(Number(e.target.value))}
+                    className="text-xs font-bold text-gray-500 bg-white border border-gray-200 rounded-xl px-3 py-1.5 focus:outline-none focus:border-brand-teal transition-all cursor-pointer appearance-none pr-8 relative shadow-sm"
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E")`,
+                      backgroundPosition: 'right 0.5rem center',
+                      backgroundSize: '1.25rem',
+                      backgroundRepeat: 'no-repeat'
+                    }}
+                  >
+                    <option value={3}>3 Bulan</option>
+                    <option value={6}>6 Bulan</option>
+                    <option value={12}>12 Bulan</option>
+                  </select>
+                </div>
+                <Link href="/payments" className="text-xs font-bold text-brand-teal hover:underline">Lihat Laporan</Link>
+              </div>
+            </div>
+
+            <div className="h-28 flex items-end gap-3 mt-8">
+               {lastMonths.map((m, i) => {
+                 const heightPercent = maxRevenue > 0 ? (m.revenue / maxRevenue) * 80 : 0; // scale to 80% max height
+                 return (
+                   <div key={i} className="flex-1 group/bar relative h-full flex flex-col justify-end items-center">
+                      {/* Value label above the bar */}
+                      <span className="text-[8px] font-extrabold text-brand-navy mb-1.5 opacity-0 group-hover/bar:opacity-100 md:opacity-100 transition-opacity duration-300">
+                        {formatMillion(m.revenue)}
+                      </span>
+                      <div 
+                        className="w-full bg-gradient-to-t from-emerald-600 to-emerald-400 hover:from-teal-600 hover:to-teal-400 rounded-t-lg transition-all duration-500 animate-grow-height origin-bottom" 
+                        style={{ height: `${Math.max(5, heightPercent)}%`, animationDelay: `${200 + i * 50}ms` } as any}
+                      />
+                      <span className="text-[10px] font-bold text-gray-400 mt-2">
+                        {m.label}
+                      </span>
+                   </div>
+                 );
+               })}
+            </div>
+          </div>
+
+          <div className="border-t border-gray-100 pt-4 mt-4 flex justify-between items-center">
+            <span className="text-xs text-gray-400 font-bold">Total {revenuePeriod} Bulan</span>
+            <span className="text-sm font-extrabold text-emerald-600">Rp {totalPeriodRevenue.toLocaleString('id-ID')}</span>
           </div>
         </div>
       </div>
+
       {/* Modal: Receipt Modal (Cetak Kwitansi Lokal) */}
       {selectedReceipt && mounted && createPortal(
         <div id="print-receipt-portal-wrapper">
@@ -681,6 +990,9 @@ interface ReceiptModalProps {
 
 function ReceiptModal({ payment, onClose }: ReceiptModalProps) {
   const totalBill = payment.amount_rent + payment.amount_electricity + payment.amount_water + payment.amount_other;
+  const depositVal = payment.contract?.deposit || 0;
+  const hasDepositInThisPayment = depositVal > 0 && payment.amount_other >= depositVal;
+  const displayOther = hasDepositInThisPayment ? payment.amount_other - depositVal : payment.amount_other;
   
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(amount);
@@ -692,8 +1004,8 @@ function ReceiptModal({ payment, onClose }: ReceiptModalProps) {
   };
 
   const roomNumber = payment.contract?.room?.room_number || '-';
-  const tenantName = payment.contract?.tenant?.name || '-';
-  const tenantPhone = payment.contract?.tenant?.phone || '-';
+  const tenantName = payment.contract?.user?.name || '-';
+  const tenantPhone = payment.contract?.user?.phone || '-';
 
   return (
     <div 
@@ -775,8 +1087,14 @@ function ReceiptModal({ payment, onClose }: ReceiptModalProps) {
             </tr>
             <tr>
               <td className="p-3 font-medium text-gray-600">Biaya Tambahan Lainnya</td>
-              <td className="p-3 text-right font-bold text-brand-navy">{formatCurrency(payment.amount_other)}</td>
+              <td className="p-3 text-right font-bold text-brand-navy">{formatCurrency(displayOther)}</td>
             </tr>
+            {hasDepositInThisPayment && (
+              <tr>
+                <td className="p-3 font-medium text-gray-600">Uang Jaminan (Deposito)</td>
+                <td className="p-3 text-right font-bold text-brand-navy">{formatCurrency(depositVal)}</td>
+              </tr>
+            )}
             <tr className="bg-gray-50 font-bold text-sm border-t-2 border-gray-300">
               <td className="p-3 text-gray-700">Total Tagihan</td>
               <td className="p-3 text-right text-brand-navy">{formatCurrency(totalBill)}</td>

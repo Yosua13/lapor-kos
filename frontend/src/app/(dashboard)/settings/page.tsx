@@ -178,14 +178,13 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6 animate-slide-up pb-10">
+    <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full space-y-6 animate-slide-up -mt-4 lg:-mt-8 pb-10">
       
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="shrink-0 mb-3 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-extrabold text-brand-navy/50 uppercase tracking-widest mb-1">PENGATURAN APLIKASI</p>
-          <h1 className="text-3xl font-display font-bold text-brand-navy">Pengaturan</h1>
-          <p className="text-sm text-gray-500 mt-1">Kelola data profil, keamanan akun, dan tampilan aplikasi Anda</p>
+          <h1 className="text-[28px] font-display font-extrabold text-brand-navy">Pengaturan</h1>
+          <p className="text-[15px] text-gray-500 mt-1">Kelola data profil, keamanan akun, dan tampilan aplikasi Anda</p>
         </div>
       </div>
 

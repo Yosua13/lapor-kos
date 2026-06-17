@@ -47,10 +47,10 @@ export const apiFetch = async (endpoint: string, options: RequestOptions = {}) =
 
   if (response.status === 401 || (response.status === 404 && data.error === 'User not found')) {
     removeToken();
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login' && window.location.pathname !== '/register') {
       window.location.href = '/login';
     }
-    throw new Error('Session expired. Please log in again.');
+    throw new Error(data.error || 'Sesi telah berakhir. Silakan masuk kembali.');
   }
 
   if (!response.ok) {
