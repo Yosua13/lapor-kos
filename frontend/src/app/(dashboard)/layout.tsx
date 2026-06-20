@@ -3,6 +3,7 @@
 import { useState, useEffect, ComponentType } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { 
   Home, 
   LogOut, 
@@ -136,9 +137,7 @@ export default function DashboardLayout({
       {/* Sidebar Desktop */}
       <aside className="hidden lg:flex flex-col w-64 bg-[#0F172A] dark:bg-[#070C1E] text-white-fixed h-full z-40 flex-shrink-0">
         <div className="p-6 flex items-center gap-3">
-          <div className="w-10 h-10 bg-brand-teal rounded-xl flex items-center justify-center shadow-lg shadow-brand-teal/20">
-            <Home className="text-white-fixed w-5 h-5" />
-          </div>
+          <Image src="/images/icon-lapor-kos.png" alt="Lapor Kos" width={40} height={40} className="rounded-xl shadow-lg shadow-brand-teal/20" />
           <span className="font-display text-2xl font-bold tracking-tight text-white-fixed">Lapor <span className="text-brand-teal italic">Kos</span></span>
         </div>
 

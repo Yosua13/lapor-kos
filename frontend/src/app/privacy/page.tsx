@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Home, Shield, Lock, Trash2, EyeOff } from 'lucide-react';
+import { ArrowLeft, Shield, Lock, Trash2, EyeOff } from 'lucide-react';
+import Image from 'next/image';
 
 export default function PrivacyPage() {
   return (
@@ -10,8 +11,8 @@ export default function PrivacyPage() {
       <header className="sticky top-0 bg-white/80 backdrop-blur-md border-b border-gray-100 z-50">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#0e8a7a] rounded-xl flex items-center justify-center shadow-md shadow-[#0e8a7a]/15">
-              <Home className="text-white w-5 h-5" />
+            <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md shadow-[#0e8a7a]/15">
+              <Image src="/images/icon-lapor-kos.png" alt="Lapor Kos" width={40} height={40} />
             </div>
             <span className="font-serif text-xl font-bold text-[#0b1f35]">
               Lapor <span className="italic text-[#0e8a7a]">Kos</span>

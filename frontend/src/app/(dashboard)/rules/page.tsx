@@ -281,19 +281,28 @@ export default function HouseRulesPage() {
       {/* Styles for print optimization & animations */}
       <style jsx global>{`
         @media print {
-          html, body, .h-screen, .h-full, .overflow-hidden, .overflow-y-auto {
+          /* Reset outermost flex container to block layout */
+          html, body, .h-screen {
             height: auto !important;
             overflow: visible !important;
             position: static !important;
             display: block !important;
           }
-          aside, header, .no-print, button, input, .category-tabs, .owner-actions {
+          /* Reset heights/overflow without changing display (avoids sidebar specificity conflict) */
+          .h-full, .overflow-hidden, .overflow-y-auto, .flex-1, main, div {
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
+          /* Hide sidebar, header, and interactive elements */
+          aside, aside[class], header, nav, .no-print, button, input, .category-tabs, .owner-actions, .noise-bg {
             display: none !important;
           }
           main {
             padding: 0 !important;
             margin: 0 !important;
             background: white !important;
+            width: 100% !important;
           }
           .print-header {
             display: block !important;
