@@ -281,6 +281,12 @@ export default function HouseRulesPage() {
       {/* Styles for print optimization & animations */}
       <style jsx global>{`
         @media print {
+          html, body, .h-screen, .h-full, .overflow-hidden, .overflow-y-auto {
+            height: auto !important;
+            overflow: visible !important;
+            position: static !important;
+            display: block !important;
+          }
           aside, header, .no-print, button, input, .category-tabs, .owner-actions {
             display: none !important;
           }
