@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, Home, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import Image from 'next/image';
 import { apiFetch } from '@/lib/api';
 import { setToken } from '@/lib/auth';
 import AuthCarousel from '@/components/AuthCarousel';
@@ -75,8 +76,8 @@ function LoginFormContent() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-teal-light/10 blur-[100px] rounded-full" />
 
         <div className="absolute top-12 left-12 z-20 flex items-center gap-4 animate-fade-up">
-           <div className="w-12 h-12 bg-teal rounded-xl flex items-center justify-center shadow-lg shadow-teal/20">
-             <Home className="text-white w-6 h-6" />
+           <div className="w-12 h-12 rounded-xl overflow-hidden shadow-lg shadow-teal/20">
+             <Image src="/images/icon-lapor-kos.png" alt="Lapor Kos" width={48} height={48} />
            </div>
            <span className="font-serif text-2xl text-white">Lapor <span className="italic text-teal-light">Kos</span></span>
         </div>
@@ -91,8 +92,8 @@ function LoginFormContent() {
       {/* RIGHT PANEL - Login Form */}
       <section className="flex-1 flex flex-col justify-center items-center px-6 py-12 md:px-16 lg:px-24 animate-fade-up">
         <div className="md:hidden mb-10 flex flex-col items-center">
-          <div className="w-12 h-12 bg-teal rounded-2xl flex items-center justify-center mb-4">
-            <Home className="text-white w-6 h-6" />
+          <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">
+            <Image src="/images/icon-lapor-kos.png" alt="Lapor Kos" width={48} height={48} />
           </div>
           <h2 className="font-serif text-3xl text-navy">
             Lapor <span className="italic text-teal">Kos</span>

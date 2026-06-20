@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { KeyRound, ArrowRight, Home, AlertCircle, Loader2, ArrowLeft } from 'lucide-react';
+import { KeyRound, ArrowRight, AlertCircle, Loader2, ArrowLeft } from 'lucide-react';
+import Image from 'next/image';
 import { apiFetch } from '@/lib/api';
 import AuthCarousel from '@/components/AuthCarousel';
 
@@ -66,8 +67,8 @@ export default function VerifyOtpPage() {
       <section className="hidden md:flex md:w-[52%] bg-navy relative p-12 flex-col items-center justify-center overflow-hidden">
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-teal/20 blur-[120px] rounded-full animate-float" />
         <div className="absolute top-12 left-12 z-20 flex items-center gap-4 animate-fade-up">
-           <div className="w-12 h-12 bg-teal rounded-xl flex items-center justify-center shadow-lg shadow-teal/20">
-             <Home className="text-white w-6 h-6" />
+           <div className="w-12 h-12 rounded-xl overflow-hidden shadow-lg shadow-teal/20">
+             <Image src="/images/icon-lapor-kos.png" alt="Lapor Kos" width={48} height={48} />
            </div>
            <span className="font-serif text-2xl text-white">Lapor <span className="italic text-teal-light">Kos</span></span>
         </div>

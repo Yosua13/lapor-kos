@@ -18,6 +18,10 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: "Lapor Kos - Manajemen Kos Pintar",
   description: "Platform manajemen kos pintar untuk efisiensi bisnis Anda.",
+  icons: {
+    icon: "/images/icon-lapor-kos.png",
+    apple: "/images/icon-lapor-kos.png",
+  },
 };
 
 export default function RootLayout({
