@@ -1,78 +1,98 @@
-# Analisis & Rencana Implementasi: Syarat & Ketentuan dan Kebijakan Privasi (UU PDP Compliance)
+# Analisis & Rencana Implementasi: Manajemen Peraturan Kos Dinamis (Database-Driven)
 
-Dokumen ini disusun sebagai elaborasi dan perencanaan pada [issue.md](file:///d:/project_yosua/lapor-kos/issue.md) mengenai implementasi Syarat & Ketentuan (Terms of Service) dan Kebijakan Privasi (Privacy Policy) untuk aplikasi **Lapor Kos**, sesuai dengan catatan pada [noted.md](file:///d:/project_yosua/lapor-kos/noted.md) nomor 1.
-
----
-
-## 1. Analisis Aliran Data & Informasi Sensitif dalam Aplikasi
-Aplikasi **Lapor Kos** memproses berbagai macam data pribadi yang bersifat sensitif dan sangat dilindungi oleh hukum (khususnya **UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi / UU PDP**). Berikut adalah rincian data tersebut:
-
-| Kategori Data | Jenis Data | Fitur Terkait | Risiko & Kebutuhan Pelindungan |
-| :--- | :--- | :--- | :--- |
-| **Identitas Resmi** | Foto/Scan KTP, Foto Selfie Wajah | Tambah Penghuni (`/rooms/add` & `/rooms` modal) | **Sangat Sensitif**. Risiko pencurian identitas, penyalahgunaan foto selfie untuk pinjaman online ilegal, atau kebocoran data KTP. Wajib diatur hak akses dan masa penyimpanannya. |
-| **Kontak Darurat** | Nama, Hubungan, & No HP Kerabat | Tambah Penghuni (`/rooms/add`) | Melibatkan data pihak ketiga yang tidak mendaftar langsung. Harus dinyatakan bahwa data ini hanya digunakan jika terjadi kondisi darurat penyewa. |
-| **Data Keuangan** | Nominal Sewa, Tagihan Listrik/Air, Bukti Transfer Pembayaran | Tagihan & Pembayaran (`/payments`), Kwitansi Digital | Riwayat transaksi dan bukti transfer perbankan/e-wallet. Kebutuhan untuk mencegah manipulasi bukti transfer dan perlindungan informasi rekening. |
-| **Informasi Pekerjaan** | Pekerjaan, Status, & Dokumen Pendukung (KK, dll) | Dokumen Tambahan (`/rooms/add`)
-| **Identitas Akun** | Nama, Email, Password, No HP | Registrasi (`/register`) & Login (`/login`) | Kredensial masuk aplikasi. |
+Dokumen ini memuat analisis teknis, skema database, rancangan endpoint API, rencana pembaruan antarmuka frontend, dan kriteria penyelesaian (Definition of Done) untuk fitur **Manajemen Peraturan Kos** berdasarkan diskusi dan elaborasi kebutuhan terbaru.
 
 ---
 
-## 2. Elaborasi Kebijakan (Policy Drafting Guidelines)
-
-Untuk melindungi pengguna (Penghuni & Pemilik Kos) serta Lapor Kos sebagai platform, dokumen hukum wajib merinci poin-poin berikut:
-
-### A. Kebijakan Privasi (Privacy Policy)
-1. **Dasar Hukum**: Kepatuhan terhadap UU PDP No. 27 Tahun 2022.
-2. **Tujuan Pengumpulan Data**:
-   - Memverifikasi identitas penyewa demi keamanan bersama di lingkungan kos.
-   - Pembuatan draf kontrak sewa menyewa yang sah secara hukum perdata.
-   - Pencatatan transaksi pembayaran sewa dan utilitas.
-3. **Penyimpanan & Keamanan**:
-   - File KTP, Selfie, dan Bukti Transfer disimpan di Supabase Storage yang aman.
-   - Dokumen dienkripsi dalam penyimpanan dan hanya dapat diakses oleh Pemilik Kos terkait serta admin sistem.
-4. **Pembagian Data ke Pihak Ketiga**: Data **tidak akan pernah** dijual atau dibagikan kepada pihak ketiga untuk tujuan marketing atau komersial tanpa persetujuan eksplisit.
-5. **Masa Retensi & Penghapusan**: Data KTP dan Selfie dapat diminta untuk dihapus 30 hari setelah masa kontrak sewa berakhir secara resmi.
-
-### B. Syarat & Ketentuan (Terms of Service)
-1. **Keabsahan Data**: Pengguna bertanggung jawab penuh atas keaslian KTP, data diri, dan bukti transfer pembayaran. Tindakan mengunggah KTP palsu atau bukti transfer palsu dapat dilaporkan ke pihak berwajib.
-2. **Kewajiban Pembayaran**: Detail jatuh tempo pembayaran bulanan dan denda (jika diatur).
-3. **Aturan Menginap & Izin**: Kebijakan pelaporan kerabat/teman yang menginap melalui fitur izin/komplain demi ketertiban lingkungan kos.
+## 1. Analisis Kebutuhan Bisnis
+* **Penyimpanan Dinamis**: Peraturan kos yang sebelumnya statis (hardcoded) harus disimpan di database PostgreSQL agar lebih fleksibel.
+* **Inisialisasi Otomatis (Seeding)**: Secara default, saat database peraturan kosong untuk suatu properti kos, sistem akan menginisialisasi tabel secara otomatis dengan 10 peraturan default.
+* **Kontrol Akses Multi-Tenant**: 
+  * **Penghuni (Tenant)**: Hanya dapat membaca peraturan yang dibuat oleh Pemilik Kos (Owner) tempat mereka tinggal.
+  * **Pemilik Kos (Owner)**: Memiliki hak akses penuh untuk membuat, membaca, memperbarui, dan menghapus (CRUD) peraturan kos miliknya sendiri.
 
 ---
 
-## 3. Rencana Teknis Implementasi Frontend
+## 🛠️ Rencana Implementasi Backend (Go)
 
-Saat ini, tautan `/terms` dan `/privacy` di halaman register masih kosong (memicu 404). Berikut adalah langkah-langkah implementasinya:
+### A. Migrasi Database (`012_create_house_rules.sql`)
+Buat tabel baru `house_rules` dengan relasi ke pemilik kos (`users.id`):
+```sql
+CREATE TABLE IF NOT EXISTS house_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category VARCHAR(50) NOT NULL, -- 'keamanan', 'kebersihan', 'fasilitas', 'pembayaran', 'umum'
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    details TEXT[] NOT NULL, -- Menyimpan rincian bullet points peraturan
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-### Langkah 1: Pembuatan Halaman Syarat & Ketentuan
-- **Rute Baru**: `src/app/(auth)/terms/page.tsx` (atau di luar grup auth agar bisa diakses publik: `src/app/terms/page.tsx`)
-- **Konten**: Halaman statis berdesain premium (menggunakan komponen typography Lapor Kos, skema warna Navy & Teal, tombol kembali ke registrasi).
+-- Indexing untuk query cepat
+CREATE INDEX IF NOT EXISTS idx_house_rules_owner ON house_rules(owner_id);
+```
 
-### Langkah 2: Pembuatan Halaman Kebijakan Privasi
-- **Rute Baru**: `src/app/privacy/page.tsx`
-- **Konten**: Rincian kebijakan penanganan KTP, Selfie, enkripsi data, hak-hak pemilik data sesuai UU PDP.
+### B. Model Data (`internal/model/house_rule.go`)
+```go
+package model
 
-### Langkah 3: Penambahan Checkbox Persetujuan di Form Registrasi
-Sebelum mengirimkan form pendaftaran, pengguna wajib mencentang persetujuan Syarat & Ketentuan serta Kebijakan Privasi.
-- **Modifikasi**: `src/app/(auth)/register/page.tsx`
-- **Perubahan**:
-  - Menambahkan checkbox wajib (`termsAccepted`) ke dalam skema Zod `registerSchema`.
-  - Menampilkan checkbox di bawah form password sebelum tombol submit.
+import (
+	"time"
+	"github.com/google/uuid"
+)
+
+type HouseRule struct {
+	ID          uuid.UUID `json:"id" db:"id"`
+	OwnerID     uuid.UUID `json:"owner_id" db:"owner_id"`
+	Category    string    `json:"category" db:"category" binding:"required"`
+	Title       string    `json:"title" db:"title" binding:"required"`
+	Description string    `json:"description" db:"description" binding:"required"`
+	Details     []string  `json:"details" db:"details" binding:"required,min=1"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+}
+```
+
+### C. Alur Endpoint API (`GET`, `POST`, `PUT`, `DELETE`)
+1. **`GET /api/rules`**:
+   * Ambil informasi pengguna dari token JWT (Context).
+   * **Jika Tenant**: Cari `owner_id` dari kontrak aktif (`contracts`) tempat tenant tersebut terdaftar. Gunakan `owner_id` tersebut untuk mencari peraturan.
+   * **Jika Owner**: Gunakan `user_id` miliknya sendiri sebagai `owner_id`.
+   * **Seeding Otomatis**: Jika query peraturan ke database menghasilkan 0 data, backend akan memicu proses penyisipan bulk (*bulk insert*) 10 peraturan bawaan standar, kemudian mengembalikannya ke klien.
+2. **`POST /api/rules`** (Owner Only):
+   * Validasi payload. Sisipkan aturan baru dengan `owner_id` dari auth context.
+3. **`PUT /api/rules/:id`** (Owner Only):
+   * Update data berdasarkan `id` peraturan dan pastikan `owner_id` sesuai (mencegah modifikasi silang antar pemilik).
+4. **`DELETE /api/rules/:id`** (Owner Only):
+   * Hapus baris peraturan berdasarkan `id` dan pastikan `owner_id` sesuai.
 
 ---
 
-## 4. Draf Dokumen Hukum (Hanya Struktur Utama)
+## 💻 Rencana Implementasi Frontend (Next.js)
 
-### Draf Kebijakan Privasi (Privacy Policy)
-1. **Pendahuluan**: Lapor Kos berkomitmen melindungi data pribadi Anda selaku Penghuni atau Pemilik Kos.
-2. **Data yang Kami Kumpulkan**: Data pendaftaran, data profil (KTP, Selfie), data transaksi, berkas darurat.
-3. **Penggunaan Data**: Hanya untuk verifikasi kos, komunikasi tagihan, dan pembuatan kwitansi/kontrak.
-4. **Hak Pemilik Data**: Hak untuk mengakses, memperbaiki, dan meminta penghapusan data setelah masa sewa berakhir.
+### A. Pengambilan Data Dinamis
+* Mengubah [rules/page.tsx](file:///d:/project_yosua/lapor-kos/frontend/src/app/(dashboard)/rules/page.tsx) untuk memuat data menggunakan `apiFetch('/api/rules')`.
+* Menyediakan visual loader (spinner / skeleton screen) saat data sedang di-fetch dari server.
 
-### Draf Syarat & Ketentuan (Terms & Conditions)
-1. **Penggunaan Layanan**: Akun tidak boleh dipindahtangankan.
-2. **Verifikasi Kamar & Penghuni**: Pemilik kos berhak memverifikasi keaslian dokumen KTP/Selfie.
-3. **Pembayaran & Denda**: Tagihan bulanan harus dilunasi sebelum tanggal jatuh tempo yang disepakati.
+### B. Portal Administrasi Peraturan (Khusus Pemilik Kos)
+* Menampilkan panel kontrol / tombol aksi di halaman `/rules` bagi pengguna ber-role `owner`:
+  * **Tombol "Tambah Peraturan"**: Membuka modal dengan form input kategori, judul, deskripsi, dan daftar dinamis detail poin (dapat menambah/menghapus baris item detail).
+  * **Tombol "Edit" & "Hapus"**: Diletakkan pada setiap accordion card peraturan.
+* **Komponen Form Peraturan**:
+  * Input fields interaktif yang disinkronkan menggunakan State.
+  * Dukungan penambahan baris list dinamis untuk properti `details` (array string).
+  * Modal konfirmasi penghapusan demi keamanan data.
 
 ---
-*Perencanaan ini siap diimplementasikan. Silakan konfirmasi untuk membuat halaman `/terms` dan `/privacy` secara langsung di Next.js.*
+
+##  Definition of Done (DoD)
+
+- [ ] File migrasi SQL `012_create_house_rules.sql` dibuat dan database berhasil diperbarui.
+- [ ] Model, Repository, Handler, dan Router di backend selesai dibuat serta diuji sukses.
+- [ ] Mekanisme inisialisasi default (seeding) otomatis berfungsi dengan baik saat data di-fetch pertama kali di database yang kosong.
+- [ ] API Endpoint `/api/rules` terproteksi dengan middleware otentikasi.
+- [ ] Pengguna role Tenant dapat melihat daftar peraturan milik Owner-nya secara dinamis tanpa memiliki tombol edit/hapus (*read-only*).
+- [ ] Pengguna role Owner dapat melakukan penambahan, pengeditan, dan penghapusan peraturan kos dengan antarmuka modal form interaktif pada halaman `/rules`.
+- [ ] Halaman `/rules` tetap mendukung pencarian real-time dan format cetak dokumen yang rapi (print-friendly).
+- [ ] Aplikasi sukses dikompilasi di backend (`go run main.go` / `go build`) dan frontend (`npm run build`) dengan nilai pengujian linter bersih.
