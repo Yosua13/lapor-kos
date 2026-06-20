@@ -95,6 +95,30 @@ func main() {
 		log.Println("Inline migration: rooms floor, is_draft, and type columns verified/created")
 	}
 
+	// Run house_rules migration
+	_, err = dbPool.Exec(context.Background(), `
+		CREATE TABLE IF NOT EXISTS house_rules (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			category VARCHAR(50) NOT NULL,
+			title VARCHAR(255) NOT NULL,
+			description TEXT NOT NULL,
+			details TEXT[] NOT NULL,
+			created_at TIMESTAMPTZ DEFAULT NOW(),
+			updated_at TIMESTAMPTZ
+		);
+		CREATE INDEX IF NOT EXISTS idx_house_rules_owner ON house_rules(owner_id);
+
+		-- Clean up existing tables that might have had the default constraint
+		ALTER TABLE house_rules ALTER COLUMN updated_at DROP DEFAULT;
+		UPDATE house_rules SET updated_at = NULL WHERE updated_at = created_at;
+	`)
+	if err != nil {
+		log.Printf("Warning: Failed to run inline migration to create house_rules: %v", err)
+	} else {
+		log.Println("Inline migration: house_rules table verified/created")
+	}
+
 	// Initialize services
 	emailServ := service.NewEmailService()
 	aiServ := service.NewAIService()
@@ -108,6 +132,7 @@ func main() {
 	paymentRepo := repository.NewPaymentRepository(dbPool)
 	calendarRepo := repository.NewCalendarRepository(dbPool)
 	complaintRepo := repository.NewComplaintRepository(dbPool)
+	houseRuleRepo := repository.NewHouseRuleRepository(dbPool)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(userRepo, emailServ, storageServ)
@@ -116,6 +141,7 @@ func main() {
 	paymentHandler := handler.NewPaymentHandler(paymentRepo, storageServ)
 	calendarHandler := handler.NewCalendarHandler(calendarRepo)
 	complaintHandler := handler.NewComplaintHandler(complaintRepo, userRepo, aiServ, waServ, storageServ)
+	houseRuleHandler := handler.NewHouseRuleHandler(houseRuleRepo, userRepo)
 
 	router := gin.Default()
 
@@ -205,6 +231,15 @@ func main() {
 		contracts := api.Group("/contracts", middleware.AuthMiddleware())
 		{
 			contracts.GET("", contractHandler.GetContracts)
+		}
+
+		// Rule routes (Protected)
+		rules := api.Group("/rules", middleware.AuthMiddleware())
+		{
+			rules.GET("", houseRuleHandler.GetRules)
+			rules.POST("", middleware.RoleMiddleware(dbPool, "owner"), houseRuleHandler.CreateRule)
+			rules.PUT("/:id", middleware.RoleMiddleware(dbPool, "owner"), houseRuleHandler.UpdateRule)
+			rules.DELETE("/:id", middleware.RoleMiddleware(dbPool, "owner"), houseRuleHandler.DeleteRule)
 		}
 
 		// Payment routes (Protected)

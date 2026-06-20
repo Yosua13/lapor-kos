@@ -1,38 +1,98 @@
-Searched for "owner_id"
-Viewed 003_add_rooms_and_tenants.sql:1-22
+# Analisis & Rencana Implementasi: Manajemen Peraturan Kos Dinamis (Database-Driven)
 
-Berdasarkan struktur SQL yang Anda lampirkan dan kode *backend* yang sudah kita bangun, saya telah melakukan analisis menyeluruh terkait arsitektur dan normalisasi databasenya. 
+Dokumen ini memuat analisis teknis, skema database, rancangan endpoint API, rencana pembaruan antarmuka frontend, dan kriteria penyelesaian (Definition of Done) untuk fitur **Manajemen Peraturan Kos** berdasarkan diskusi dan elaborasi kebutuhan terbaru.
 
-Berikut adalah temuan, kolom yang repetitif, serta saran perbaikannya dari segi efektivitas dan normalisasi:
+---
 
-### 🚨 1. Kelemahan Fatal: Tidak ada `owner_id` di tabel `Rooms`
-- **Analisis:** Tabel `rooms` saat ini berdiri sendiri tanpa adanya referensi kepemilikan. Kolom `owner_id` memang ada di tabel `contracts` dan `complaints`, namun bayangkan skenario ini: *Pemilik A baru saja menambahkan kamar kosong (available)*. Karena belum ada penghuni/kontrak, sistem tidak akan tahu kamar tersebut milik siapa.
-- **Saran:** Segera tambahkan kolom `owner_id (UUID)` sebagai *foreign key* di tabel `rooms` yang merujuk ke tabel `users`.
+## 1. Analisis Kebutuhan Bisnis
+* **Penyimpanan Dinamis**: Peraturan kos yang sebelumnya statis (hardcoded) harus disimpan di database PostgreSQL agar lebih fleksibel.
+* **Inisialisasi Otomatis (Seeding)**: Secara default, saat database peraturan kosong untuk suatu properti kos, sistem akan menginisialisasi tabel secara otomatis dengan 10 peraturan default.
+* **Kontrol Akses Multi-Tenant**: 
+  * **Penghuni (Tenant)**: Hanya dapat membaca peraturan yang dibuat oleh Pemilik Kos (Owner) tempat mereka tinggal.
+  * **Pemilik Kos (Owner)**: Memiliki hak akses penuh untuk membuat, membaca, memperbarui, dan menghapus (CRUD) peraturan kos miliknya sendiri.
 
-### 🔄 2. Tabel `Users`: Terlalu Banyak Beban (*Overloaded Table*)
-- **Analisis:** Tabel `users` saat ini menampung dua *role* yang bertolak belakang fungsinya, yaitu Pemilik (*owner*) dan Anak Kos (*tenant*).
-  - Kolom `whatsapp_group_link` hanya berguna untuk *owner*.
-  - Kolom `ktp_url` dan `selfie_url` hanya berguna untuk *tenant*.
-- **Saran:** Untuk aplikasi skala kecil/menengah ini disebut pola *Single Table Inheritance* dan masih dapat ditoleransi. Namun, untuk **normalisasi sejati**, Anda sebaiknya memisahkannya menjadi 3 tabel:
-  - `users`: (id, email, password, role)
-  - `owner_profiles`: (user_id, name, phone, whatsapp_group_link, bank_details)
-  - `tenant_profiles`: (user_id, name, phone, ktp_url, selfie_url, emergency_contact)
+---
 
-### 📊 3. Tabel `Contracts` vs `Payments`: Apakah Redundan?
-- **Analisis:** Di tabel `contracts` ada tagihan (`monthly_rent`, `electricity_bill`, dll), lalu di tabel `payments` juga ada (`amount_rent`, `amount_electricity`, dll).
-- **Kesimpulan:** Ini **BUKAN** redudansi yang buruk, melainkan **Praktik Historis yang Benar**. Tabel `contracts` menyimpan "harga default" atau kesepakatan awal, sedangkan tabel `payments` menyimpan "tagihan aktual" per bulan. Jika bulan depan biaya air naik, Anda cukup mengubahnya di tagihan bulan tersebut tanpa merusak kesepakatan kontrak awal.
-- **Kolom Kurang Efektif:** Kolom `total_price` di `contracts` sebenarnya adalah hasil kalkulasi (`monthly_rent * rental_duration`). Secara teori normalisasi, ini bisa dihapus karena bisa dihitung langsung menggunakan operasi matematika saat *query*. Namun, menyimpannya di DB (*denormalization*) berguna jika Anda butuh *query* pelaporan/dashboard yang cepat tanpa harus selalu menjumlahkan (*sum*) data.
+## 🛠️ Rencana Implementasi Backend (Go)
 
-### 🛋️ 4. Tabel `Rooms`: Kolom `description` (Fasilitas)
-- **Analisis:** Saat ini Anda menyimpan fasilitas sebagai teks koma, contoh: `"AC, Lemari, Kasur"`.
-- **Kesimpulan:** Jika aplikasi Anda kelak memiliki fitur **Filter Pencarian** (*"Cari kos yang punya kamar mandi dalam"*), maka menyimpan dengan koma sangat memberatkan performa pencarian database (*full-text scan*).
-- **Saran Normalisasi:** Hapus kolom `description` dan buatkan relasi *Many-to-Many*:
-  - Tabel `facilities` (id, name, icon)
-  - Tabel `room_facilities` (room_id, facility_id)
+### A. Migrasi Database (`012_create_house_rules.sql`)
+Buat tabel baru `house_rules` dengan relasi ke pemilik kos (`users.id`):
+```sql
+CREATE TABLE IF NOT EXISTS house_rules (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category VARCHAR(50) NOT NULL, -- 'keamanan', 'kebersihan', 'fasilitas', 'pembayaran', 'umum'
+    title VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    details TEXT[] NOT NULL, -- Menyimpan rincian bullet points peraturan
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ
+);
 
-### ✂️ Kesimpulan Rekomendasi Eksekusi
-Jika Anda ingin menerapkan perbaikan tercepat yang paling **krusial**, fokuslah pada:
-1. Menambahkan `owner_id` pada tabel `rooms` agar kamar tidak salah kepemilikan.
-2. Menghapus kolom perhitungan seperti `total_price` di `contracts` jika dirasa tidak terlalu dibutuhkan secara persisten.
+-- Indexing untuk query cepat
+CREATE INDEX IF NOT EXISTS idx_house_rules_owner ON house_rules(owner_id);
+```
 
-Apakah Anda ingin saya membantu mengimplementasikan penambahan **`owner_id` pada tabel `rooms`** sekarang juga, karena ini merupakan bug arsitektur yang cukup fatal untuk fitur-fitur selanjutnya?
+### B. Model Data (`internal/model/house_rule.go`)
+```go
+package model
+
+import (
+	"time"
+	"github.com/google/uuid"
+)
+
+type HouseRule struct {
+	ID          uuid.UUID  `json:"id" db:"id"`
+	OwnerID     uuid.UUID  `json:"owner_id" db:"owner_id"`
+	Category    string     `json:"category" db:"category" binding:"required"`
+	Title       string     `json:"title" db:"title" binding:"required"`
+	Description string     `json:"description" db:"description" binding:"required"`
+	Details     []string   `json:"details" db:"details" binding:"required,min=1"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty" db:"updated_at"`
+}
+```
+
+### C. Alur Endpoint API (`GET`, `POST`, `PUT`, `DELETE`)
+1. **`GET /api/rules`**:
+   * Ambil informasi pengguna dari token JWT (Context).
+   * **Jika Tenant**: Cari `owner_id` dari kontrak aktif (`contracts`) tempat tenant tersebut terdaftar. Gunakan `owner_id` tersebut untuk mencari peraturan.
+   * **Jika Owner**: Gunakan `user_id` miliknya sendiri sebagai `owner_id`.
+   * **Seeding Otomatis**: Jika query peraturan ke database menghasilkan 0 data, backend akan memicu proses penyisipan bulk (*bulk insert*) 10 peraturan bawaan standar, kemudian mengembalikannya ke klien.
+2. **`POST /api/rules`** (Owner Only):
+   * Validasi payload. Sisipkan aturan baru dengan `owner_id` dari auth context.
+3. **`PUT /api/rules/:id`** (Owner Only):
+   * Update data berdasarkan `id` peraturan dan pastikan `owner_id` sesuai (mencegah modifikasi silang antar pemilik).
+4. **`DELETE /api/rules/:id`** (Owner Only):
+   * Hapus baris peraturan berdasarkan `id` dan pastikan `owner_id` sesuai.
+
+---
+
+## 💻 Rencana Implementasi Frontend (Next.js)
+
+### A. Pengambilan Data Dinamis
+* Mengubah [rules/page.tsx](file:///d:/project_yosua/lapor-kos/frontend/src/app/(dashboard)/rules/page.tsx) untuk memuat data menggunakan `apiFetch('/api/rules')`.
+* Menyediakan visual loader (spinner / skeleton screen) saat data sedang di-fetch dari server.
+
+### B. Portal Administrasi Peraturan (Khusus Pemilik Kos)
+* Menampilkan panel kontrol / tombol aksi di halaman `/rules` bagi pengguna ber-role `owner`:
+  * **Tombol "Tambah Peraturan"**: Membuka modal dengan form input kategori, judul, deskripsi, dan daftar dinamis detail poin (dapat menambah/menghapus baris item detail).
+  * **Tombol "Edit" & "Hapus"**: Diletakkan pada setiap accordion card peraturan.
+* **Komponen Form Peraturan**:
+  * Input fields interaktif yang disinkronkan menggunakan State.
+  * Dukungan penambahan baris list dinamis untuk properti `details` (array string).
+  * Modal konfirmasi penghapusan demi keamanan data.
+
+---
+
+##  Definition of Done (DoD)
+
+- [ ] File migrasi SQL `012_create_house_rules.sql` dibuat dan database berhasil diperbarui.
+- [ ] Model, Repository, Handler, dan Router di backend selesai dibuat serta diuji sukses.
+- [ ] Mekanisme inisialisasi default (seeding) otomatis berfungsi dengan baik saat data di-fetch pertama kali di database yang kosong.
+- [ ] API Endpoint `/api/rules` terproteksi dengan middleware otentikasi.
+- [ ] Pengguna role Tenant dapat melihat daftar peraturan milik Owner-nya secara dinamis tanpa memiliki tombol edit/hapus (*read-only*).
+- [ ] Pengguna role Owner dapat melakukan penambahan, pengeditan, dan penghapusan peraturan kos dengan antarmuka modal form interaktif pada halaman `/rules`.
+- [ ] Halaman `/rules` tetap mendukung pencarian real-time dan format cetak dokumen yang rapi (print-friendly).
+- [ ] Aplikasi sukses dikompilasi di backend (`go run main.go` / `go build`) dan frontend (`npm run build`) dengan nilai pengujian linter bersih.

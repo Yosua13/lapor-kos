@@ -389,129 +389,128 @@ export default function PaymentsPage() {
         </div>
 
         {/* CONTENT VIEW */}
-        <div className="flex-1 overflow-y-auto no-scrollbar px-6 lg:px-8 pb-6 bg-slate-50 pt-0">
-          <table className="w-full text-left text-sm border-separate border-spacing-y-4 min-w-[1000px]">
-            <thead className="sticky top-0 bg-slate-50 z-20">
-              <tr className="text-[13px] font-bold text-gray-500 tracking-wide">
-                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200">Periode</th>
-                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200">{role === 'tenant' ? 'Metode' : 'Kamar / Penghuni'}</th>
-                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200">Status</th>
-                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200 text-right">Total Tagihan</th>
-                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200 text-right">Dibayar</th>
-                <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedPayments.map((p) => {
-                const totalBill = p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other;
-                const roomNum = p.contract?.room?.room_number || '-';
-                const tenantName = p.contract?.user?.name || '-';
-                const isPaid = p.status === 'paid';
-                const isPending = p.status === 'pending';
-                const isUnpaid = p.status === 'unpaid' || p.status === 'overdue';
-                const isPartial = p.status === 'partial';
-                
-                return (
-                  <tr key={p.id} className="bg-white group relative">
-                    <td 
-                      className="px-6 py-5 rounded-l-[16px] border-y border-l border-gray-200 align-middle bg-white"
-                    >
-                      <p className="font-bold text-brand-navy text-[15px]">Bulan {p.period_month} - {p.period_year}</p>
-                      <p className="text-[12px] text-gray-500 mt-0.5">Tempo: {new Date(p.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</p>
-                    </td>
-
-                    <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white">
-                      {role === 'tenant' ? (
-                        <span className="font-bold uppercase text-gray-600 text-[14px]">{p.payment_method || '-'}</span>
-                      ) : (
-                        <div>
-                          <p className="font-bold text-brand-navy text-[14px]">Kamar {roomNum}</p>
-                          <p className="text-[13px] text-gray-500 mt-0.5">{tenantName}</p>
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        isPaid 
-                          ? 'bg-teal-50 text-[#0e8a7a]' 
-                          : isPending
-                          ? 'bg-amber-50 text-amber-600'
-                          : isPartial
-                          ? 'bg-blue-50 text-blue-600'
-                          : 'bg-red-50 text-red-600'
-                      }`}>
-                        {isPaid && <CheckCircle2 className="w-3.5 h-3.5" />}
-                        {isPending && <Clock className="w-3.5 h-3.5" />}
-                        {isPartial && <CheckSquare className="w-3.5 h-3.5" />}
-                        {isUnpaid && <AlertCircle className="w-3.5 h-3.5" />}
-                        {isPaid ? 'LUNAS' : isPending ? 'MENUNGGU VERIFIKASI' : isPartial ? 'SEBAGIAN' : 'BELUM BAYAR'}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white text-right font-bold text-[14px] text-brand-navy">
-                      Rp {totalBill.toLocaleString('id-ID')}
-                    </td>
-
-                    <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white text-right font-bold text-[14px] text-[#0e8a7a]">
-                      Rp {p.total_paid.toLocaleString('id-ID')}
-                    </td>
-
-                    <td className="px-6 py-5 rounded-r-[16px] border-y border-r border-gray-200 align-middle text-right bg-white">
-                      <div className="flex items-center justify-end gap-2.5 relative">
-                        {role === 'tenant' && (isUnpaid || isPartial) && (
-                          <button 
-                            onClick={() => openPayModal(p)}
-                            className="px-3.5 py-2 text-[11px] font-bold text-white bg-[#0e8a7a] hover:bg-[#0c7567] rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm"
-                          >
-                            Bayar
-                          </button>
-                        )}
-                        {role === 'owner' && isPending && (
-                          <button 
-                            onClick={() => openVerifyModal(p)}
-                            className="px-3.5 py-2 text-[11px] font-bold text-amber-600 border border-amber-500 hover:bg-amber-50 rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm bg-white"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Verifikasi
-                          </button>
-                        )}
-                        {role === 'owner' && !isPending && (
-                          <button 
-                            onClick={() => openVerifyModal(p)}
-                            className="px-3.5 py-2 text-[11px] font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors inline-flex items-center gap-1"
-                          >
-                            <Eye className="w-3.5 h-3.5" /> Lihat
-                          </button>
-                        )}
-                        {isPaid && (
-                          <button 
-                            onClick={() => setSelectedReceipt(p)}
-                            className="px-3.5 py-2 text-[11px] font-bold text-[#0e8a7a] bg-teal-50 hover:bg-teal-100 rounded-xl transition-colors inline-flex items-center gap-1"
-                            title="Lihat Kwitansi"
-                          >
-                            <FileText className="w-3.5 h-3.5" /> Kwitansi
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {payments.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-12">
-                    <div className="min-h-[200px] flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-[20px] p-8 text-center bg-white w-full">
-                      <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-3 text-gray-400">
-                        <DollarSign className="w-6 h-6" />
-                      </div>
-                      <h3 className="text-sm font-bold text-brand-navy mb-1">Tidak ada transaksi</h3>
-                      <p className="text-xs text-gray-500 max-w-sm mx-auto">Data pembayaran tidak ditemukan berdasarkan filter bulan/tahun.</p>
-                    </div>
-                  </td>
+        <div className={`flex-1 overflow-y-auto no-scrollbar px-6 lg:px-8 pb-6 ${
+          paginatedPayments.length > 0 ? 'bg-slate-50 pt-0' : 'bg-white pt-6'
+        }`}>
+          {paginatedPayments.length === 0 ? (
+            <div className="min-h-[400px] flex flex-col items-center justify-center border-2 border-dashed border-gray-200 rounded-[20px] p-12 text-center bg-white">
+              <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mx-auto mb-4 text-gray-400">
+                <CreditCard className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-brand-navy mb-1">Tidak ada transaksi</h3>
+              <p className="text-sm text-gray-500 max-w-sm mx-auto">Data pembayaran tidak ditemukan berdasarkan filter bulan/tahun.</p>
+            </div>
+          ) : (
+            <table className="w-full text-left text-sm border-separate border-spacing-y-4 min-w-[1000px]">
+              <thead className="sticky top-0 bg-slate-50 z-20">
+                <tr className="text-[13px] font-bold text-gray-500 tracking-wide">
+                  <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200">Periode</th>
+                  <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200">{role === 'tenant' ? 'Metode' : 'Kamar / Penghuni'}</th>
+                  <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200">Status</th>
+                  <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200 text-right">Total Tagihan</th>
+                  <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200 text-right">Dibayar</th>
+                  <th className="font-bold px-6 pb-3 pt-6 border-b border-gray-200 text-right">Aksi</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {paginatedPayments.map((p) => {
+                  const totalBill = p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other;
+                  const roomNum = p.contract?.room?.room_number || '-';
+                  const tenantName = p.contract?.user?.name || '-';
+                  const isPaid = p.status === 'paid';
+                  const isPending = p.status === 'pending';
+                  const isUnpaid = p.status === 'unpaid' || p.status === 'overdue';
+                  const isPartial = p.status === 'partial';
+                  
+                  return (
+                    <tr key={p.id} className="bg-white group relative">
+                      <td 
+                        className="px-6 py-5 rounded-l-[16px] border-y border-l border-gray-200 align-middle bg-white"
+                      >
+                        <p className="font-bold text-brand-navy text-[15px]">Bulan {p.period_month} - {p.period_year}</p>
+                        <p className="text-[12px] text-gray-500 mt-0.5">Tempo: {new Date(p.due_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</p>
+                      </td>
+
+                      <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white">
+                        {role === 'tenant' ? (
+                          <span className="font-bold uppercase text-gray-600 text-[14px]">{p.payment_method || '-'}</span>
+                        ) : (
+                          <div>
+                            <p className="font-bold text-brand-navy text-[14px]">Kamar {roomNum}</p>
+                            <p className="text-[13px] text-gray-500 mt-0.5">{tenantName}</p>
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                          isPaid 
+                            ? 'bg-teal-50 text-[#0e8a7a]' 
+                            : isPending
+                            ? 'bg-amber-50 text-amber-600'
+                            : isPartial
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'bg-red-50 text-red-600'
+                        }`}>
+                          {isPaid && <CheckCircle2 className="w-3.5 h-3.5" />}
+                          {isPending && <Clock className="w-3.5 h-3.5" />}
+                          {isPartial && <CheckSquare className="w-3.5 h-3.5" />}
+                          {isUnpaid && <AlertCircle className="w-3.5 h-3.5" />}
+                          {isPaid ? 'LUNAS' : isPending ? 'MENUNGGU VERIFIKASI' : isPartial ? 'SEBAGIAN' : 'BELUM BAYAR'}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white text-right font-bold text-[14px] text-brand-navy">
+                        Rp {totalBill.toLocaleString('id-ID')}
+                      </td>
+
+                      <td className="px-6 py-5 border-y border-gray-200 align-middle bg-white text-right font-bold text-[14px] text-[#0e8a7a]">
+                        Rp {p.total_paid.toLocaleString('id-ID')}
+                      </td>
+
+                      <td className="px-6 py-5 rounded-r-[16px] border-y border-r border-gray-200 align-middle text-right bg-white">
+                        <div className="flex items-center justify-end gap-2.5 relative">
+                          {role === 'tenant' && (isUnpaid || isPartial) && (
+                            <button 
+                              onClick={() => openPayModal(p)}
+                              className="px-3.5 py-2 text-[11px] font-bold text-white bg-[#0e8a7a] hover:bg-[#0c7567] rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm"
+                            >
+                              Bayar
+                            </button>
+                          )}
+                          {role === 'owner' && isPending && (
+                            <button 
+                              onClick={() => openVerifyModal(p)}
+                              className="px-3.5 py-2 text-[11px] font-bold text-amber-600 border border-amber-500 hover:bg-amber-50 rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm bg-white"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Verifikasi
+                            </button>
+                          )}
+                          {role === 'owner' && !isPending && (
+                            <button 
+                              onClick={() => openVerifyModal(p)}
+                              className="px-3.5 py-2 text-[11px] font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors inline-flex items-center gap-1"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Lihat
+                            </button>
+                          )}
+                          {isPaid && (
+                            <button 
+                              onClick={() => setSelectedReceipt(p)}
+                              className="px-3.5 py-2 text-[11px] font-bold text-[#0e8a7a] bg-teal-50 hover:bg-teal-100 rounded-xl transition-colors inline-flex items-center gap-1"
+                              title="Lihat Kwitansi"
+                            >
+                              <FileText className="w-3.5 h-3.5" /> Kwitansi
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* PAGINATION */}
@@ -775,9 +774,10 @@ export default function PaymentsPage() {
                     <input 
                       type="text" 
                       required
+                      disabled
                       value={formatRupiah(verifyForm.total_paid)} 
                       onChange={(e) => setVerifyForm({ ...verifyForm, total_paid: parseRupiah(e.target.value) })}
-                      className="w-full bg-brand-navy/5 border border-brand-navy/5 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:bg-white font-semibold"
+                      className="w-full bg-gray-100 border border-brand-navy/5 rounded-2xl px-4 py-3 text-sm font-semibold opacity-60 cursor-not-allowed"
                     />
                   </div>
                   <div>
@@ -785,7 +785,7 @@ export default function PaymentsPage() {
                     <select 
                       value={verifyForm.status} 
                       onChange={(e) => setVerifyForm({ ...verifyForm, status: e.target.value })}
-                      className="w-full bg-brand-navy/5 border border-brand-navy/5 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:bg-white font-semibold text-brand-navy"
+                      className="w-full bg-white border border-brand-navy/10 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-brand-teal/20 transition-all font-semibold text-brand-navy cursor-pointer"
                     >
                       <option value="paid">Lunas (Paid)</option>
                       <option value="partial">Bayar Sebagian (Partial)</option>
@@ -795,12 +795,12 @@ export default function PaymentsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-brand-navy/40 uppercase tracking-widest mb-1.5">Catatan Verifikasi</label>
+                  <label className="block text-[10px] font-bold text-brand-navy/40 uppercase tracking-widest mb-1.5">Catatan Pembayaran (Penghuni)</label>
                   <textarea 
                     value={verifyForm.notes} 
-                    onChange={(e) => setVerifyForm({ ...verifyForm, notes: e.target.value })}
-                    className="w-full bg-brand-navy/5 border border-brand-navy/5 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:bg-white font-semibold h-20"
-                    placeholder="Misal: Bukti pembayaran valid / Bukti tidak terbaca"
+                    disabled
+                    className="w-full bg-gray-100 border border-brand-navy/5 rounded-2xl px-4 py-3 text-sm font-semibold h-20 opacity-60 cursor-not-allowed resize-none"
+                    placeholder="Tidak ada catatan tambahan dari penghuni"
                   />
                 </div>
 

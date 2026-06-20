@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ComponentType } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
@@ -12,16 +12,22 @@ import {
   DoorOpen,
   Users,
   Bell,
-  Search,
   User,
   Settings,
   CreditCard,
   MessageSquare,
-  FileText,
-  Calendar
+  Calendar,
+  BookOpen
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { removeToken } from '@/lib/auth';
+
+interface UserData {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
 
 export default function DashboardLayout({
   children,
@@ -31,14 +37,14 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
 
   useEffect(() => {
     const fetchUser = async () => {
       try {
         const user = await apiFetch('/api/auth/me');
         setUserData(user);
-      } catch (err) {
+      } catch {
         router.push('/login');
       }
     };
@@ -76,7 +82,7 @@ export default function DashboardLayout({
     items: {
       name: string;
       href: string;
-      icon: any;
+      icon: ComponentType<{ className?: string }>;
       badge?: string;
     }[];
   }[] = isTenant
@@ -84,6 +90,7 @@ export default function DashboardLayout({
         { section: 'PORTAL PENGHUNI', items: [
           { name: 'Dashboard Saya', href: '/', icon: LayoutDashboard },
           { name: 'Tagihan & Bayar', href: '/payments', icon: CreditCard },
+          { name: 'Peraturan Kos', href: '/rules', icon: BookOpen },
         ]},
         { section: 'LAINNYA', items: [
           { name: 'Komplain Fasilitas', href: '/complaints', icon: MessageSquare },
@@ -101,6 +108,7 @@ export default function DashboardLayout({
           { name: 'Laporan', href: '/reports', icon: Home },
         ]},
         { section: 'LAINNYA', items: [
+          { name: 'Peraturan Kos', href: '/rules', icon: BookOpen },
           { name: 'Kalender', href: '/calendar', icon: Calendar },
           { name: 'Komplain', href: '/complaints', icon: MessageSquare },
           { name: 'Pengaturan', href: '/settings', icon: Settings },

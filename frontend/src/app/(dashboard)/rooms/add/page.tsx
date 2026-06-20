@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Check,
   ChevronRight,
+  ChevronDown,
   ArrowLeft,
   User,
   Phone,
@@ -60,6 +61,7 @@ function AddRoomContent() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [draftId, setDraftId] = useState<string | null>(null);
+  const [isDueDatePickerOpen, setIsDueDatePickerOpen] = useState(false);
 
   // File states (files can't be saved in localStorage easily, so they are kept in memory)
   const [files, setFiles] = useState<{ ktp: File | null, selfie: File | null, additional_doc: File | null }>({ ktp: null, selfie: null, additional_doc: null });
@@ -127,11 +129,18 @@ function AddRoomContent() {
           newErrors.tenant_phone = 'Nomor HP / WA wajib diisi!';
         } else {
           const rawPhone = tenantData.phone.replace(/\D/g, '');
-          if (rawPhone.length < 10 || rawPhone.length > 14) {
-            newErrors.tenant_phone = 'Nomor HP harus 10-14 digit!';
+          if (rawPhone.length < 12 || rawPhone.length > 14) {
+            newErrors.tenant_phone = 'Nomor HP harus 11-13 digit!';
           }
         }
-        if (!tenantData.email) newErrors.tenant_email = 'Email wajib diisi!';
+        if (!tenantData.email) {
+          newErrors.tenant_email = 'Email wajib diisi!';
+        } else {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(tenantData.email)) {
+            newErrors.tenant_email = 'Format email tidak valid!';
+          }
+        }
         if (!tenantData.date_of_birth) newErrors.date_of_birth = 'Tanggal Lahir wajib diisi!';
         if (!tenantData.gender) newErrors.gender = 'Jenis Kelamin wajib dipilih!';
         if (!tenantData.job) newErrors.job = 'Pekerjaan / Status wajib diisi!';
@@ -141,8 +150,8 @@ function AddRoomContent() {
           newErrors.emergency_contact_phone = 'Nomor HP / WA Darurat wajib diisi!';
         } else {
           const rawEmergency = tenantData.emergency_contact_phone.replace(/\D/g, '');
-          if (rawEmergency.length < 10 || rawEmergency.length > 14) {
-            newErrors.emergency_contact_phone = 'Nomor HP Darurat harus 10-14 digit!';
+          if (rawEmergency.length < 12 || rawEmergency.length > 14) {
+            newErrors.emergency_contact_phone = 'Nomor HP Darurat harus 11-13 digit!';
           }
         }
         if (!files.ktp) newErrors.ktp = 'Foto KTP wajib diupload!';
@@ -176,6 +185,10 @@ function AddRoomContent() {
   };
 
   const handlePrev = () => {
+    if (currentStep === 4 && roomData.status === 'available') {
+      setCurrentStep(1);
+      return;
+    }
     if (currentStep > 1) setCurrentStep(currentStep - 1);
     else router.push('/rooms');
   };
@@ -244,6 +257,7 @@ function AddRoomContent() {
           setDraftId(resData.room.id);
         }
         alert('Draft berhasil disimpan ke database!');
+        router.push('/rooms');
       } else {
         localStorage.removeItem('add_room_draft');
         router.push('/rooms');
@@ -1036,22 +1050,51 @@ function AddRoomContent() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
+                  <div className="relative">
                     <label className="block text-[13px] font-bold text-gray-700 mb-2">Jatuh Tempo Pembayaran (Tanggal) <span className="text-red-500">*</span></label>
-                    <select
-                      value={contractData.payment_due_day}
-                      onChange={e => {
-                        setContractData({ ...contractData, payment_due_day: e.target.value });
-                        if (errors.payment_due_day) setErrors({ ...errors, payment_due_day: '' });
-                      }}
-                      className={`w-full bg-white border ${errors.payment_due_day ? 'border-red-500' : 'border-gray-200'} rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-colors`}
+                    <button
+                      type="button"
+                      onClick={() => setIsDueDatePickerOpen(!isDueDatePickerOpen)}
+                      className={`w-full bg-white border ${errors.payment_due_day ? 'border-red-500' : 'border-gray-200'} rounded-[14px] px-4 py-3.5 text-[14px] font-medium text-brand-navy focus:outline-none focus:border-[#0e8a7a] transition-all flex items-center justify-between text-left shadow-sm`}
                     >
-                      <option value="" disabled>Silahkan pilih...</option>
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map(num => (
-                        <option key={num} value={num}>Tanggal {num}</option>
-                      ))}
-                    </select>
+                      <span className={contractData.payment_due_day ? 'font-bold text-brand-navy' : 'text-gray-400'}>
+                        {contractData.payment_due_day ? `Tanggal ${contractData.payment_due_day}` : 'Silahkan pilih...'}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isDueDatePickerOpen ? 'rotate-180' : ''}`} />
+                    </button>
                     {errors.payment_due_day && <p className="text-red-500 text-[12px] mt-1">{errors.payment_due_day}</p>}
+
+                    {isDueDatePickerOpen && (
+                      <>
+                        <div className="fixed inset-0 z-[80]" onClick={() => setIsDueDatePickerOpen(false)} />
+                        <div className="absolute left-0 mt-2 p-4 bg-white border border-gray-100 rounded-[20px] shadow-[0_10px_30px_rgba(0,0,0,0.08)] z-[90] w-72 animate-in fade-in slide-in-from-top-2 duration-200">
+                          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-3">Pilih Tanggal Bulanan</p>
+                          <div className="grid grid-cols-7 gap-1.5">
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map(num => {
+                              const isSelected = contractData.payment_due_day === num.toString();
+                              return (
+                                <button
+                                  type="button"
+                                  key={num}
+                                  onClick={() => {
+                                    setContractData({ ...contractData, payment_due_day: num.toString() });
+                                    if (errors.payment_due_day) setErrors({ ...errors, payment_due_day: '' });
+                                    setIsDueDatePickerOpen(false);
+                                  }}
+                                  className={`w-8 h-8 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${
+                                    isSelected 
+                                      ? 'bg-[#0e8a7a] text-white shadow-sm shadow-[#0e8a7a]/20' 
+                                      : 'hover:bg-slate-50 text-brand-navy'
+                                  }`}
+                                >
+                                  {num}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[13px] font-bold text-gray-700 mb-2">Catatan Tambahan</label>
