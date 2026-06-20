@@ -1,38 +1,78 @@
-Searched for "owner_id"
-Viewed 003_add_rooms_and_tenants.sql:1-22
+# Analisis & Rencana Implementasi: Syarat & Ketentuan dan Kebijakan Privasi (UU PDP Compliance)
 
-Berdasarkan struktur SQL yang Anda lampirkan dan kode *backend* yang sudah kita bangun, saya telah melakukan analisis menyeluruh terkait arsitektur dan normalisasi databasenya. 
+Dokumen ini disusun sebagai elaborasi dan perencanaan pada [issue.md](file:///d:/project_yosua/lapor-kos/issue.md) mengenai implementasi Syarat & Ketentuan (Terms of Service) dan Kebijakan Privasi (Privacy Policy) untuk aplikasi **Lapor Kos**, sesuai dengan catatan pada [noted.md](file:///d:/project_yosua/lapor-kos/noted.md) nomor 1.
 
-Berikut adalah temuan, kolom yang repetitif, serta saran perbaikannya dari segi efektivitas dan normalisasi:
+---
 
-### 🚨 1. Kelemahan Fatal: Tidak ada `owner_id` di tabel `Rooms`
-- **Analisis:** Tabel `rooms` saat ini berdiri sendiri tanpa adanya referensi kepemilikan. Kolom `owner_id` memang ada di tabel `contracts` dan `complaints`, namun bayangkan skenario ini: *Pemilik A baru saja menambahkan kamar kosong (available)*. Karena belum ada penghuni/kontrak, sistem tidak akan tahu kamar tersebut milik siapa.
-- **Saran:** Segera tambahkan kolom `owner_id (UUID)` sebagai *foreign key* di tabel `rooms` yang merujuk ke tabel `users`.
+## 1. Analisis Aliran Data & Informasi Sensitif dalam Aplikasi
+Aplikasi **Lapor Kos** memproses berbagai macam data pribadi yang bersifat sensitif dan sangat dilindungi oleh hukum (khususnya **UU No. 27 Tahun 2022 tentang Pelindungan Data Pribadi / UU PDP**). Berikut adalah rincian data tersebut:
 
-### 🔄 2. Tabel `Users`: Terlalu Banyak Beban (*Overloaded Table*)
-- **Analisis:** Tabel `users` saat ini menampung dua *role* yang bertolak belakang fungsinya, yaitu Pemilik (*owner*) dan Anak Kos (*tenant*).
-  - Kolom `whatsapp_group_link` hanya berguna untuk *owner*.
-  - Kolom `ktp_url` dan `selfie_url` hanya berguna untuk *tenant*.
-- **Saran:** Untuk aplikasi skala kecil/menengah ini disebut pola *Single Table Inheritance* dan masih dapat ditoleransi. Namun, untuk **normalisasi sejati**, Anda sebaiknya memisahkannya menjadi 3 tabel:
-  - `users`: (id, email, password, role)
-  - `owner_profiles`: (user_id, name, phone, whatsapp_group_link, bank_details)
-  - `tenant_profiles`: (user_id, name, phone, ktp_url, selfie_url, emergency_contact)
+| Kategori Data | Jenis Data | Fitur Terkait | Risiko & Kebutuhan Pelindungan |
+| :--- | :--- | :--- | :--- |
+| **Identitas Resmi** | Foto/Scan KTP, Foto Selfie Wajah | Tambah Penghuni (`/rooms/add` & `/rooms` modal) | **Sangat Sensitif**. Risiko pencurian identitas, penyalahgunaan foto selfie untuk pinjaman online ilegal, atau kebocoran data KTP. Wajib diatur hak akses dan masa penyimpanannya. |
+| **Kontak Darurat** | Nama, Hubungan, & No HP Kerabat | Tambah Penghuni (`/rooms/add`) | Melibatkan data pihak ketiga yang tidak mendaftar langsung. Harus dinyatakan bahwa data ini hanya digunakan jika terjadi kondisi darurat penyewa. |
+| **Data Keuangan** | Nominal Sewa, Tagihan Listrik/Air, Bukti Transfer Pembayaran | Tagihan & Pembayaran (`/payments`), Kwitansi Digital | Riwayat transaksi dan bukti transfer perbankan/e-wallet. Kebutuhan untuk mencegah manipulasi bukti transfer dan perlindungan informasi rekening. |
+| **Informasi Pekerjaan** | Pekerjaan, Status, & Dokumen Pendukung (KK, dll) | Dokumen Tambahan (`/rooms/add`)
+| **Identitas Akun** | Nama, Email, Password, No HP | Registrasi (`/register`) & Login (`/login`) | Kredensial masuk aplikasi. |
 
-### 📊 3. Tabel `Contracts` vs `Payments`: Apakah Redundan?
-- **Analisis:** Di tabel `contracts` ada tagihan (`monthly_rent`, `electricity_bill`, dll), lalu di tabel `payments` juga ada (`amount_rent`, `amount_electricity`, dll).
-- **Kesimpulan:** Ini **BUKAN** redudansi yang buruk, melainkan **Praktik Historis yang Benar**. Tabel `contracts` menyimpan "harga default" atau kesepakatan awal, sedangkan tabel `payments` menyimpan "tagihan aktual" per bulan. Jika bulan depan biaya air naik, Anda cukup mengubahnya di tagihan bulan tersebut tanpa merusak kesepakatan kontrak awal.
-- **Kolom Kurang Efektif:** Kolom `total_price` di `contracts` sebenarnya adalah hasil kalkulasi (`monthly_rent * rental_duration`). Secara teori normalisasi, ini bisa dihapus karena bisa dihitung langsung menggunakan operasi matematika saat *query*. Namun, menyimpannya di DB (*denormalization*) berguna jika Anda butuh *query* pelaporan/dashboard yang cepat tanpa harus selalu menjumlahkan (*sum*) data.
+---
 
-### 🛋️ 4. Tabel `Rooms`: Kolom `description` (Fasilitas)
-- **Analisis:** Saat ini Anda menyimpan fasilitas sebagai teks koma, contoh: `"AC, Lemari, Kasur"`.
-- **Kesimpulan:** Jika aplikasi Anda kelak memiliki fitur **Filter Pencarian** (*"Cari kos yang punya kamar mandi dalam"*), maka menyimpan dengan koma sangat memberatkan performa pencarian database (*full-text scan*).
-- **Saran Normalisasi:** Hapus kolom `description` dan buatkan relasi *Many-to-Many*:
-  - Tabel `facilities` (id, name, icon)
-  - Tabel `room_facilities` (room_id, facility_id)
+## 2. Elaborasi Kebijakan (Policy Drafting Guidelines)
 
-### ✂️ Kesimpulan Rekomendasi Eksekusi
-Jika Anda ingin menerapkan perbaikan tercepat yang paling **krusial**, fokuslah pada:
-1. Menambahkan `owner_id` pada tabel `rooms` agar kamar tidak salah kepemilikan.
-2. Menghapus kolom perhitungan seperti `total_price` di `contracts` jika dirasa tidak terlalu dibutuhkan secara persisten.
+Untuk melindungi pengguna (Penghuni & Pemilik Kos) serta Lapor Kos sebagai platform, dokumen hukum wajib merinci poin-poin berikut:
 
-Apakah Anda ingin saya membantu mengimplementasikan penambahan **`owner_id` pada tabel `rooms`** sekarang juga, karena ini merupakan bug arsitektur yang cukup fatal untuk fitur-fitur selanjutnya?
+### A. Kebijakan Privasi (Privacy Policy)
+1. **Dasar Hukum**: Kepatuhan terhadap UU PDP No. 27 Tahun 2022.
+2. **Tujuan Pengumpulan Data**:
+   - Memverifikasi identitas penyewa demi keamanan bersama di lingkungan kos.
+   - Pembuatan draf kontrak sewa menyewa yang sah secara hukum perdata.
+   - Pencatatan transaksi pembayaran sewa dan utilitas.
+3. **Penyimpanan & Keamanan**:
+   - File KTP, Selfie, dan Bukti Transfer disimpan di Supabase Storage yang aman.
+   - Dokumen dienkripsi dalam penyimpanan dan hanya dapat diakses oleh Pemilik Kos terkait serta admin sistem.
+4. **Pembagian Data ke Pihak Ketiga**: Data **tidak akan pernah** dijual atau dibagikan kepada pihak ketiga untuk tujuan marketing atau komersial tanpa persetujuan eksplisit.
+5. **Masa Retensi & Penghapusan**: Data KTP dan Selfie dapat diminta untuk dihapus 30 hari setelah masa kontrak sewa berakhir secara resmi.
+
+### B. Syarat & Ketentuan (Terms of Service)
+1. **Keabsahan Data**: Pengguna bertanggung jawab penuh atas keaslian KTP, data diri, dan bukti transfer pembayaran. Tindakan mengunggah KTP palsu atau bukti transfer palsu dapat dilaporkan ke pihak berwajib.
+2. **Kewajiban Pembayaran**: Detail jatuh tempo pembayaran bulanan dan denda (jika diatur).
+3. **Aturan Menginap & Izin**: Kebijakan pelaporan kerabat/teman yang menginap melalui fitur izin/komplain demi ketertiban lingkungan kos.
+
+---
+
+## 3. Rencana Teknis Implementasi Frontend
+
+Saat ini, tautan `/terms` dan `/privacy` di halaman register masih kosong (memicu 404). Berikut adalah langkah-langkah implementasinya:
+
+### Langkah 1: Pembuatan Halaman Syarat & Ketentuan
+- **Rute Baru**: `src/app/(auth)/terms/page.tsx` (atau di luar grup auth agar bisa diakses publik: `src/app/terms/page.tsx`)
+- **Konten**: Halaman statis berdesain premium (menggunakan komponen typography Lapor Kos, skema warna Navy & Teal, tombol kembali ke registrasi).
+
+### Langkah 2: Pembuatan Halaman Kebijakan Privasi
+- **Rute Baru**: `src/app/privacy/page.tsx`
+- **Konten**: Rincian kebijakan penanganan KTP, Selfie, enkripsi data, hak-hak pemilik data sesuai UU PDP.
+
+### Langkah 3: Penambahan Checkbox Persetujuan di Form Registrasi
+Sebelum mengirimkan form pendaftaran, pengguna wajib mencentang persetujuan Syarat & Ketentuan serta Kebijakan Privasi.
+- **Modifikasi**: `src/app/(auth)/register/page.tsx`
+- **Perubahan**:
+  - Menambahkan checkbox wajib (`termsAccepted`) ke dalam skema Zod `registerSchema`.
+  - Menampilkan checkbox di bawah form password sebelum tombol submit.
+
+---
+
+## 4. Draf Dokumen Hukum (Hanya Struktur Utama)
+
+### Draf Kebijakan Privasi (Privacy Policy)
+1. **Pendahuluan**: Lapor Kos berkomitmen melindungi data pribadi Anda selaku Penghuni atau Pemilik Kos.
+2. **Data yang Kami Kumpulkan**: Data pendaftaran, data profil (KTP, Selfie), data transaksi, berkas darurat.
+3. **Penggunaan Data**: Hanya untuk verifikasi kos, komunikasi tagihan, dan pembuatan kwitansi/kontrak.
+4. **Hak Pemilik Data**: Hak untuk mengakses, memperbaiki, dan meminta penghapusan data setelah masa sewa berakhir.
+
+### Draf Syarat & Ketentuan (Terms & Conditions)
+1. **Penggunaan Layanan**: Akun tidak boleh dipindahtangankan.
+2. **Verifikasi Kamar & Penghuni**: Pemilik kos berhak memverifikasi keaslian dokumen KTP/Selfie.
+3. **Pembayaran & Denda**: Tagihan bulanan harus dilunasi sebelum tanggal jatuh tempo yang disepakati.
+
+---
+*Perencanaan ini siap diimplementasikan. Silakan konfirmasi untuk membuat halaman `/terms` dan `/privacy` secara langsung di Next.js.*
