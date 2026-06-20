@@ -84,7 +84,9 @@ export default function RoomsPage() {
     room_number: '',
     price_per_month: '',
     description: '',
-    status: 'available'
+    status: 'available',
+    type: '',
+    floor: ''
   });
 
   const [facilities, setFacilities] = useState<string[]>([]);
@@ -234,7 +236,9 @@ export default function RoomsPage() {
         room_number: room.room_number,
         price_per_month: room.price_per_month.toString(),
         description: room.description,
-        status: room.status
+        status: room.status,
+        type: room.type || '',
+        floor: room.floor || ''
       });
       setFacilities(room.description ? room.description.split(',').map(s => s.trim()).filter(Boolean) : []);
     } else {
@@ -243,7 +247,9 @@ export default function RoomsPage() {
         room_number: '',
         price_per_month: '',
         description: '',
-        status: 'available'
+        status: 'available',
+        type: '',
+        floor: ''
       });
       setFacilities([]);
     }
@@ -930,6 +936,34 @@ export default function RoomsPage() {
                         placeholder="Rp. 1.500.000"
                         className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all placeholder:text-gray-400 shadow-sm"
                       />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-brand-navy">Tipe Kamar <span className="text-red-500">*</span></label>
+                      <select
+                        required
+                        value={formData.type}
+                        onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                        className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all shadow-sm cursor-pointer"
+                      >
+                        <option value="" disabled>Silahkan pilih...</option>
+                        <option value="Standar">Standar</option>
+                        <option value="VIP">VIP</option>
+                        <option value="VVIP">VVIP</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-brand-navy">Lantai Ke- <span className="text-red-500">*</span></label>
+                      <select
+                        required
+                        value={formData.floor}
+                        onChange={(e) => setFormData({ ...formData, floor: e.target.value })}
+                        className="w-full bg-white border-[1.5px] border-gray-300 rounded-[9px] py-2.5 px-3.5 text-brand-navy font-semibold text-xs focus:outline-none focus:border-brand-teal focus:ring-4 focus:ring-brand-teal/10 transition-all shadow-sm cursor-pointer"
+                      >
+                        <option value="" disabled>Silahkan pilih...</option>
+                        {[1, 2, 3, 4, 5].map(num => (
+                          <option key={num} value={num.toString()}>Lantai {num}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
