@@ -14,6 +14,7 @@ const registerSchema = z.object({
   name: z.string().min(3, 'Nama minimal 3 karakter'),
   email: z.string().email('Format email tidak valid'),
   password: z.string().min(6, 'Password minimal 6 karakter'),
+  termsAccepted: z.boolean().refine(val => val === true, 'Anda harus menyetujui Syarat & Ketentuan serta Kebijakan Privasi'),
 });
 
 type RegisterForm = z.infer<typeof registerSchema>;
@@ -180,6 +181,30 @@ export default function RegisterPage() {
               {errors.password && <p className="text-xs text-red-500 ml-1">{errors.password.message}</p>}
             </div>
 
+            {/* Terms and Privacy Checkbox */}
+            <div className="space-y-1 mt-2">
+              <div className="flex items-start gap-3">
+                <input
+                  {...register('termsAccepted')}
+                  type="checkbox"
+                  id="termsAccepted"
+                  className="w-4 h-4 mt-1 border-gray-300 rounded text-teal focus:ring-teal accent-[#0e8a7a] cursor-pointer"
+                />
+                <label htmlFor="termsAccepted" className="text-xs text-text-mid leading-relaxed cursor-pointer selection:bg-transparent">
+                  Saya menyetujui{' '}
+                  <Link href="/terms" className="font-semibold text-teal hover:text-teal-light transition-colors hover:underline">
+                    Syarat & Ketentuan
+                  </Link>{' '}
+                  dan{' '}
+                  <Link href="/privacy" className="font-semibold text-teal hover:text-teal-light transition-colors hover:underline">
+                    Kebijakan Privasi
+                  </Link>{' '}
+                  Lapor Kos. <span className="text-red-500">*</span>
+                </label>
+              </div>
+              {errors.termsAccepted && <p className="text-xs text-red-500 ml-7">{errors.termsAccepted.message}</p>}
+            </div>
+
             {/* Submit Button */}
             <button
               type="submit"
@@ -200,12 +225,9 @@ export default function RegisterPage() {
             </button>
           </form>
 
-          {/* Footer Footer */}
-          <p className="mt-10 text-center text-[12px] text-text-muted leading-relaxed">
-            Dengan mendaftar, Anda menyetujui{' '}
-            <Link href="/terms" className="text-teal font-medium hover:underline">Syarat & Ketentuan</Link>
-            {' '}dan{' '}
-            <Link href="/privacy" className="text-teal font-medium hover:underline">Kebijakan Privasi</Link> kami.
+          {/* Footer */}
+          <p className="mt-10 text-center text-[12px] text-text-muted">
+            © 2026 Lapor Kos. Hak Cipta Dilindungi.
           </p>
         </div>
       </section>
