@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS house_rules (
     description TEXT NOT NULL,
     details TEXT[] NOT NULL, -- Menyimpan rincian bullet points peraturan
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ
 );
 
 -- Indexing untuk query cepat
@@ -43,14 +43,14 @@ import (
 )
 
 type HouseRule struct {
-	ID          uuid.UUID `json:"id" db:"id"`
-	OwnerID     uuid.UUID `json:"owner_id" db:"owner_id"`
-	Category    string    `json:"category" db:"category" binding:"required"`
-	Title       string    `json:"title" db:"title" binding:"required"`
-	Description string    `json:"description" db:"description" binding:"required"`
-	Details     []string  `json:"details" db:"details" binding:"required,min=1"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	ID          uuid.UUID  `json:"id" db:"id"`
+	OwnerID     uuid.UUID  `json:"owner_id" db:"owner_id"`
+	Category    string     `json:"category" db:"category" binding:"required"`
+	Title       string     `json:"title" db:"title" binding:"required"`
+	Description string     `json:"description" db:"description" binding:"required"`
+	Details     []string   `json:"details" db:"details" binding:"required,min=1"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty" db:"updated_at"`
 }
 ```
 

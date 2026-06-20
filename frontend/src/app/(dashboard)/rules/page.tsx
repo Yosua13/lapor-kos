@@ -450,10 +450,9 @@ export default function HouseRulesPage() {
                 className="print-card bg-white dark:bg-slate-900 border border-brand-navy/5 dark:border-white/5 rounded-3xl overflow-hidden transition-all duration-300 shadow-sm hover:shadow-md dark:shadow-none"
               >
                 {/* Accordion Trigger Header */}
-                <button
-                  type="button"
+                <div
                   onClick={() => toggleRule(ruleId)}
-                  className="w-full flex items-start gap-4 p-5 md:p-6 text-left focus:outline-none transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/20"
+                  className="w-full flex items-start gap-4 p-5 md:p-6 text-left cursor-pointer transition-colors hover:bg-slate-50/50 dark:hover:bg-slate-800/20"
                 >
                   {/* Category Rounded Icon */}
                   <div className={`print-icon p-3.5 rounded-2xl border shrink-0 flex items-center justify-center transition-transform duration-300 ${isExpanded ? 'scale-105 shadow-inner' : ''} ${categoryColorClass}`}>
@@ -500,7 +499,7 @@ export default function HouseRulesPage() {
                   <div className="print-icon shrink-0 mt-2 w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-gray-400 hover:text-brand-navy dark:hover:text-white-fixed transition-colors">
                     {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </div>
-                </button>
+                </div>
 
                 {/* Accordion Detail Body */}
                 <div 

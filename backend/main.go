@@ -105,9 +105,13 @@ func main() {
 			description TEXT NOT NULL,
 			details TEXT[] NOT NULL,
 			created_at TIMESTAMPTZ DEFAULT NOW(),
-			updated_at TIMESTAMPTZ DEFAULT NOW()
+			updated_at TIMESTAMPTZ
 		);
 		CREATE INDEX IF NOT EXISTS idx_house_rules_owner ON house_rules(owner_id);
+
+		-- Clean up existing tables that might have had the default constraint
+		ALTER TABLE house_rules ALTER COLUMN updated_at DROP DEFAULT;
+		UPDATE house_rules SET updated_at = NULL WHERE updated_at = created_at;
 	`)
 	if err != nil {
 		log.Printf("Warning: Failed to run inline migration to create house_rules: %v", err)

@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS house_rules (
     description TEXT NOT NULL,
     details TEXT[] NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_house_rules_owner ON house_rules(owner_id);

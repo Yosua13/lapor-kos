@@ -13,6 +13,6 @@ type HouseRule struct {
 	Title       string    `json:"title" db:"title" binding:"required"`
 	Description string    `json:"description" db:"description" binding:"required"`
 	Details     []string  `json:"details" db:"details" binding:"required,min=1"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty" db:"updated_at"`
 }
