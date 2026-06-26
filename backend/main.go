@@ -180,12 +180,12 @@ func main() {
 
 		auth := api.Group("/auth")
 		{
-			auth.POST("/register", middleware.RateLimit(5, time.Minute), authHandler.Register)
-			auth.POST("/login", middleware.RateLimit(10, time.Minute), authHandler.Login)
+			auth.POST("/register", middleware.RateLimit(5, 10*time.Second), authHandler.Register)
+			auth.POST("/login", middleware.RateLimit(10, 10*time.Second), authHandler.Login)
 			auth.GET("/verify-email", authHandler.VerifyEmail)
-			auth.POST("/forgot-password", middleware.RateLimit(5, time.Minute), authHandler.ForgotPassword)
-			auth.POST("/verify-otp", middleware.RateLimit(10, time.Minute), authHandler.VerifyOTP)
-			auth.POST("/reset-password", middleware.RateLimit(5, time.Minute), authHandler.ResetPassword)
+			auth.POST("/forgot-password", middleware.RateLimit(5, 10*time.Second), authHandler.ForgotPassword)
+			auth.POST("/verify-otp", middleware.RateLimit(10, 10*time.Second), authHandler.VerifyOTP)
+			auth.POST("/reset-password", middleware.RateLimit(5, 10*time.Second), authHandler.ResetPassword)
 			auth.GET("/me", middleware.AuthMiddleware(), authHandler.Me)
 			auth.PUT("/profile", middleware.AuthMiddleware(), authHandler.UpdateProfile)
 			auth.PUT("/password", middleware.AuthMiddleware(), authHandler.UpdatePassword)
