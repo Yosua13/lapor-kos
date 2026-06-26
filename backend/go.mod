@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/joho/godotenv v1.5.1
+	github.com/jung-kurt/gofpdf v1.16.2
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.51.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
