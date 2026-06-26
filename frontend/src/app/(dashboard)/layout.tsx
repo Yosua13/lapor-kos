@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { 
-  Home, 
   LogOut, 
   Menu, 
   X,
@@ -18,7 +17,8 @@ import {
   CreditCard,
   MessageSquare,
   Calendar,
-  BookOpen
+  BookOpen,
+  FileText
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { removeToken } from '@/lib/auth';
@@ -106,7 +106,7 @@ export default function DashboardLayout({
         ]},
         { section: 'KEUANGAN', items: [
           { name: 'Pembayaran', href: '/payments', icon: CreditCard },
-          { name: 'Laporan', href: '/reports', icon: Home },
+          { name: 'Laporan', href: '/reports', icon: FileText },
         ]},
         { section: 'LAINNYA', items: [
           { name: 'Peraturan Kos', href: '/rules', icon: BookOpen },
