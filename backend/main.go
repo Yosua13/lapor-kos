@@ -124,6 +124,7 @@ func main() {
 	aiServ := service.NewAIService()
 	waServ := service.NewWhatsAppService()
 	storageServ := service.NewStorageService()
+	reportPDFServ := service.NewReportPDFService()
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(dbPool)
@@ -142,6 +143,7 @@ func main() {
 	calendarHandler := handler.NewCalendarHandler(calendarRepo)
 	complaintHandler := handler.NewComplaintHandler(complaintRepo, userRepo, aiServ, waServ, storageServ)
 	houseRuleHandler := handler.NewHouseRuleHandler(houseRuleRepo, userRepo)
+	reportHandler := handler.NewReportHandler(paymentRepo, userRepo, reportPDFServ)
 
 	router := gin.Default()
 
@@ -223,9 +225,6 @@ func main() {
 			tenants.POST("/:id/extend-contract", middleware.RoleMiddleware(dbPool, "owner"), authHandler.ExtendContract)
 		}
 
-
-
-
 		// Contract routes (Protected)
 		// Contract routes (Protected) - GET /api/contracts is used by dashboard, rooms, tenants, and payments
 		contracts := api.Group("/contracts", middleware.AuthMiddleware())
@@ -257,6 +256,12 @@ func main() {
 			// Tenant only access
 			payments.GET("/my", middleware.RoleMiddleware(dbPool, "tenant"), paymentHandler.GetTenantPayments)
 			payments.POST("/:id/submit", middleware.RoleMiddleware(dbPool, "tenant"), paymentHandler.SubmitPaymentProof)
+		}
+
+		// Report routes (Protected)
+		reports := api.Group("/reports", middleware.AuthMiddleware(), middleware.RoleMiddleware(dbPool, "owner"))
+		{
+			reports.GET("/financial.pdf", reportHandler.GetFinancialReportPDF)
 		}
 
 		// Calendar routes (Protected)
