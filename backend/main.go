@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/cron"
 	"github.com/Yosua13/lapor-kos/backend/internal/handler"
@@ -139,35 +141,23 @@ func main() {
 	authHandler := handler.NewAuthHandler(userRepo, emailServ, storageServ)
 	roomHandler := handler.NewRoomHandler(roomRepo, storageServ)
 	contractHandler := handler.NewContractHandler(contractRepo)
-	paymentHandler := handler.NewPaymentHandler(paymentRepo, storageServ)
+	paymentHandler := handler.NewPaymentHandler(paymentRepo, storageServ, userRepo)
 	calendarHandler := handler.NewCalendarHandler(calendarRepo)
 	complaintHandler := handler.NewComplaintHandler(complaintRepo, userRepo, aiServ, waServ, storageServ)
 	houseRuleHandler := handler.NewHouseRuleHandler(houseRuleRepo, userRepo)
 	reportHandler := handler.NewReportHandler(paymentRepo, userRepo, reportPDFServ)
 
 	router := gin.Default()
+	if trustedProxies := os.Getenv("TRUSTED_PROXIES"); trustedProxies != "" {
+		router.SetTrustedProxies(splitCSV(trustedProxies))
+	} else {
+		router.SetTrustedProxies(nil)
+	}
+	router.Use(middleware.SecurityHeaders())
+	router.Use(middleware.CORSMiddleware(middleware.CORSConfigFromEnv()))
+	router.Use(middleware.RequestSizeLimit(12 << 20))
 
 	// Note: /uploads route removed - files are now served from Supabase Storage CDN.
-
-	// CORS middleware
-	router.Use(func(c *gin.Context) {
-		origin := c.Request.Header.Get("Origin")
-		if origin != "" {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-		} else {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		}
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
 
 	// Routes
 	api := router.Group("/api")
@@ -180,7 +170,7 @@ func main() {
 			})
 		})
 
-		api.POST("/cron/trigger", func(c *gin.Context) {
+		api.POST("/cron/trigger", middleware.CronSecretMiddleware(), func(c *gin.Context) {
 			billingCron.Trigger()
 			c.JSON(http.StatusOK, gin.H{
 				"status":  "success",
@@ -190,19 +180,19 @@ func main() {
 
 		auth := api.Group("/auth")
 		{
-			auth.POST("/register", authHandler.Register)
-			auth.POST("/login", authHandler.Login)
+			auth.POST("/register", middleware.RateLimit(5, time.Minute), authHandler.Register)
+			auth.POST("/login", middleware.RateLimit(10, time.Minute), authHandler.Login)
 			auth.GET("/verify-email", authHandler.VerifyEmail)
-			auth.POST("/forgot-password", authHandler.ForgotPassword)
-			auth.POST("/verify-otp", authHandler.VerifyOTP)
-			auth.POST("/reset-password", authHandler.ResetPassword)
+			auth.POST("/forgot-password", middleware.RateLimit(5, time.Minute), authHandler.ForgotPassword)
+			auth.POST("/verify-otp", middleware.RateLimit(10, time.Minute), authHandler.VerifyOTP)
+			auth.POST("/reset-password", middleware.RateLimit(5, time.Minute), authHandler.ResetPassword)
 			auth.GET("/me", middleware.AuthMiddleware(), authHandler.Me)
 			auth.PUT("/profile", middleware.AuthMiddleware(), authHandler.UpdateProfile)
 			auth.PUT("/password", middleware.AuthMiddleware(), authHandler.UpdatePassword)
 		}
 
 		// Room routes (Protected)
-		rooms := api.Group("/rooms", middleware.AuthMiddleware())
+		rooms := api.Group("/rooms", middleware.AuthMiddleware(), middleware.RoleMiddleware(dbPool, "owner"))
 		{
 			rooms.POST("", roomHandler.CreateRoom)
 			rooms.POST("/with-tenant", roomHandler.CreateRoomWithTenant)
@@ -244,10 +234,6 @@ func main() {
 		// Payment routes (Protected)
 		payments := api.Group("/payments", middleware.AuthMiddleware())
 		{
-			// Shared access (Owner & Tenant)
-			payments.GET("/:id", paymentHandler.GetPayment)
-			payments.GET("/:id/receipt", paymentHandler.GetReceiptHTML)
-
 			// Owner only access
 			payments.GET("", middleware.RoleMiddleware(dbPool, "owner"), paymentHandler.GetAllPayments)
 			payments.POST("", middleware.RoleMiddleware(dbPool, "owner"), paymentHandler.CreatePaymentBill)
@@ -256,6 +242,10 @@ func main() {
 			// Tenant only access
 			payments.GET("/my", middleware.RoleMiddleware(dbPool, "tenant"), paymentHandler.GetTenantPayments)
 			payments.POST("/:id/submit", middleware.RoleMiddleware(dbPool, "tenant"), paymentHandler.SubmitPaymentProof)
+
+			// Shared access (Owner & Tenant)
+			payments.GET("/:id", paymentHandler.GetPayment)
+			payments.GET("/:id/receipt", paymentHandler.GetReceiptHTML)
 		}
 
 		// Report routes (Protected)
@@ -286,4 +276,15 @@ func main() {
 	if err := router.Run(":" + port); err != nil {
 		log.Fatal("Unable to start server:", err)
 	}
+}
+
+func splitCSV(value string) []string {
+	var result []string
+	for _, item := range strings.Split(value, ",") {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
 }
