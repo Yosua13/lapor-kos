@@ -7,7 +7,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Protected routes
-  const protectedPaths = ['/', '/rooms', '/tenants', '/payments', '/calendar', '/notifications', '/tickets'];
+  const protectedPaths = ['/', '/rooms', '/tenants', '/payments', '/calendar', '/complaints', '/reports', '/rules', '/settings'];
   const isProtected = protectedPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
 
   // Auth routes (redirect to home if already logged in)

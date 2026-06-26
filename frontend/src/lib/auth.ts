@@ -8,7 +8,8 @@ export const setToken = (token: string, remember: boolean = true) => {
       sessionStorage.setItem(TOKEN_KEY, token);
     }
     // Set cookie for middleware access
-    document.cookie = `${TOKEN_KEY}=${token}; path=/; max-age=${remember ? 86400 * 30 : 86400}; SameSite=Lax`;
+    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; path=/; max-age=${remember ? 86400 * 30 : 86400}; SameSite=Strict${secure}`;
   }
 };
 
@@ -23,7 +24,8 @@ export const removeToken = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
-    document.cookie = `${TOKEN_KEY}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = `${TOKEN_KEY}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict${secure}`;
   }
 };
 

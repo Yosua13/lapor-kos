@@ -2,6 +2,7 @@ package handler
 
 import (
 	"crypto/rand"
+	"fmt"
 	"log"
 	"math/big"
 	"net/http"
@@ -317,11 +318,10 @@ func (h *AuthHandler) GetMyTenantProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, profile)
 }
 
-
 func (h *AuthHandler) generateToken(userID string) (string, error) {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		secret = "your-very-secret-key"
+	secret, err := jwtSecret()
+	if err != nil {
+		return "", err
 	}
 
 	claims := jwt.MapClaims{
@@ -332,6 +332,17 @@ func (h *AuthHandler) generateToken(userID string) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
+}
+
+func jwtSecret() (string, error) {
+	secret := os.Getenv("JWT_SECRET")
+	if secret != "" {
+		return secret, nil
+	}
+	if os.Getenv("APP_ENV") == "production" || os.Getenv("GIN_MODE") == gin.ReleaseMode {
+		return "", fmt.Errorf("JWT_SECRET is required in production")
+	}
+	return "dev-only-lapor-kos-secret-change-me", nil
 }
 
 func generateOTP(n int) string {
@@ -566,4 +577,3 @@ func (h *AuthHandler) uploadFile(c *gin.Context, fieldName string) (string, erro
 	}
 	return h.storageService.UploadFile(fileHeader, fieldName)
 }
-
