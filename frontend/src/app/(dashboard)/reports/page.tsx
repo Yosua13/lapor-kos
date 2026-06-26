@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   BarChart3,
@@ -10,14 +10,14 @@ import {
   Download,
   FileText,
   Loader2,
-  Moon,
   Printer,
   ReceiptText,
-  Sun,
   TrendingUp,
+  X,
   Wallet
 } from 'lucide-react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, API_URL } from '@/lib/api';
+import { getToken } from '@/lib/auth';
 
 interface Payment {
   id: string;
@@ -50,8 +50,6 @@ interface UserData {
   email?: string;
   role?: string;
 }
-
-type ThemeMode = 'light' | 'dark';
 
 const monthNames = [
   'Januari',
@@ -100,30 +98,17 @@ const getStatusLabel = (status: string) => {
   }
 };
 
-const escapeHtml = (value: string) => {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-};
-
 export default function ReportsPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [user, setUser] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    if (typeof window === 'undefined') return 'light';
-    return (localStorage.getItem('theme') as ThemeMode | null) || 'light';
-  });
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterYear, setFilterYear] = useState<string>(String(new Date().getFullYear()));
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }, [theme]);
+  const reportFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
     const fetchReportData = async () => {
@@ -145,6 +130,12 @@ export default function ReportsPage() {
 
     fetchReportData();
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    };
+  }, [pdfUrl]);
 
   const years = useMemo(() => {
     const yearSet = new Set<number>(payments.map((payment) => payment.period_year));
@@ -218,6 +209,10 @@ export default function ReportsPage() {
 
   const maxTrendValue = Math.max(...monthlyTrend.map((item) => Math.max(item.billed, item.collected)), 1);
   const maxCategoryValue = Math.max(...categoryTotals.map((item) => item.value), 1);
+  const trendLimit = useMemo(() => getNiceLimit(maxTrendValue), [maxTrendValue]);
+  const trendTicks = useMemo(() => {
+    return [trendLimit, trendLimit * 0.75, trendLimit * 0.5, trendLimit * 0.25, 0];
+  }, [trendLimit]);
 
   const topOutstanding = useMemo(() => {
     return filteredPayments
@@ -230,136 +225,91 @@ export default function ReportsPage() {
       .slice(0, 5);
   }, [filteredPayments]);
 
-  const applyTheme = (newTheme: ThemeMode) => {
-    setTheme(newTheme);
-    localStorage.setItem('theme', newTheme);
-    document.documentElement.classList.toggle('dark', newTheme === 'dark');
+  const getReportUrl = () => {
+    const params = new URLSearchParams();
+    if (filterMonth !== 'all') params.set('month', filterMonth);
+    if (filterYear !== 'all') params.set('year', filterYear);
+    const query = params.toString();
+    return `${API_URL}/api/reports/financial.pdf${query ? `?${query}` : ''}`;
   };
 
-  const getReportHtml = () => {
-    const generatedAt = new Date().toLocaleDateString('id-ID', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
+  const fetchReportPdf = async () => {
+    const token = getToken();
+    const response = await fetch(getReportUrl(), {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined
     });
 
-    const rows = filteredPayments
-      .map((payment, index) => {
-        const tenantName = payment.contract?.user?.name || '-';
-        const roomNumber = payment.contract?.room?.room_number || '-';
-        const totalBill = getBillTotal(payment);
-        return `
-          <tr>
-            <td>${index + 1}</td>
-            <td>${escapeHtml(monthNames[payment.period_month - 1] || String(payment.period_month))} ${payment.period_year}</td>
-            <td>Kamar ${escapeHtml(roomNumber)}</td>
-            <td>${escapeHtml(tenantName)}</td>
-            <td class="right">${formatCurrency(totalBill)}</td>
-            <td class="right">${formatCurrency(payment.total_paid || 0)}</td>
-            <td>${escapeHtml(getStatusLabel(payment.status))}</td>
-          </tr>`;
-      })
-      .join('');
-
-    return `<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Laporan Keuangan Lapor Kos - ${escapeHtml(reportTitle)}</title>
-  <style>
-    body { font-family: Arial, sans-serif; color: #0f172a; background: #f8fafc; margin: 0; padding: 32px; }
-    .page { max-width: 860px; margin: 0 auto; background: #fff; padding: 42px; border: 1px solid #e2e8f0; }
-    .header { text-align: center; border-bottom: 3px double #0f172a; padding-bottom: 18px; margin-bottom: 28px; }
-    h1 { margin: 0; font-size: 22px; letter-spacing: .04em; }
-    h2 { margin: 8px 0 0; font-size: 16px; font-weight: 600; }
-    .meta, p { font-size: 13px; line-height: 1.7; color: #334155; }
-    .summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 24px 0; }
-    .box { border: 1px solid #cbd5e1; padding: 14px; border-radius: 10px; }
-    .label { font-size: 11px; text-transform: uppercase; color: #64748b; font-weight: 700; }
-    .value { font-size: 18px; font-weight: 800; margin-top: 4px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 12px; }
-    th { background: #0f172a; color: white; text-align: left; padding: 10px; }
-    td { border: 1px solid #e2e8f0; padding: 9px; }
-    .right { text-align: right; }
-    .signature { display: flex; justify-content: flex-end; margin-top: 42px; }
-    .signature div { text-align: center; width: 240px; }
-    @media print {
-      body { background: #fff; padding: 0; }
-      .page { border: none; padding: 28px; }
+    if (!response.ok) {
+      let message = 'Gagal membuat laporan PDF';
+      try {
+        const data = await response.json();
+        message = data.error || message;
+      } catch {
+        // Keep the default message when the response is not JSON.
+      }
+      throw new Error(message);
     }
-  </style>
-</head>
-<body>
-  <main class="page">
-    <section class="header">
-      <h1>LAPOR KOS</h1>
-      <h2>SURAT LAPORAN KEUANGAN KOS</h2>
-      <div class="meta">Periode: ${escapeHtml(reportTitle)} | Dibuat: ${escapeHtml(generatedAt)}</div>
-    </section>
 
-    <p>Kepada pihak terkait, berikut kami sampaikan ringkasan laporan keuangan kos berdasarkan data tagihan dan pembayaran yang tercatat pada aplikasi Lapor Kos.</p>
-
-    <section class="summary">
-      <div class="box"><div class="label">Total Tagihan</div><div class="value">${formatCurrency(summary.billed)}</div></div>
-      <div class="box"><div class="label">Total Terkumpul</div><div class="value">${formatCurrency(summary.collected)}</div></div>
-      <div class="box"><div class="label">Sisa Piutang</div><div class="value">${formatCurrency(summary.outstanding)}</div></div>
-      <div class="box"><div class="label">Rasio Terkumpul</div><div class="value">${summary.collectionRate}%</div></div>
-    </section>
-
-    <p>Jumlah transaksi pada periode ini sebanyak ${summary.transactionCount} data, dengan ${summary.paidCount} transaksi lunas, ${summary.pendingCount} menunggu verifikasi, dan ${summary.unpaidCount} transaksi belum selesai.</p>
-
-    <table>
-      <thead>
-        <tr>
-          <th>No</th>
-          <th>Periode</th>
-          <th>Kamar</th>
-          <th>Penghuni</th>
-          <th class="right">Tagihan</th>
-          <th class="right">Dibayar</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows || '<tr><td colspan="7" style="text-align:center">Tidak ada data pembayaran pada periode ini.</td></tr>'}
-      </tbody>
-    </table>
-
-    <p>Demikian laporan ini dibuat secara elektronik melalui aplikasi Lapor Kos untuk digunakan sebagaimana mestinya.</p>
-
-    <section class="signature">
-      <div>
-        <p>Hormat kami,</p>
-        <br /><br />
-        <strong>${escapeHtml(user?.name || 'Pemilik Kos')}</strong>
-      </div>
-    </section>
-  </main>
-</body>
-</html>`;
+    return response.blob();
   };
 
-  const downloadReport = () => {
-    const html = getReportHtml();
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+  const previewReport = async () => {
+    setIsPdfLoading(true);
+    setPdfError(null);
+    try {
+      const blob = await fetchReportPdf();
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      setPdfUrl(URL.createObjectURL(blob));
+    } catch (err: unknown) {
+      setPdfError(err instanceof Error ? err.message : 'Gagal membuka laporan PDF');
+    } finally {
+      setIsPdfLoading(false);
+    }
+  };
+
+  const downloadReport = async () => {
+    setIsPdfLoading(true);
+    setPdfError(null);
+    try {
+      const blob = await fetchReportPdf();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `laporan-keuangan-lapor-kos-${reportTitle.toLowerCase().replace(/\s+/g, '-')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      setPdfError(err instanceof Error ? err.message : 'Gagal mengunduh laporan PDF');
+    } finally {
+      setIsPdfLoading(false);
+    }
+  };
+
+  const closePreview = () => {
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+    setPdfUrl(null);
+  };
+
+  const printPreview = () => {
+    reportFrameRef.current?.contentWindow?.focus();
+    reportFrameRef.current?.contentWindow?.print();
+  };
+
+  const openPdfInNewTab = () => {
+    if (!pdfUrl) return;
+    window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const downloadPreview = () => {
+    if (!pdfUrl) return;
     const link = document.createElement('a');
-    link.href = url;
-    link.download = `laporan-keuangan-lapor-kos-${reportTitle.toLowerCase().replace(/\s+/g, '-')}.html`;
+    link.href = pdfUrl;
+    link.download = `laporan-keuangan-lapor-kos-${reportTitle.toLowerCase().replace(/\s+/g, '-')}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const printReport = () => {
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-    if (!printWindow) return;
-    printWindow.document.write(getReportHtml());
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => printWindow.print(), 300);
   };
 
   if (isLoading) {
@@ -396,49 +346,33 @@ export default function ReportsPage() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-[12px] p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => applyTheme('light')}
-              className={`h-10 px-3 rounded-[9px] flex items-center gap-2 text-xs font-bold transition-all ${
-                theme === 'light' ? 'bg-brand-teal text-white shadow-sm' : 'text-gray-500 hover:text-brand-navy'
-              }`}
-              title="Mode terang"
-            >
-              <Sun className="w-4 h-4" />
-              Terang
-            </button>
-            <button
-              type="button"
-              onClick={() => applyTheme('dark')}
-              className={`h-10 px-3 rounded-[9px] flex items-center gap-2 text-xs font-bold transition-all ${
-                theme === 'dark' ? 'bg-brand-teal text-slate-950 shadow-sm' : 'text-gray-500 hover:text-brand-navy'
-              }`}
-              title="Mode gelap"
-            >
-              <Moon className="w-4 h-4" />
-              Gelap
-            </button>
-          </div>
-
           <button
             type="button"
-            onClick={printReport}
+            onClick={previewReport}
+            disabled={isPdfLoading}
             className="h-12 px-4 rounded-[12px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 text-brand-navy font-bold text-sm flex items-center justify-center gap-2 shadow-sm hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
           >
-            <Printer className="w-4 h-4" />
-            Cetak PDF
+            {isPdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+            Lihat / Cetak PDF
           </button>
           <button
             type="button"
             onClick={downloadReport}
+            disabled={isPdfLoading}
             className="h-12 px-4 rounded-[12px] bg-brand-teal hover:bg-brand-teal-light text-white dark:text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-teal/10 transition-colors"
           >
-            <Download className="w-4 h-4" />
-            Download Surat
+            {isPdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            Download PDF
           </button>
         </div>
       </div>
+
+      {pdfError && (
+        <div className="rounded-[16px] border border-red-100 dark:border-red-900/40 bg-red-50 dark:bg-red-500/10 px-4 py-3 text-sm font-bold text-red-700 dark:text-red-300 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4" />
+          {pdfError}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         <div className="lg:col-span-8 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-[24px] p-5 shadow-sm">
@@ -549,10 +483,22 @@ export default function ReportsPage() {
             </div>
             <CalendarDays className="w-5 h-5 text-gray-400" />
           </div>
-          <div className="h-52 flex items-end gap-2 sm:gap-3">
+          <div className="grid grid-cols-[72px_1fr] gap-3">
+            <div className="h-52 flex flex-col justify-between py-1 text-right text-[10px] font-bold text-gray-400">
+              {trendTicks.map((tick) => (
+                <span key={tick}>{formatCompactCurrency(tick)}</span>
+              ))}
+            </div>
+            <div className="relative h-52">
+              <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                {trendTicks.map((tick) => (
+                  <div key={tick} className="border-t border-dashed border-gray-200 dark:border-slate-800" />
+                ))}
+              </div>
+              <div className="relative h-full flex items-end gap-2 sm:gap-3">
             {monthlyTrend.map((item) => {
-              const billedHeight = Math.max(5, (item.billed / maxTrendValue) * 100);
-              const collectedHeight = Math.max(5, (item.collected / maxTrendValue) * 100);
+              const billedHeight = Math.max(5, (item.billed / trendLimit) * 100);
+              const collectedHeight = Math.max(5, (item.collected / trendLimit) * 100);
               return (
                 <div key={item.label} className="flex-1 h-full flex flex-col justify-end items-center gap-2 min-w-0">
                   <div className="w-full h-full flex items-end justify-center gap-1">
@@ -563,6 +509,8 @@ export default function ReportsPage() {
                 </div>
               );
             })}
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-5 mt-5 text-xs font-bold text-gray-500">
             <span className="inline-flex items-center gap-2"><span className="w-3 h-3 rounded-sm bg-slate-200 dark:bg-slate-700" /> Tagihan</span>
@@ -681,6 +629,73 @@ export default function ReportsPage() {
           </div>
         </div>
       </div>
+
+      {pdfUrl && (
+        <div className="fixed inset-0 z-[9999] bg-slate-950/70 backdrop-blur-sm p-4 lg:p-8 flex items-center justify-center">
+          <div className="w-full max-w-6xl h-[90vh] bg-white dark:bg-slate-950 rounded-[24px] overflow-hidden shadow-2xl border border-white/10 flex flex-col">
+            <div className="h-16 px-5 lg:px-6 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between gap-4 shrink-0">
+              <div className="min-w-0">
+                <h3 className="text-sm lg:text-base font-display font-extrabold text-brand-navy truncate">Preview Laporan Keuangan</h3>
+                <p className="text-[11px] text-gray-500 truncate">{reportTitle}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadPreview}
+                  className="h-10 px-3 rounded-[10px] border border-gray-200 dark:border-slate-800 text-brand-navy hover:bg-gray-50 dark:hover:bg-slate-900 transition-colors flex items-center gap-2 text-xs font-bold"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="hidden sm:inline">Download</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={openPdfInNewTab}
+                  className="h-10 px-3 rounded-[10px] border border-gray-200 dark:border-slate-800 text-brand-navy hover:bg-gray-50 dark:hover:bg-slate-900 transition-colors flex items-center gap-2 text-xs font-bold"
+                >
+                  <FileText className="w-4 h-4" />
+                  <span className="hidden sm:inline">Tab Baru</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={printPreview}
+                  className="h-10 px-3 rounded-[10px] bg-brand-teal hover:bg-brand-teal-light text-white dark:text-slate-950 transition-colors flex items-center gap-2 text-xs font-bold"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span className="hidden sm:inline">Cetak</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={closePreview}
+                  className="h-10 w-10 rounded-[10px] border border-gray-200 dark:border-slate-800 text-brand-navy hover:bg-gray-50 dark:hover:bg-slate-900 transition-colors flex items-center justify-center"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            <iframe
+              ref={reportFrameRef}
+              src={pdfUrl}
+              title="Preview laporan keuangan"
+              className="flex-1 w-full bg-slate-100 dark:bg-slate-900"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function getNiceLimit(value: number) {
+  if (value <= 0) return 1000000;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+  const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+  return nice * magnitude;
+}
+
+function formatCompactCurrency(amount: number) {
+  if (amount >= 1000000000) return `Rp ${(amount / 1000000000).toFixed(1).replace('.', ',')} M`;
+  if (amount >= 1000000) return `Rp ${(amount / 1000000).toFixed(1).replace('.', ',')} jt`;
+  if (amount >= 1000) return `Rp ${(amount / 1000).toFixed(0)} rb`;
+  return `Rp ${amount.toFixed(0)}`;
 }
