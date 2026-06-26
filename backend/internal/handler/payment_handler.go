@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"strconv"
 	"time"
@@ -16,13 +17,24 @@ import (
 type PaymentHandler struct {
 	repo           *repository.PaymentRepository
 	storageService *service.StorageService
+	userRepo       repository.UserRepo
 }
 
-func NewPaymentHandler(repo *repository.PaymentRepository, storageService *service.StorageService) *PaymentHandler {
-	return &PaymentHandler{repo: repo, storageService: storageService}
+func NewPaymentHandler(repo *repository.PaymentRepository, storageService *service.StorageService, userRepo ...repository.UserRepo) *PaymentHandler {
+	handler := &PaymentHandler{repo: repo, storageService: storageService}
+	if len(userRepo) > 0 {
+		handler.userRepo = userRepo[0]
+	}
+	return handler
 }
 
 func (h *PaymentHandler) GetAllPayments(c *gin.Context) {
+	ownerID, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	status := c.Query("status")
 	monthStr := c.Query("month")
 	yearStr := c.Query("year")
@@ -37,7 +49,7 @@ func (h *PaymentHandler) GetAllPayments(c *gin.Context) {
 		year, _ = strconv.Atoi(yearStr)
 	}
 
-	payments, err := h.repo.FindAll(c.Request.Context(), status, month, year, contractID, userID)
+	payments, err := h.repo.FindAll(c.Request.Context(), ownerID, status, month, year, contractID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payments"})
 		return
@@ -47,12 +59,11 @@ func (h *PaymentHandler) GetAllPayments(c *gin.Context) {
 }
 
 func (h *PaymentHandler) GetTenantPayments(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	userID, _ := uuid.Parse(userIDStr.(string))
 
 	payments, err := h.repo.FindByUserID(c.Request.Context(), userID)
 	if err != nil {
@@ -76,26 +87,15 @@ func (h *PaymentHandler) GetPayment(c *gin.Context) {
 		return
 	}
 
-	// Security: check if user is owner or the tenant this payment belongs to
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
+	userID, ok := currentUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	userID, _ := uuid.Parse(userIDStr.(string))
 
-	// Fetch user role
-	var role string
-	// Check if payment user matches the logged-in user
-	if payment.Contract != nil && payment.Contract.User != nil && payment.Contract.User.ID == userID {
-		role = "tenant"
-	}
-
-	// If not the tenant, verify if it's the owner (will be verified in repository/auth usually)
-	// We'll allow if it's owner or matching tenant
-	if role != "tenant" {
-		// Just to be safe, if we didn't match the tenant, check role from DB or assume owner check was handled by middleware.
-		// Since we have user_id, we can check if it's owner. We'll proceed.
+	if !canAccessPayment(payment, userID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
 	}
 
 	c.JSON(http.StatusOK, payment)
@@ -103,15 +103,15 @@ func (h *PaymentHandler) GetPayment(c *gin.Context) {
 
 func (h *PaymentHandler) CreatePaymentBill(c *gin.Context) {
 	var req struct {
-		ContractID        string    `json:"contract_id" binding:"required"`
-		PeriodMonth       int       `json:"period_month" binding:"required"`
-		PeriodYear        int       `json:"period_year" binding:"required"`
-		AmountRent        float64   `json:"amount_rent"`
-		AmountElectricity float64   `json:"amount_electricity"`
-		AmountWater       float64   `json:"amount_water"`
-		AmountOther       float64   `json:"amount_other"`
-		DueDate           string    `json:"due_date" binding:"required"`
-		Notes             string    `json:"notes"`
+		ContractID        string  `json:"contract_id" binding:"required"`
+		PeriodMonth       int     `json:"period_month" binding:"required"`
+		PeriodYear        int     `json:"period_year" binding:"required"`
+		AmountRent        float64 `json:"amount_rent"`
+		AmountElectricity float64 `json:"amount_electricity"`
+		AmountWater       float64 `json:"amount_water"`
+		AmountOther       float64 `json:"amount_other"`
+		DueDate           string  `json:"due_date" binding:"required"`
+		Notes             string  `json:"notes"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -170,6 +170,22 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 		return
 	}
 
+	userID, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	payment, err := h.repo.FindByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		return
+	}
+	if !isPaymentTenant(payment, userID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
+	}
+
 	// Handle file upload to Supabase Storage
 	proofPath, err := h.uploadFile(c, "proof")
 	if err != nil {
@@ -204,8 +220,15 @@ func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
 		return
 	}
 
-	userIDStr, _ := c.Get("user_id")
-	ownerID, _ := uuid.Parse(userIDStr.(string))
+	ownerID, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	if payment.Contract == nil || payment.Contract.OwnerID != ownerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+		return
+	}
 
 	payment.OwnerID = &ownerID
 	payment.TotalPaid = req.TotalPaid
@@ -247,6 +270,15 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 	payment, err := h.repo.FindByID(c.Request.Context(), id)
 	if err != nil {
 		c.String(http.StatusNotFound, "Receipt not found")
+		return
+	}
+	userID, ok := currentUserID(c)
+	if !ok {
+		c.String(http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	if !canAccessPayment(payment, userID) {
+		c.String(http.StatusForbidden, "Forbidden")
 		return
 	}
 
@@ -533,21 +565,21 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
     </div>
 </body>
 </html>`,
-		roomNumber,
-		payment.Status,
-		payment.Status,
+		html.EscapeString(roomNumber),
+		html.EscapeString(payment.Status),
+		html.EscapeString(payment.Status),
 		payment.ID.String()[:8],
-		roomNumber,
-		tenantName,
-		tenantPhone,
+		html.EscapeString(roomNumber),
+		html.EscapeString(tenantName),
+		html.EscapeString(tenantPhone),
 		payment.PeriodMonth,
 		payment.PeriodYear,
-		paidDate,
+		html.EscapeString(paidDate),
 		tableRows,
 		formatRupiah(totalBill),
-		payment.PaymentMethod,
+		html.EscapeString(payment.PaymentMethod),
 		formatRupiah(payment.TotalPaid),
-		payment.Notes,
+		html.EscapeString(payment.Notes),
 	)
 
 	c.Header("Content-Type", "text/html; charset=utf-8")
@@ -584,4 +616,33 @@ func (h *PaymentHandler) uploadFile(c *gin.Context, fieldName string) (string, e
 		return "", err
 	}
 	return h.storageService.UploadFile(fileHeader, "payment_"+fieldName)
+}
+
+func currentUserID(c *gin.Context) (uuid.UUID, bool) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		return uuid.Nil, false
+	}
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return userID, true
+}
+
+func canAccessPayment(payment *model.Payment, userID uuid.UUID) bool {
+	if isPaymentTenant(payment, userID) {
+		return true
+	}
+	if payment.OwnerID != nil && *payment.OwnerID == userID {
+		return true
+	}
+	return payment.Contract != nil && payment.Contract.OwnerID == userID
+}
+
+func isPaymentTenant(payment *model.Payment, userID uuid.UUID) bool {
+	return payment != nil &&
+		payment.Contract != nil &&
+		payment.Contract.User != nil &&
+		payment.Contract.User.ID == userID
 }

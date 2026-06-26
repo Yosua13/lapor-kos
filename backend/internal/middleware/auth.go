@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -15,14 +16,10 @@ func AuthMiddleware() gin.HandlerFunc {
 		tokenString := ""
 
 		if authHeader != "" {
-			parts := strings.Split(authHeader, " ")
-			if len(parts) == 2 && parts[0] == "Bearer" {
+			parts := strings.Fields(authHeader)
+			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
 				tokenString = parts[1]
 			}
-		}
-
-		if tokenString == "" {
-			tokenString = c.Query("token")
 		}
 
 		if tokenString == "" {
@@ -36,12 +33,17 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		secret := os.Getenv("JWT_SECRET")
-		if secret == "" {
-			secret = "your-very-secret-key" // Fallback for dev
+		secret, err := jwtSecret()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Authentication is not configured"})
+			c.Abort()
+			return
 		}
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		token, err := jwt.ParseWithClaims(tokenString, jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
+			if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+				return nil, fmt.Errorf("unexpected signing method: %s", token.Header["alg"])
+			}
 			return []byte(secret), nil
 		})
 
@@ -68,4 +70,15 @@ func AuthMiddleware() gin.HandlerFunc {
 		c.Set("user_id", userID)
 		c.Next()
 	}
+}
+
+func jwtSecret() (string, error) {
+	secret := os.Getenv("JWT_SECRET")
+	if secret != "" {
+		return secret, nil
+	}
+	if os.Getenv("APP_ENV") == "production" || os.Getenv("GIN_MODE") == gin.ReleaseMode {
+		return "", fmt.Errorf("JWT_SECRET is required in production")
+	}
+	return "dev-only-lapor-kos-secret-change-me", nil
 }
