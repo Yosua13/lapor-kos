@@ -7,17 +7,27 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+const MaxUploadSizeBytes int64 = 5 << 20
+
+var allowedUploadExtensions = map[string]string{
+	"application/pdf": ".pdf",
+	"image/jpeg":      ".jpg",
+	"image/png":       ".png",
+	"image/webp":      ".webp",
+}
+
 // StorageService handles file uploads to Supabase Storage.
 type StorageService struct {
-	supabaseURL    string
-	serviceKey     string
-	bucket         string
-	httpClient     *http.Client
+	supabaseURL string
+	serviceKey  string
+	bucket      string
+	httpClient  *http.Client
 }
 
 // NewStorageService creates a new StorageService using environment variables.
@@ -41,6 +51,9 @@ func (s *StorageService) UploadFile(fileHeader *multipart.FileHeader, prefix str
 	if !s.IsConfigured() {
 		return "", fmt.Errorf("supabase storage is not configured")
 	}
+	if fileHeader.Size > MaxUploadSizeBytes {
+		return "", fmt.Errorf("file is too large, maximum size is 5MB")
+	}
 
 	// Open the uploaded file
 	src, err := fileHeader.Open()
@@ -49,29 +62,23 @@ func (s *StorageService) UploadFile(fileHeader *multipart.FileHeader, prefix str
 	}
 	defer src.Close()
 
-	// Read file contents
-	fileBytes, err := io.ReadAll(src)
+	// Read file contents with a hard limit so malicious clients cannot exhaust memory.
+	fileBytes, err := io.ReadAll(io.LimitReader(src, MaxUploadSizeBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("failed to read uploaded file: %w", err)
 	}
+	if int64(len(fileBytes)) > MaxUploadSizeBytes {
+		return "", fmt.Errorf("file is too large, maximum size is 5MB")
+	}
 
-	// Detect content type
-	contentType := fileHeader.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = http.DetectContentType(fileBytes)
+	contentType := http.DetectContentType(fileBytes)
+	ext, ok := allowedUploadExtensions[contentType]
+	if !ok {
+		return "", fmt.Errorf("unsupported file type")
 	}
 
 	// Generate a unique filename
-	ext := ""
-	if idx := len(fileHeader.Filename) - 1; idx >= 0 {
-		for i := len(fileHeader.Filename) - 1; i >= 0; i-- {
-			if fileHeader.Filename[i] == '.' {
-				ext = fileHeader.Filename[i:]
-				break
-			}
-		}
-	}
-	filename := fmt.Sprintf("%s_%d_%s%s", prefix, time.Now().UnixNano(), uuid.New().String(), ext)
+	filename := fmt.Sprintf("%s_%d_%s%s", sanitizeUploadPrefix(prefix), time.Now().UnixNano(), uuid.New().String(), ext)
 
 	// Build the Supabase Storage upload URL
 	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", s.supabaseURL, s.bucket, filename)
@@ -99,4 +106,22 @@ func (s *StorageService) UploadFile(fileHeader *multipart.FileHeader, prefix str
 	// Build and return the public URL
 	publicURL := fmt.Sprintf("%s/storage/v1/object/public/%s/%s", s.supabaseURL, s.bucket, filename)
 	return publicURL, nil
+}
+
+func sanitizeUploadPrefix(prefix string) string {
+	prefix = strings.TrimSpace(strings.ToLower(prefix))
+	if prefix == "" {
+		return "upload"
+	}
+
+	var builder strings.Builder
+	for _, r := range prefix {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			builder.WriteRune(r)
+		}
+	}
+	if builder.Len() == 0 {
+		return "upload"
+	}
+	return builder.String()
 }
