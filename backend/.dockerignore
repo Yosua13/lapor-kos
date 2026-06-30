@@ -1,0 +1,8 @@
+.env
+.git
+.gitignore
+*.exe
+bin/
+dist/
+tmp/
+coverage.out
