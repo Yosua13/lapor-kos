@@ -73,6 +73,7 @@ Proyek ini terbagi menjadi dua direktori utama:
 1. `/backend` - Logika API server, cron job tagihan bulanan, notifikasi, dan integrasi AI.
 2. `/frontend` - Antarmuka pengguna (Dashboard, Grafik Keuangan, Portal Penghuni).
 
+
 ---
 
 ## Menjalankan Project dengan Docker
@@ -223,6 +224,8 @@ Solusi yang direkomendasikan:
 5. Hindari membagikan output `docker compose config` karena command tersebut dapat menampilkan isi environment variable.
 
 ### Referensi Manual
+
+=======
 
 Silakan merujuk ke panduan masing-masing folder untuk petunjuk instalasi dan penyiapan detail:
 * 📄 **[Panduan Backend (Go)](file:///d:/project_yosua/lapor-kos/backend/README.md)**
