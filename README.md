@@ -73,6 +73,157 @@ Proyek ini terbagi menjadi dua direktori utama:
 1. `/backend` - Logika API server, cron job tagihan bulanan, notifikasi, dan integrasi AI.
 2. `/frontend` - Antarmuka pengguna (Dashboard, Grafik Keuangan, Portal Penghuni).
 
+---
+
+## Menjalankan Project dengan Docker
+
+Project ini sudah mendukung Docker untuk menjalankan dua service utama:
+
+1. `backend` - API server Go/Gin pada port `8081`.
+2. `frontend` - aplikasi Next.js pada port `3000`.
+
+Docker membuat environment aplikasi lebih konsisten karena Go, Node.js, dependency, dan command production sudah dibungkus dalam image masing-masing.
+
+### File Docker yang Digunakan
+
+* `backend/Dockerfile` - resep untuk membuat image backend Go.
+* `backend/.dockerignore` - mencegah file lokal seperti `.env` dan file `.exe` ikut masuk ke proses build backend.
+* `frontend/Dockerfile` - resep untuk membuat image frontend Next.js.
+* `frontend/.dockerignore` - mencegah `node_modules`, `.next`, dan `.env.local` ikut masuk ke proses build frontend.
+* `docker-compose.yml` - konfigurasi untuk menjalankan container backend dan frontend secara bersamaan.
+* `.env.docker.example` - contoh konfigurasi Docker Compose yang aman untuk disimpan di Git.
+
+### Persiapan Environment
+
+Pastikan file environment lokal berikut sudah tersedia:
+
+```bash
+backend/.env
+frontend/.env.local
+```
+
+File `backend/.env` berisi konfigurasi sensitif seperti `DATABASE_URL`, `JWT_SECRET`, `GEMINI_API_KEY`, token WhatsApp, dan Supabase service key. File ini tidak boleh di-push ke GitHub.
+
+Contoh konfigurasi Docker Compose dapat dilihat di:
+
+```bash
+.env.docker.example
+```
+
+Jika ingin mengubah nilai default Docker Compose, salin file tersebut menjadi `.env` di root project:
+
+```bash
+cp .env.docker.example .env
+```
+
+Untuk Windows PowerShell:
+
+```powershell
+Copy-Item .env.docker.example .env
+```
+
+### Menjalankan Container
+
+Jalankan dari root project:
+
+```bash
+docker compose up --build -d
+```
+
+Perintah tersebut akan:
+
+1. Membuat image backend dari `backend/Dockerfile`.
+2. Membuat image frontend dari `frontend/Dockerfile`.
+3. Membuat container `lapor-kos-backend`.
+4. Membuat container `lapor-kos-frontend`.
+5. Menjalankan keduanya di background.
+
+Setelah berhasil, akses aplikasi melalui:
+
+```bash
+Frontend: http://localhost:3000
+Backend:  http://localhost:8081/api/health
+```
+
+### Command Docker yang Sering Dipakai
+
+Cek status container:
+
+```bash
+docker compose ps
+```
+
+Melihat log semua service:
+
+```bash
+docker compose logs -f
+```
+
+Melihat log backend saja:
+
+```bash
+docker compose logs -f backend
+```
+
+Melihat log frontend saja:
+
+```bash
+docker compose logs -f frontend
+```
+
+Restart container:
+
+```bash
+docker compose restart
+```
+
+Mematikan dan menghapus container:
+
+```bash
+docker compose down
+```
+
+Build ulang image setelah ada perubahan Dockerfile atau dependency:
+
+```bash
+docker compose up --build -d
+```
+
+### Catatan Keamanan GitHub
+
+Aman untuk mengirim file berikut ke GitHub:
+
+```bash
+backend/Dockerfile
+backend/.dockerignore
+frontend/Dockerfile
+frontend/.dockerignore
+docker-compose.yml
+.env.docker.example
+backend/.env.example
+frontend/.env.example
+```
+
+Tidak aman untuk mengirim file berikut ke GitHub:
+
+```bash
+backend/.env
+frontend/.env.local
+.env
+```
+
+Alasannya, file tersebut biasanya berisi password database, JWT secret, API key Gemini, token WhatsApp, SMTP password, dan Supabase service role key. Jika terlanjur ter-push ke GitHub, anggap secret tersebut sudah bocor dan segera rotasi/ganti semua key terkait.
+
+Solusi yang direkomendasikan:
+
+1. Simpan secret hanya di file lokal `.env` yang sudah masuk `.gitignore`.
+2. Commit hanya file contoh seperti `.env.example` atau `.env.docker.example`.
+3. Untuk deployment production, simpan secret di environment server, Docker secrets, GitHub Actions Secrets, atau Jenkins Credentials.
+4. Jalankan `git status --short` sebelum commit untuk memastikan file `.env` asli tidak ikut masuk.
+5. Hindari membagikan output `docker compose config` karena command tersebut dapat menampilkan isi environment variable.
+
+### Referensi Manual
+
 Silakan merujuk ke panduan masing-masing folder untuk petunjuk instalasi dan penyiapan detail:
 * 📄 **[Panduan Backend (Go)](file:///d:/project_yosua/lapor-kos/backend/README.md)**
 * 📄 **[Panduan Frontend (Next.js)](file:///d:/project_yosua/lapor-kos/frontend/README.md)**
