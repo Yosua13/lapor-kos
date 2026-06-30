@@ -11,8 +11,8 @@ import { apiFetch } from '@/lib/api';
 import AuthCarousel from '@/components/AuthCarousel';
 
 const resetPasswordSchema = z.object({
-  newPassword: z.string().min(6, 'Password minimal 6 karakter'),
-  confirmPassword: z.string().min(6, 'Password minimal 6 karakter'),
+  newPassword: z.string().min(8, 'Password minimal 8 karakter'),
+  confirmPassword: z.string().min(8, 'Password minimal 8 karakter'),
 }).refine((data) => data.newPassword === data.confirmPassword, {
   message: "Password tidak cocok",
   path: ["confirmPassword"],
@@ -119,7 +119,7 @@ export default function ResetPasswordPage() {
                   {...register('newPassword')}
                   type={showPassword ? 'text' : 'password'}
                   id="newPassword"
-                  placeholder="Minimal 6 karakter"
+                  placeholder="Minimal 8 karakter"
                   className={`w-full bg-white border ${errors.newPassword ? 'border-red-300' : 'border-gray-200'} rounded-xl py-3.5 pl-12 pr-12 text-navy focus:outline-none focus:border-teal focus:ring-4 focus:ring-teal/5 transition-all`}
                 />
                 <button

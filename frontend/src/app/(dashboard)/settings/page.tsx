@@ -120,8 +120,8 @@ export default function SettingsPage() {
     setIsSavingPassword(true);
     setPasswordMessage(null);
 
-    if (passwordData.newPassword.length < 6) {
-      setPasswordMessage({ type: 'error', text: 'Kata sandi baru minimal harus 6 karakter' });
+    if (passwordData.newPassword.length < 8) {
+      setPasswordMessage({ type: 'error', text: 'Kata sandi baru minimal harus 8 karakter' });
       setIsSavingPassword(false);
       return;
     }

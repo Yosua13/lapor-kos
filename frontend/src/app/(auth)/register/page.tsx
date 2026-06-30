@@ -14,7 +14,7 @@ import AuthCarousel from '@/components/AuthCarousel';
 const registerSchema = z.object({
   name: z.string().min(3, 'Nama minimal 3 karakter'),
   email: z.string().email('Format email tidak valid'),
-  password: z.string().min(6, 'Password minimal 6 karakter'),
+  password: z.string().min(8, 'Password minimal 8 karakter'),
   termsAccepted: z.boolean().refine(val => val === true, 'Anda harus menyetujui Syarat & Ketentuan serta Kebijakan Privasi'),
 });
 
@@ -168,7 +168,7 @@ export default function RegisterPage() {
                   {...register('password')}
                   type={showPassword ? 'text' : 'password'}
                   id="password"
-                  placeholder="Minimal 6 karakter"
+                  placeholder="Minimal 8 karakter"
                   className={`w-full bg-white border ${errors.password ? 'border-red-300' : 'border-gray-200'} rounded-xl py-3.5 pl-12 pr-12 text-navy placeholder:text-gray-300 focus:outline-none focus:border-teal focus:ring-4 focus:ring-teal/5 transition-all`}
                 />
                 <button

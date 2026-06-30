@@ -29,19 +29,26 @@ func (h *ReportHandler) GetFinancialReportPDF(c *gin.Context) {
 	month := parsePositiveInt(c.Query("month"))
 	year := parsePositiveInt(c.Query("year"))
 
-	payments, err := h.paymentRepo.FindAll(c.Request.Context(), "", month, year, "", "")
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	ownerID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		return
+	}
+
+	payments, err := h.paymentRepo.FindAll(c.Request.Context(), ownerID, "", month, year, "", "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch report payments"})
 		return
 	}
 
 	ownerName := "Pemilik Kos"
-	if userIDStr, exists := c.Get("user_id"); exists {
-		if userID, parseErr := uuid.Parse(userIDStr.(string)); parseErr == nil {
-			if user, findErr := h.userRepo.FindByID(c.Request.Context(), userID); findErr == nil {
-				ownerName = user.Name
-			}
-		}
+	if user, findErr := h.userRepo.FindByID(c.Request.Context(), ownerID); findErr == nil {
+		ownerName = user.Name
 	}
 
 	pdfBytes, err := h.pdfService.GenerateFinancialReport(service.FinancialReportPDFData{

@@ -44,7 +44,7 @@ describe('RegisterPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Nama minimal 3 karakter')).toBeInTheDocument();
       expect(screen.getByText('Format email tidak valid')).toBeInTheDocument();
-      expect(screen.getByText('Password minimal 6 karakter')).toBeInTheDocument();
+      expect(screen.getByText('Password minimal 8 karakter')).toBeInTheDocument();
     });
   });
 
@@ -59,10 +59,11 @@ describe('RegisterPage', () => {
     fireEvent.change(screen.getByPlaceholderText('admin@laporkos.id'), {
       target: { value: 'test@example.com' },
     });
-    fireEvent.change(screen.getByPlaceholderText('Minimal 6 karakter'), {
+    fireEvent.change(screen.getByPlaceholderText('Minimal 8 karakter'), {
       target: { value: 'password123' },
     });
-    
+    fireEvent.click(screen.getByLabelText(/Saya menyetujui/i));
+
     fireEvent.click(screen.getByText('Daftar Sekarang'));
 
     await waitFor(() => {

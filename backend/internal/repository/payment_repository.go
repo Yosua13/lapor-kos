@@ -44,7 +44,7 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 		COALESCE(p.amount_rent, 0), COALESCE(p.amount_electricity, 0), COALESCE(p.amount_water, 0), COALESCE(p.amount_other, 0), 
 		COALESCE(p.total_paid, 0), COALESCE(p.payment_method, ''), p.status, COALESCE(p.proof_photo_url, ''), 
 		p.paid_at, p.due_date, COALESCE(p.notes, ''), p.created_at,
-		COALESCE(c.monthly_rent, 0), COALESCE(c.deposit, 0), COALESCE(c.payment_due_day, 1),
+		c.owner_id, COALESCE(c.monthly_rent, 0), COALESCE(c.deposit, 0), COALESCE(c.payment_due_day, 1),
 		r.room_number, r.price_per_month,
 		u.name, u.phone, u.id
 	FROM payments p
@@ -60,6 +60,7 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 	var roomPrice *float64
 	var userName, userPhone *string
 	var userID *uuid.UUID
+	var contractOwnerID uuid.UUID
 	var contractRent, contractDeposit *float64
 	var contractDueDay *int
 
@@ -68,6 +69,7 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 		&p.AmountRent, &p.AmountElectricity, &p.AmountWater, &p.AmountOther,
 		&p.TotalPaid, &p.PaymentMethod, &p.Status, &p.ProofPhotoURL,
 		&paidAt, &p.DueDate, &p.Notes, &p.CreatedAt,
+		&contractOwnerID,
 		&contractRent, &contractDeposit, &contractDueDay,
 		&roomNum, &roomPrice,
 		&userName, &userPhone, &userID,
@@ -80,7 +82,8 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 	p.OwnerID = ownerID
 
 	p.Contract = &model.Contract{
-		ID: p.ContractID,
+		ID:      p.ContractID,
+		OwnerID: contractOwnerID,
 	}
 	if contractRent != nil {
 		p.Contract.MonthlyRent = *contractRent
@@ -95,16 +98,16 @@ func (r *PaymentRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.
 	}
 	if userName != nil && userID != nil {
 		p.Contract.User = &model.User{
-			Name:   *userName,
-			Phone:  *userPhone,
-			ID:     *userID,
+			Name:  *userName,
+			Phone: *userPhone,
+			ID:    *userID,
 		}
 	}
 
 	return p, nil
 }
 
-func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, filterMonth int, filterYear int, contractIDStr string, userIDStr string) ([]model.Payment, error) {
+func (r *PaymentRepository) FindAll(ctx context.Context, ownerID uuid.UUID, filterStatus string, filterMonth int, filterYear int, contractIDStr string, userIDStr string) ([]model.Payment, error) {
 	query := `SELECT 
 		p.id, p.contract_id, p.owner_id, p.period_month, p.period_year, 
 		COALESCE(p.amount_rent, 0), COALESCE(p.amount_electricity, 0), COALESCE(p.amount_water, 0), COALESCE(p.amount_other, 0), 
@@ -115,10 +118,10 @@ func (r *PaymentRepository) FindAll(ctx context.Context, filterStatus string, fi
 	JOIN contracts c ON p.contract_id = c.id
 	LEFT JOIN rooms r ON c.room_id = r.id
 	LEFT JOIN users u ON c.user_id = u.id
-	WHERE 1=1`
+	WHERE (p.owner_id = $1 OR c.owner_id = $1)`
 
-	args := []interface{}{}
-	argIdx := 1
+	args := []interface{}{ownerID}
+	argIdx := 2
 
 	if filterStatus != "" {
 		query += fmt.Sprintf(" AND p.status = $%d", argIdx)
