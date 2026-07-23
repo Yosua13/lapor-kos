@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type ReportHandler struct {
@@ -26,28 +26,25 @@ func NewReportHandler(paymentRepo *repository.PaymentRepository, userRepo reposi
 }
 
 func (h *ReportHandler) GetFinancialReportPDF(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
+		return
+	}
+
 	month := parsePositiveInt(c.Query("month"))
 	year := parsePositiveInt(c.Query("year"))
 
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	ownerID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
-
-	payments, err := h.paymentRepo.FindAll(c.Request.Context(), ownerID, "", month, year, "", "")
+	payments, err := h.paymentRepo.FindAll(c.Request.Context(), scope.PropertyID, "", month, year, "", "")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch report payments"})
 		return
 	}
 
-	ownerName := "Pemilik Kos"
-	if user, findErr := h.userRepo.FindByID(c.Request.Context(), ownerID); findErr == nil {
+	ownerName := "Properti Kos"
+	if propertyName, findErr := h.paymentRepo.FindPropertyName(c.Request.Context(), scope.PropertyID); findErr == nil && propertyName != "" {
+		ownerName = propertyName
+	} else if user, findErr := h.userRepo.FindByID(c.Request.Context(), scope.ActorID); findErr == nil {
 		ownerName = user.Name
 	}
 

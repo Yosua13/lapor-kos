@@ -7,24 +7,25 @@ import (
 )
 
 type Complaint struct {
-	ID                uuid.UUID  `json:"id"`
-	UserID            uuid.UUID  `json:"user_id"`
-	OwnerID           uuid.UUID  `json:"owner_id"`
-	RoomID            uuid.UUID  `json:"room_id"`
-	Title             string     `json:"title"`
-	Description       string     `json:"description"`
-	Category          string     `json:"category"` // 'noisy', 'facility', 'cleanliness', 'security', 'other'
-	Status            string     `json:"status"`   // 'pending', 'processed', 'resolved'
-	PhotoURL          *string    `json:"photo_url"`
-	AIResponse        *string    `json:"ai_response"`
-	WASent            bool       `json:"wa_sent"`
-	WAMessage         *string    `json:"wa_message"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
-	
+	ID          uuid.UUID `json:"id"`
+	PropertyID  uuid.UUID `json:"property_id"`
+	UserID      uuid.UUID `json:"user_id"`
+	OwnerID     uuid.UUID `json:"owner_id"`
+	RoomID      uuid.UUID `json:"room_id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Category    string    `json:"category"` // 'noisy', 'facility', 'cleanliness', 'security', 'other'
+	Status      string    `json:"status"`   // 'pending', 'processed', 'resolved'
+	PhotoURL    *string   `json:"photo_url"`
+	AIResponse  *string   `json:"ai_response"`
+	WASent      bool      `json:"wa_sent"`
+	WAMessage   *string   `json:"wa_message"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+
 	// Virtual fields for display
-	RoomNumber        string     `json:"room_number,omitempty"`
-	UserName          string     `json:"user_name,omitempty"`
+	RoomNumber string `json:"room_number,omitempty"`
+	UserName   string `json:"user_name,omitempty"`
 }
 
 type CreateComplaintRequest struct {

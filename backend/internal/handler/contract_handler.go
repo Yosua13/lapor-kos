@@ -1,14 +1,17 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type ContractHandler struct {
@@ -20,12 +23,11 @@ func NewContractHandler(repo *repository.ContractRepository) *ContractHandler {
 }
 
 func (h *ContractHandler) CreateContract(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
+	scope, exists := middleware.GetPropertyScope(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	ownerID, _ := uuid.Parse(userIDStr.(string))
 
 	var req model.CreateContractRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -56,9 +58,10 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 	}
 
 	contract := &model.Contract{
+		PropertyID:      scope.PropertyID,
 		RoomID:          &roomID,
 		UserID:          &userID,
-		OwnerID:         ownerID,
+		OwnerID:         scope.ActorID,
 		StartDate:       startDate,
 		EndDate:         endDate,
 		RentalDuration:  req.RentalDuration,
@@ -71,9 +74,13 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 		Notes:           req.Notes,
 	}
 
-	if err := h.repo.Create(c.Request.Context(), contract); err != nil {
+	if err := h.repo.Create(c.Request.Context(), scope.PropertyID, scope.ActorID, contract); err != nil {
 		if strings.Contains(err.Error(), "kamar tidak tersedia") {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Room or tenant not found"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create contract"})
@@ -84,11 +91,14 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 }
 
 func (h *ContractHandler) GetContracts(c *gin.Context) {
-	userIDStr, _ := c.Get("user_id")
-	ownerID, _ := uuid.Parse(userIDStr.(string))
+	scope, exists := middleware.GetPropertyScope(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	status := c.Query("status")
 
-	contracts, err := h.repo.FindAll(c.Request.Context(), ownerID, status)
+	contracts, err := h.repo.FindAll(c.Request.Context(), scope.PropertyID, status)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch contracts"})
 		return
@@ -102,8 +112,11 @@ func (h *ContractHandler) GetContracts(c *gin.Context) {
 }
 
 func (h *ContractHandler) GetContract(c *gin.Context) {
-	userIDStr, _ := c.Get("user_id")
-	ownerID, _ := uuid.Parse(userIDStr.(string))
+	scope, exists := middleware.GetPropertyScope(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -111,7 +124,7 @@ func (h *ContractHandler) GetContract(c *gin.Context) {
 		return
 	}
 
-	contract, err := h.repo.FindByID(c.Request.Context(), id, ownerID)
+	contract, err := h.repo.FindByID(c.Request.Context(), scope.PropertyID, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Contract not found"})
 		return
@@ -121,8 +134,11 @@ func (h *ContractHandler) GetContract(c *gin.Context) {
 }
 
 func (h *ContractHandler) UpdateContract(c *gin.Context) {
-	userIDStr, _ := c.Get("user_id")
-	ownerID, _ := uuid.Parse(userIDStr.(string))
+	scope, exists := middleware.GetPropertyScope(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -136,7 +152,7 @@ func (h *ContractHandler) UpdateContract(c *gin.Context) {
 		return
 	}
 
-	contract, err := h.repo.FindByID(c.Request.Context(), id, ownerID)
+	contract, err := h.repo.FindByID(c.Request.Context(), scope.PropertyID, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Contract not found"})
 		return
@@ -173,7 +189,11 @@ func (h *ContractHandler) UpdateContract(c *gin.Context) {
 		contract.Notes = req.Notes
 	}
 
-	if err := h.repo.Update(c.Request.Context(), contract); err != nil {
+	if err := h.repo.Update(c.Request.Context(), scope.PropertyID, contract); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Contract not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update contract"})
 		return
 	}
@@ -182,8 +202,11 @@ func (h *ContractHandler) UpdateContract(c *gin.Context) {
 }
 
 func (h *ContractHandler) DeleteContract(c *gin.Context) {
-	userIDStr, _ := c.Get("user_id")
-	ownerID, _ := uuid.Parse(userIDStr.(string))
+	scope, exists := middleware.GetPropertyScope(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -191,7 +214,11 @@ func (h *ContractHandler) DeleteContract(c *gin.Context) {
 		return
 	}
 
-	if err := h.repo.Delete(c.Request.Context(), id, ownerID); err != nil {
+	if err := h.repo.Delete(c.Request.Context(), scope.PropertyID, id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Contract not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete contract"})
 		return
 	}

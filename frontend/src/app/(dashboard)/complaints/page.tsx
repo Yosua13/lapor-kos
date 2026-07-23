@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
+import { apiFetch, getImageUrl } from '@/lib/api';
+import { CAPABILITIES } from '@/features/authorization/permissions';
+import { useAuthorization } from '@/features/authorization/useAuthorization';
 import { 
   MessageSquare, 
   VolumeX, 
@@ -46,6 +48,8 @@ interface Complaint {
 
 export default function ComplaintsPage() {
   const router = useRouter();
+  const { can, isTenant } = useAuthorization();
+  const canManageComplaints = can(CAPABILITIES.COMPLAINT_MANAGE);
   const [user, setUser] = useState<any>(null);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -76,7 +80,7 @@ export default function ComplaintsPage() {
       const userData = await apiFetch('/api/auth/me');
       setUser(userData);
       
-      if (userData.role === 'owner') {
+      if (!isTenant) {
         setWaGroupLink(userData.whatsapp_group_link || '');
         const data = await apiFetch('/api/complaints');
         setComplaints(data);
@@ -264,8 +268,6 @@ export default function ComplaintsPage() {
       </div>
     );
   }
-
-  const isTenant = user?.role === 'tenant';
 
   // Stats calculation for Owner
   const totalCount = complaints.length;
@@ -606,7 +608,7 @@ export default function ComplaintsPage() {
             <div className="lg:col-span-4 space-y-6">
               
               {/* WhatsApp Config Card */}
-              <div className="bg-white/90 backdrop-blur-xl border border-white/50 rounded-3xl p-6 shadow-xl shadow-brand-navy/5">
+              {canManageComplaints && <div className="bg-white/90 backdrop-blur-xl border border-white/50 rounded-3xl p-6 shadow-xl shadow-brand-navy/5">
                 <div className="flex items-center gap-2 mb-4">
                   <Settings className="w-5 h-5 text-brand-navy" />
                   <h2 className="text-lg font-display font-bold text-brand-navy">Integrasi WhatsApp</h2>
@@ -643,7 +645,7 @@ export default function ComplaintsPage() {
                     )}
                   </button>
                 </form>
-              </div>
+              </div>}
 
 
 

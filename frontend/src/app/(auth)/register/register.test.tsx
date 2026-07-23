@@ -25,13 +25,14 @@ describe('RegisterPage', () => {
       back: vi.fn(),
       forward: vi.fn(),
       refresh: vi.fn(),
-    } as any);
+    } as ReturnType<typeof useRouter>);
   });
 
   it('renders register form correctly', () => {
     render(<RegisterPage />);
     expect(screen.getByText('Daftar Akun Baru')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Masukkan nama lengkap')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Contoh: Kos Melati')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('admin@laporkos.id')).toBeInTheDocument();
   });
 
@@ -43,18 +44,22 @@ describe('RegisterPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Nama minimal 3 karakter')).toBeInTheDocument();
+      expect(screen.getByText('Nama properti minimal 3 karakter')).toBeInTheDocument();
       expect(screen.getByText('Format email tidak valid')).toBeInTheDocument();
       expect(screen.getByText('Password minimal 8 karakter')).toBeInTheDocument();
     });
   });
 
   it('submits form successfully and shows popup', async () => {
-    (apiFetch as any).mockResolvedValue({ message: 'Success' });
+    vi.mocked(apiFetch).mockResolvedValue({ message: 'Success' });
     
     render(<RegisterPage />);
     
     fireEvent.change(screen.getByPlaceholderText('Masukkan nama lengkap'), {
       target: { value: 'Test User' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Contoh: Kos Melati'), {
+      target: { value: 'Kos Test' },
     });
     fireEvent.change(screen.getByPlaceholderText('admin@laporkos.id'), {
       target: { value: 'test@example.com' },

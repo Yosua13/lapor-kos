@@ -1,7 +1,10 @@
 package model
 
+import "github.com/google/uuid"
+
 type CalendarEvent struct {
 	ID          string       `json:"id"`
+	PropertyID  uuid.UUID    `json:"property_id"`
 	Type        string       `json:"type"` // "contract_expiry" or "payment_due"
 	Title       string       `json:"title"`
 	Date        string       `json:"date"` // YYYY-MM-DD

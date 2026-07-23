@@ -1,10 +1,10 @@
 package handler
 
 import (
-	"database/sql"
 	"errors"
 	"net/http"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/gin-gonic/gin"
@@ -135,54 +135,44 @@ var defaultRulesSeed = []struct {
 }
 
 func (h *HouseRuleHandler) GetRules(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
+	actorID, ok := currentUserID(c)
+	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	userID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
 
-	user, err := h.userRepo.FindByID(c.Request.Context(), userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user role"})
-		return
-	}
-
-	var ownerID uuid.UUID
-	if user.Role == "tenant" {
-		ownerID, err = h.repo.FindActiveContractOwnerIDByTenant(c.Request.Context(), userID)
+	var propertyID, seedOwnerID uuid.UUID
+	var canSeed bool
+	if scope, hasScope := middleware.GetPropertyScope(c); hasScope {
+		propertyID = scope.PropertyID
+		seedOwnerID = scope.ActorID
+		canSeed = scope.Role == model.PropertyRoleOwner || scope.Role == model.PropertyRoleManager
+	} else {
+		var err error
+		propertyID, seedOwnerID, err = h.repo.FindActiveContractContextByTenant(c.Request.Context(), actorID)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, pgx.ErrNoRows) {
 				c.JSON(http.StatusOK, []model.HouseRule{})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch active contract: " + err.Error()})
 			return
 		}
-	} else if user.Role == "owner" {
-		ownerID = userID
-	} else {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden role"})
-		return
 	}
 
-	// Fetch rules
-	rules, err := h.repo.FindAllByOwner(c.Request.Context(), ownerID)
+	rules, err := h.repo.FindAllByProperty(c.Request.Context(), propertyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch rules: " + err.Error()})
 		return
 	}
 
 	// Seeding if database is empty for this owner
-	if len(rules) == 0 {
+	if len(rules) == 0 && canSeed {
 		var seedRules []model.HouseRule
 		for _, seed := range defaultRulesSeed {
 			seedRules = append(seedRules, model.HouseRule{
-				OwnerID:     ownerID,
+				PropertyID:  propertyID,
+				OwnerID:     seedOwnerID,
 				Category:    seed.Category,
 				Title:       seed.Title,
 				Description: seed.Description,
@@ -195,7 +185,7 @@ func (h *HouseRuleHandler) GetRules(c *gin.Context) {
 			return
 		}
 
-		rules, err = h.repo.FindAllByOwner(c.Request.Context(), ownerID)
+		rules, err = h.repo.FindAllByProperty(c.Request.Context(), propertyID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch seeded rules: " + err.Error()})
 			return
@@ -206,14 +196,9 @@ func (h *HouseRuleHandler) GetRules(c *gin.Context) {
 }
 
 func (h *HouseRuleHandler) CreateRule(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	ownerID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid owner ID"})
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
 		return
 	}
 
@@ -223,8 +208,9 @@ func (h *HouseRuleHandler) CreateRule(c *gin.Context) {
 		return
 	}
 
-	req.OwnerID = ownerID
-	err = h.repo.Create(c.Request.Context(), &req)
+	req.PropertyID = scope.PropertyID
+	req.OwnerID = scope.ActorID
+	err := h.repo.Create(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create rule: " + err.Error()})
 		return
@@ -234,14 +220,9 @@ func (h *HouseRuleHandler) CreateRule(c *gin.Context) {
 }
 
 func (h *HouseRuleHandler) UpdateRule(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	ownerID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid owner ID"})
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
 		return
 	}
 
@@ -258,10 +239,14 @@ func (h *HouseRuleHandler) UpdateRule(c *gin.Context) {
 	}
 
 	req.ID = id
-	req.OwnerID = ownerID
+	req.PropertyID = scope.PropertyID
+	req.OwnerID = scope.ActorID
 
 	err = h.repo.Update(c.Request.Context(), &req)
-	if err != nil {
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
+		return
+	} else if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update rule: " + err.Error()})
 		return
 	}
@@ -270,14 +255,9 @@ func (h *HouseRuleHandler) UpdateRule(c *gin.Context) {
 }
 
 func (h *HouseRuleHandler) DeleteRule(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	ownerID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid owner ID"})
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
 		return
 	}
 
@@ -287,8 +267,11 @@ func (h *HouseRuleHandler) DeleteRule(c *gin.Context) {
 		return
 	}
 
-	err = h.repo.Delete(c.Request.Context(), id, ownerID)
-	if err != nil {
+	err = h.repo.Delete(c.Request.Context(), id, scope.PropertyID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Rule not found"})
+		return
+	} else if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete rule: " + err.Error()})
 		return
 	}

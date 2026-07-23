@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/Yosua13/lapor-kos/backend/internal/service"
@@ -44,11 +45,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 	token := uuid.New().String()
 	user := &model.User{
-		Name:              req.Name,
-		Email:             req.Email,
-		PasswordHash:      string(hashedPassword),
-		Role:              "owner",
-		VerificationToken: &token,
+		Name:                req.Name,
+		Email:               req.Email,
+		PasswordHash:        string(hashedPassword),
+		Role:                "owner",
+		DefaultPropertyName: req.PropertyName,
+		VerificationToken:   &token,
 	}
 
 	if err := h.repo.Create(c.Request.Context(), user); err != nil {
@@ -78,6 +80,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	if !user.IsVerified {
 		c.JSON(http.StatusForbidden, gin.H{"error": "Please verify your email before logging in."})
+		return
+	}
+	if !user.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Account is inactive."})
 		return
 	}
 
@@ -308,7 +314,7 @@ func (h *AuthHandler) GetMyTenantProfile(c *gin.Context) {
 		return
 	}
 
-	profile, err := h.repo.GetTenantProfile(c.Request.Context(), userID)
+	profile, err := h.repo.GetMyTenantProfile(c.Request.Context(), userID)
 	if err != nil {
 		log.Printf("Error getting tenant profile: %v\n", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Tenant profile not found"})
@@ -356,13 +362,18 @@ func generateOTP(n int) string {
 }
 
 func (h *AuthHandler) GetTenantProfileByID(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
 		return
 	}
 
-	profile, err := h.repo.GetTenantProfile(c.Request.Context(), id)
+	profile, err := h.repo.GetTenantProfile(c.Request.Context(), scope.PropertyID, id)
 	if err != nil {
 		log.Printf("Error getting tenant profile: %v\n", err)
 		c.JSON(http.StatusNotFound, gin.H{"error": "Tenant profile not found"})
@@ -373,6 +384,11 @@ func (h *AuthHandler) GetTenantProfileByID(c *gin.Context) {
 }
 
 func (h *AuthHandler) UpdateTenantProfileByID(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
@@ -446,7 +462,7 @@ func (h *AuthHandler) UpdateTenantProfileByID(c *gin.Context) {
 		additionalDocURL = &additionalDocPath
 	}
 
-	err = h.repo.UpdateTenantProfile(c.Request.Context(), id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName, additionalDocURL)
+	err = h.repo.UpdateTenantProfile(c.Request.Context(), scope.PropertyID, id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName, additionalDocURL)
 	if err != nil {
 		log.Printf("Error updating tenant profile: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update tenant profile: " + err.Error()})
@@ -457,13 +473,18 @@ func (h *AuthHandler) UpdateTenantProfileByID(c *gin.Context) {
 }
 
 func (h *AuthHandler) CheckoutTenant(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
 		return
 	}
 
-	err = h.repo.CheckoutTenant(c.Request.Context(), id)
+	err = h.repo.CheckoutTenant(c.Request.Context(), scope.PropertyID, id)
 	if err != nil {
 		log.Printf("Error checking out tenant: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to checkout tenant: " + err.Error()})
@@ -474,6 +495,11 @@ func (h *AuthHandler) CheckoutTenant(c *gin.Context) {
 }
 
 func (h *AuthHandler) ChangeRoom(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
@@ -488,7 +514,7 @@ func (h *AuthHandler) ChangeRoom(c *gin.Context) {
 		return
 	}
 
-	err = h.repo.ChangeRoom(c.Request.Context(), id, req.RoomID)
+	err = h.repo.ChangeRoom(c.Request.Context(), scope.PropertyID, id, req.RoomID)
 	if err != nil {
 		log.Printf("Error changing room: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change room: " + err.Error()})
@@ -499,6 +525,11 @@ func (h *AuthHandler) ChangeRoom(c *gin.Context) {
 }
 
 func (h *AuthHandler) ExtendContract(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
@@ -523,13 +554,6 @@ func (h *AuthHandler) ExtendContract(c *gin.Context) {
 		return
 	}
 
-	ownerIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	ownerID, _ := uuid.Parse(ownerIDStr.(string))
-
 	startDate, err := time.Parse("2006-01-02", req.StartDate)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid start date format (must be YYYY-MM-DD)"})
@@ -540,7 +564,7 @@ func (h *AuthHandler) ExtendContract(c *gin.Context) {
 		req.PaymentInterval = "monthly"
 	}
 
-	err = h.repo.ExtendContract(c.Request.Context(), id, ownerID, startDate, req.RentalDuration, req.MonthlyRent, req.ElectricityBill, req.WaterBill, req.OtherBills, req.Deposit, req.PaymentInterval, req.PaymentDueDay, req.Notes)
+	err = h.repo.ExtendContract(c.Request.Context(), scope.PropertyID, scope.ActorID, id, startDate, req.RentalDuration, req.MonthlyRent, req.ElectricityBill, req.WaterBill, req.OtherBills, req.Deposit, req.PaymentInterval, req.PaymentDueDay, req.Notes)
 	if err != nil {
 		log.Printf("Error extending contract: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to extend contract: " + err.Error()})
@@ -551,13 +575,18 @@ func (h *AuthHandler) ExtendContract(c *gin.Context) {
 }
 
 func (h *AuthHandler) DeleteTenantByID(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
 		return
 	}
 
-	err = h.repo.DeleteTenant(c.Request.Context(), id)
+	err = h.repo.DeleteTenant(c.Request.Context(), scope.PropertyID, id)
 	if err != nil {
 		log.Printf("Error deleting tenant: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete tenant: " + err.Error()})
@@ -575,5 +604,9 @@ func (h *AuthHandler) uploadFile(c *gin.Context, fieldName string) (string, erro
 	if err != nil {
 		return "", nil // ignore error if file not uploaded
 	}
-	return h.storageService.UploadFile(fileHeader, fieldName)
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		return "", fmt.Errorf("property context is required")
+	}
+	return h.storageService.UploadPropertyFile(fileHeader, scope.PropertyID, fieldName)
 }

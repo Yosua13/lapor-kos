@@ -1,15 +1,19 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type RoomHandler struct {
@@ -22,6 +26,11 @@ func NewRoomHandler(repo *repository.RoomRepository, storageService *service.Sto
 }
 
 func (h *RoomHandler) CreateRoom(c *gin.Context) {
+	scope, exists := middleware.GetPropertyScope(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	var req model.CreateRoomRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -33,13 +42,21 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 	}
 
 	room := &model.Room{
+		PropertyID:    scope.PropertyID,
 		RoomNumber:    req.RoomNumber,
 		PricePerMonth: req.PricePerMonth,
 		Description:   req.Description,
 		Status:        req.Status,
+		Type:          req.Type,
+		Floor:         req.Floor,
+		IsDraft:       req.IsDraft,
 	}
 
-	if err := h.repo.Create(c.Request.Context(), room); err != nil {
+	if err := h.repo.Create(c.Request.Context(), scope.PropertyID, room); err != nil {
+		if isUniqueViolation(err) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Room number already exists in this property"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create room"})
 		return
 	}
@@ -48,7 +65,12 @@ func (h *RoomHandler) CreateRoom(c *gin.Context) {
 }
 
 func (h *RoomHandler) GetRooms(c *gin.Context) {
-	rooms, err := h.repo.FindAll(c.Request.Context())
+	scope, exists := middleware.GetPropertyScope(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	rooms, err := h.repo.FindAll(c.Request.Context(), scope.PropertyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch rooms"})
 		return
@@ -57,13 +79,18 @@ func (h *RoomHandler) GetRooms(c *gin.Context) {
 }
 
 func (h *RoomHandler) GetRoom(c *gin.Context) {
+	scope, exists := middleware.GetPropertyScope(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid room ID"})
 		return
 	}
 
-	room, err := h.repo.FindByID(c.Request.Context(), id)
+	room, err := h.repo.FindByID(c.Request.Context(), scope.PropertyID, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
 		return
@@ -72,6 +99,11 @@ func (h *RoomHandler) GetRoom(c *gin.Context) {
 }
 
 func (h *RoomHandler) UpdateRoom(c *gin.Context) {
+	scope, exists := middleware.GetPropertyScope(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid room ID"})
@@ -86,15 +118,25 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 
 	room := &model.Room{
 		ID:            id,
+		PropertyID:    scope.PropertyID,
 		RoomNumber:    req.RoomNumber,
 		PricePerMonth: req.PricePerMonth,
 		Description:   req.Description,
 		Status:        req.Status,
 		Floor:         req.Floor,
 		Type:          req.Type,
+		IsDraft:       req.IsDraft,
 	}
 
-	if err := h.repo.Update(c.Request.Context(), room); err != nil {
+	if err := h.repo.Update(c.Request.Context(), scope.PropertyID, room); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+			return
+		}
+		if isUniqueViolation(err) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Room number already exists in this property"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update room"})
 		return
 	}
@@ -103,6 +145,11 @@ func (h *RoomHandler) UpdateRoom(c *gin.Context) {
 }
 
 func (h *RoomHandler) DeleteRoom(c *gin.Context) {
+	scope, exists := middleware.GetPropertyScope(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid room ID"})
@@ -112,7 +159,15 @@ func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 	deleteTenantStr := c.Query("delete_tenant")
 	deleteTenant := deleteTenantStr == "true"
 
-	if err := h.repo.DeleteWithTenant(c.Request.Context(), id, deleteTenant); err != nil {
+	if err := h.repo.DeleteWithTenant(c.Request.Context(), scope.PropertyID, id, deleteTenant); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+			return
+		}
+		if err.Error() == "room has an active tenancy" {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete room: " + err.Error()})
 		return
 	}
@@ -121,14 +176,12 @@ func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 }
 
 func (h *RoomHandler) AssignTenant(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
+	scope, exists := middleware.GetPropertyScope(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	ownerID, _ := uuid.Parse(userIDStr.(string))
-
-    roomID, err := uuid.Parse(c.Param("id"))
+	roomID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid room ID"})
 		return
@@ -155,21 +208,21 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 		rentalDuration = 1
 	}
 
-    monthlyRentStr := c.PostForm("monthly_rent")
+	monthlyRentStr := c.PostForm("monthly_rent")
 	monthlyRent, _ := strconv.ParseFloat(monthlyRentStr, 64)
 
 	ktpPath, _ := h.uploadFile(c, "ktp")
 	selfiePath, _ := h.uploadFile(c, "selfie")
 
-    // Get room details for price if monthlyRent is not provided
-    if monthlyRent <= 0 {
-        room, err := h.repo.FindByID(c.Request.Context(), roomID)
-        if err != nil {
-            c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
-            return
-        }
-        monthlyRent = room.PricePerMonth
-    }
+	// Get room details for price if monthlyRent is not provided
+	if monthlyRent <= 0 {
+		room, err := h.repo.FindByID(c.Request.Context(), scope.PropertyID, roomID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+			return
+		}
+		monthlyRent = room.PricePerMonth
+	}
 
 	user := &model.User{
 		Name:      name,
@@ -188,7 +241,7 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 	paymentDueDayStr := c.PostForm("payment_due_day")
 	paymentDueDay, _ := strconv.Atoi(paymentDueDayStr)
 	notes := c.PostForm("notes")
-	
+
 	paymentInterval := c.PostForm("payment_interval")
 	if paymentInterval == "" {
 		paymentInterval = "monthly"
@@ -203,21 +256,25 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 		totalPrice = monthlyRent + electricityBill + waterBill + otherBills + deposit
 	}
 
-    contract := &model.Contract{
-        StartDate:      entryDate,
-        RentalDuration: rentalDuration,
-        MonthlyRent:    monthlyRent,
-        TotalPrice:     totalPrice,
-        ElectricityBill: electricityBill,
-        WaterBill:      waterBill,
-        OtherBills:     otherBills,
-        Deposit:        deposit,
-        PaymentInterval: paymentInterval,
-        PaymentDueDay:  paymentDueDay,
-        Notes:          notes,
-    }
+	contract := &model.Contract{
+		StartDate:       entryDate,
+		RentalDuration:  rentalDuration,
+		MonthlyRent:     monthlyRent,
+		TotalPrice:      totalPrice,
+		ElectricityBill: electricityBill,
+		WaterBill:       waterBill,
+		OtherBills:      otherBills,
+		Deposit:         deposit,
+		PaymentInterval: paymentInterval,
+		PaymentDueDay:   paymentDueDay,
+		Notes:           notes,
+	}
 
-	if err := h.repo.AssignTenant(c.Request.Context(), roomID, user, contract, ownerID); err != nil {
+	if err := h.repo.AssignTenant(c.Request.Context(), scope.PropertyID, scope.ActorID, roomID, user, contract); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign tenant to room: " + err.Error()})
 		return
 	}
@@ -226,13 +283,11 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 }
 
 func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
+	scope, exists := middleware.GetPropertyScope(c)
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
-	ownerID, _ := uuid.Parse(userIDStr.(string))
-
 	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form"})
 		return
@@ -257,6 +312,7 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	isDraft := isDraftStr == "true"
 
 	room := &model.Room{
+		PropertyID:    scope.PropertyID,
 		RoomNumber:    roomNumber,
 		PricePerMonth: price,
 		Description:   description,
@@ -265,7 +321,7 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 		Floor:         floor,
 		IsDraft:       isDraft,
 	}
-	
+
 	if roomIDStr != "" {
 		parsedID, err := uuid.Parse(roomIDStr)
 		if err == nil {
@@ -372,17 +428,17 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	}
 
 	contract := &model.Contract{
-		StartDate:      entryDate,
-		RentalDuration: rentalDuration,
-		MonthlyRent:    price,
-		TotalPrice:     totalPrice,
+		StartDate:       entryDate,
+		RentalDuration:  rentalDuration,
+		MonthlyRent:     price,
+		TotalPrice:      totalPrice,
 		ElectricityBill: electricityBill,
-        WaterBill:      waterBill,
-        OtherBills:     otherBills,
-		Deposit:        deposit,
-        PaymentInterval: paymentInterval,
-        PaymentDueDay:  paymentDueDay,
-        Notes:          notes,
+		WaterBill:       waterBill,
+		OtherBills:      otherBills,
+		Deposit:         deposit,
+		PaymentInterval: paymentInterval,
+		PaymentDueDay:   paymentDueDay,
+		Notes:           notes,
 	}
 
 	payment := &model.Payment{}
@@ -397,28 +453,28 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	}
 
 	if room.ID != uuid.Nil {
-		if err := h.repo.UpdateWithTenant(c.Request.Context(), room, user, contract, payment, ownerID); err != nil {
+		if err := h.repo.UpdateWithTenant(c.Request.Context(), scope.PropertyID, scope.ActorID, room, user, contract, payment); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update draft room and tenant: " + err.Error()})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"message": updateMsg, 
-			"room": room,
-			"tenant": user,
+			"message":  updateMsg,
+			"room":     room,
+			"tenant":   user,
 			"contract": contract,
-			"payment": payment,
+			"payment":  payment,
 		})
 	} else {
-		if err := h.repo.CreateWithTenant(c.Request.Context(), room, user, contract, payment, ownerID); err != nil {
+		if err := h.repo.CreateWithTenant(c.Request.Context(), scope.PropertyID, scope.ActorID, room, user, contract, payment); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create room and tenant: " + err.Error()})
 			return
 		}
 		c.JSON(http.StatusCreated, gin.H{
-			"message": createMsg, 
-			"room": room,
-			"tenant": user,
+			"message":  createMsg,
+			"room":     room,
+			"tenant":   user,
 			"contract": contract,
-			"payment": payment,
+			"payment":  payment,
 		})
 	}
 }
@@ -429,5 +485,14 @@ func (h *RoomHandler) uploadFile(c *gin.Context, fieldName string) (string, erro
 	if err != nil {
 		return "", nil // ignore error if file not uploaded
 	}
-	return h.storageService.UploadFile(fileHeader, fieldName)
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		return "", errors.New("property context is required")
+	}
+	return h.storageService.UploadPropertyFile(fileHeader, scope.PropertyID, fieldName)
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

@@ -27,10 +27,15 @@ import {
   AlertCircle,
   ChevronLeft
 } from 'lucide-react';
-import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
-import { getToken } from '@/lib/auth';
+import { apiFetch, getImageUrl } from '@/lib/api';
+import { CAPABILITIES } from '@/features/authorization/permissions';
+import { useAuthorization } from '@/features/authorization/useAuthorization';
 
 export default function PaymentsPage() {
+  const { can } = useAuthorization();
+  const canCreateBill = can(CAPABILITIES.PAYMENT_WRITE);
+  const canVerifyPayment = can(CAPABILITIES.PAYMENT_VERIFY);
+  const canExportPayment = can(CAPABILITIES.REPORT_EXPORT);
   const formatRupiah = (value: number | string) => {
     if (value === undefined || value === null) return '';
     const num = typeof value === 'string' ? parseInt(value.replace(/\D/g, '')) || 0 : value;
@@ -281,7 +286,7 @@ export default function PaymentsPage() {
       </div>
 
       {/* TABS (Pills) for Owner */}
-      {role === 'owner' && (
+      {role !== 'tenant' && (
         <div className="flex flex-wrap items-center gap-3 mt-2 mb-6 shrink-0">
           <button
             onClick={() => setFilterStatus('')}
@@ -336,7 +341,7 @@ export default function PaymentsPage() {
         <div className="shrink-0 flex flex-col lg:flex-row items-center justify-between gap-4 p-6 lg:px-8 border-b border-gray-100">
           
           <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto flex-1">
-            {role === 'owner' && (
+            {role !== 'tenant' && (
               <>
                 {/* Month Dropdown */}
                 <div className="relative w-full sm:w-[150px]">
@@ -373,10 +378,12 @@ export default function PaymentsPage() {
           </div>
 
           <div className="flex items-center gap-3 w-full lg:w-auto shrink-0 justify-end">
-            <button className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-[#1f2937] font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm bg-white">
-              <Download className="w-4 h-4" /> Export Data
-            </button>
-            {role === 'owner' && (
+            {canExportPayment && (
+              <button className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-[#1f2937] font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm bg-white">
+                <Download className="w-4 h-4" /> Export Data
+              </button>
+            )}
+            {canCreateBill && (
               <button
                 type="button"
                 onClick={() => setShowCreateBillModal(true)}
@@ -478,7 +485,7 @@ export default function PaymentsPage() {
                               Bayar
                             </button>
                           )}
-                          {role === 'owner' && isPending && (
+                          {canVerifyPayment && isPending && (
                             <button 
                               onClick={() => openVerifyModal(p)}
                               className="px-3.5 py-2 text-[11px] font-bold text-amber-600 border border-amber-500 hover:bg-amber-50 rounded-xl transition-colors inline-flex items-center gap-1 shadow-sm bg-white"
@@ -486,7 +493,7 @@ export default function PaymentsPage() {
                               <CheckCircle2 className="w-3.5 h-3.5" /> Verifikasi
                             </button>
                           )}
-                          {role === 'owner' && !isPending && (
+                          {role !== 'tenant' && !isPending && (
                             <button 
                               onClick={() => openVerifyModal(p)}
                               className="px-3.5 py-2 text-[11px] font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors inline-flex items-center gap-1"

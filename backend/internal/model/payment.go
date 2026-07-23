@@ -8,6 +8,7 @@ import (
 
 type Payment struct {
 	ID                uuid.UUID  `json:"id" db:"id"`
+	PropertyID        uuid.UUID  `json:"property_id" db:"property_id"`
 	ContractID        uuid.UUID  `json:"contract_id" db:"contract_id"`
 	OwnerID           *uuid.UUID `json:"owner_id,omitempty" db:"owner_id"`
 	PeriodMonth       int        `json:"period_month" db:"period_month"`

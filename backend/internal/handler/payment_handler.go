@@ -1,26 +1,40 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"html"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type PaymentHandler struct {
-	repo           *repository.PaymentRepository
+	repo           paymentRepository
 	storageService *service.StorageService
 	userRepo       repository.UserRepo
 }
 
-func NewPaymentHandler(repo *repository.PaymentRepository, storageService *service.StorageService, userRepo ...repository.UserRepo) *PaymentHandler {
+type paymentRepository interface {
+	Create(context.Context, *model.Payment) error
+	FindByID(context.Context, uuid.UUID, uuid.UUID) (*model.Payment, error)
+	FindByIDForUser(context.Context, uuid.UUID, uuid.UUID) (*model.Payment, error)
+	FindAll(context.Context, uuid.UUID, string, int, int, string, string) ([]model.Payment, error)
+	FindByUserID(context.Context, uuid.UUID) ([]model.Payment, error)
+	Update(context.Context, uuid.UUID, *model.Payment) (*model.Payment, error)
+	SubmitProof(context.Context, uuid.UUID, uuid.UUID, string, string, float64, string) error
+}
+
+func NewPaymentHandler(repo paymentRepository, storageService *service.StorageService, userRepo ...repository.UserRepo) *PaymentHandler {
 	handler := &PaymentHandler{repo: repo, storageService: storageService}
 	if len(userRepo) > 0 {
 		handler.userRepo = userRepo[0]
@@ -29,9 +43,9 @@ func NewPaymentHandler(repo *repository.PaymentRepository, storageService *servi
 }
 
 func (h *PaymentHandler) GetAllPayments(c *gin.Context) {
-	ownerID, ok := currentUserID(c)
+	scope, ok := middleware.GetPropertyScope(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
 		return
 	}
 
@@ -49,7 +63,7 @@ func (h *PaymentHandler) GetAllPayments(c *gin.Context) {
 		year, _ = strconv.Atoi(yearStr)
 	}
 
-	payments, err := h.repo.FindAll(c.Request.Context(), ownerID, status, month, year, contractID, userID)
+	payments, err := h.repo.FindAll(c.Request.Context(), scope.PropertyID, status, month, year, contractID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payments"})
 		return
@@ -81,20 +95,24 @@ func (h *PaymentHandler) GetPayment(c *gin.Context) {
 		return
 	}
 
-	payment, err := h.repo.FindByID(c.Request.Context(), id)
-	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
-		return
-	}
-
 	userID, ok := currentUserID(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
-	if !canAccessPayment(payment, userID) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+	var payment *model.Payment
+	if scope, hasScope := middleware.GetPropertyScope(c); hasScope {
+		payment, err = h.repo.FindByID(c.Request.Context(), id, scope.PropertyID)
+	} else {
+		payment, err = h.repo.FindByIDForUser(c.Request.Context(), id, userID)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payment"})
 		return
 	}
 
@@ -102,6 +120,12 @@ func (h *PaymentHandler) GetPayment(c *gin.Context) {
 }
 
 func (h *PaymentHandler) CreatePaymentBill(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
+		return
+	}
+
 	var req struct {
 		ContractID        string  `json:"contract_id" binding:"required"`
 		PeriodMonth       int     `json:"period_month" binding:"required"`
@@ -131,12 +155,10 @@ func (h *PaymentHandler) CreatePaymentBill(c *gin.Context) {
 		return
 	}
 
-	userIDStr, _ := c.Get("user_id")
-	ownerID, _ := uuid.Parse(userIDStr.(string))
-
 	payment := &model.Payment{
+		PropertyID:        scope.PropertyID,
 		ContractID:        contractUUID,
-		OwnerID:           &ownerID,
+		OwnerID:           &scope.ActorID,
 		PeriodMonth:       req.PeriodMonth,
 		PeriodYear:        req.PeriodYear,
 		AmountRent:        req.AmountRent,
@@ -149,7 +171,10 @@ func (h *PaymentHandler) CreatePaymentBill(c *gin.Context) {
 		Notes:             req.Notes,
 	}
 
-	if err := h.repo.Create(c.Request.Context(), payment); err != nil {
+	if err := h.repo.Create(c.Request.Context(), payment); errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Contract not found"})
+		return
+	} else if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create payment bill"})
 		return
 	}
@@ -176,24 +201,28 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 		return
 	}
 
-	payment, err := h.repo.FindByID(c.Request.Context(), id)
-	if err != nil {
+	// Authorize before uploading so a guessed foreign payment UUID cannot be
+	// used to create orphaned storage objects.
+	payment, err := h.repo.FindByIDForUser(c.Request.Context(), id, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
 		return
-	}
-	if !isPaymentTenant(payment, userID) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to authorize payment"})
 		return
 	}
 
 	// Handle file upload to Supabase Storage
-	proofPath, err := h.uploadFile(c, "proof")
+	proofPath, err := h.uploadFile(c, "proof", payment.PropertyID, "payment-proof")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to upload proof photo: " + err.Error()})
 		return
 	}
 
-	if err := h.repo.SubmitProof(c.Request.Context(), id, proofPath, req.PaymentMethod, req.TotalPaid, req.Notes); err != nil {
+	if err := h.repo.SubmitProof(c.Request.Context(), id, userID, proofPath, req.PaymentMethod, req.TotalPaid, req.Notes); errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		return
+	} else if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit payment proof"})
 		return
 	}
@@ -202,6 +231,12 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 }
 
 func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payment ID"})
@@ -214,23 +249,16 @@ func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
 		return
 	}
 
-	payment, err := h.repo.FindByID(c.Request.Context(), id)
-	if err != nil {
+	payment, err := h.repo.FindByID(c.Request.Context(), id, scope.PropertyID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
 		return
-	}
-
-	ownerID, ok := currentUserID(c)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	if payment.Contract == nil || payment.Contract.OwnerID != ownerID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payment"})
 		return
 	}
 
-	payment.OwnerID = &ownerID
+	payment.OwnerID = &scope.ActorID
 	payment.TotalPaid = req.TotalPaid
 	payment.Status = req.Status
 	payment.Notes = req.Notes
@@ -252,12 +280,16 @@ func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
 		payment.PaidAt = &now
 	}
 
-	if err := h.repo.Update(c.Request.Context(), payment); err != nil {
+	updatedPayment, err := h.repo.Update(c.Request.Context(), scope.PropertyID, payment)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		return
+	} else if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify payment"})
 		return
 	}
 
-	c.JSON(http.StatusOK, payment)
+	c.JSON(http.StatusOK, updatedPayment)
 }
 
 func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
@@ -267,18 +299,23 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 		return
 	}
 
-	payment, err := h.repo.FindByID(c.Request.Context(), id)
-	if err != nil {
-		c.String(http.StatusNotFound, "Receipt not found")
-		return
-	}
 	userID, ok := currentUserID(c)
 	if !ok {
 		c.String(http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	if !canAccessPayment(payment, userID) {
-		c.String(http.StatusForbidden, "Forbidden")
+	var payment *model.Payment
+	if scope, hasScope := middleware.GetPropertyScope(c); hasScope {
+		payment, err = h.repo.FindByID(c.Request.Context(), id, scope.PropertyID)
+	} else {
+		payment, err = h.repo.FindByIDForUser(c.Request.Context(), id, userID)
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.String(http.StatusNotFound, "Receipt not found")
+		return
+	}
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Failed to fetch receipt")
 		return
 	}
 
@@ -609,13 +646,13 @@ func formatRupiah(amount float64) string {
 	return "Rp " + res
 }
 
-// uploadFile uploads a file from the multipart form to Supabase Storage and returns its public URL.
-func (h *PaymentHandler) uploadFile(c *gin.Context, fieldName string) (string, error) {
+// uploadFile stores a proof in the private namespace of its contract property.
+func (h *PaymentHandler) uploadFile(c *gin.Context, fieldName string, propertyID uuid.UUID, prefix string) (string, error) {
 	fileHeader, err := c.FormFile(fieldName)
 	if err != nil {
 		return "", err
 	}
-	return h.storageService.UploadFile(fileHeader, "payment_"+fieldName)
+	return h.storageService.UploadPropertyFile(fileHeader, propertyID, prefix)
 }
 
 func currentUserID(c *gin.Context) (uuid.UUID, bool) {
@@ -628,21 +665,4 @@ func currentUserID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return userID, true
-}
-
-func canAccessPayment(payment *model.Payment, userID uuid.UUID) bool {
-	if isPaymentTenant(payment, userID) {
-		return true
-	}
-	if payment.OwnerID != nil && *payment.OwnerID == userID {
-		return true
-	}
-	return payment.Contract != nil && payment.Contract.OwnerID == userID
-}
-
-func isPaymentTenant(payment *model.Payment, userID uuid.UUID) bool {
-	return payment != nil &&
-		payment.Contract != nil &&
-		payment.Contract.User != nil &&
-		payment.Contract.User.ID == userID
 }

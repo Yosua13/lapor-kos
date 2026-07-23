@@ -25,7 +25,7 @@ func RoleMiddleware(db *pgxpool.Pool, allowedRoles ...string) gin.HandlerFunc {
 		}
 
 		var role string
-		err = db.QueryRow(c.Request.Context(), "SELECT role FROM users WHERE id = $1", userID).Scan(&role)
+		err = db.QueryRow(c.Request.Context(), "SELECT role FROM users WHERE id = $1 AND is_active = TRUE", userID).Scan(&role)
 		if err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden: user not found"})
 			c.Abort()

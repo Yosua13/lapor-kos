@@ -16,8 +16,7 @@ import {
   X,
   Wallet
 } from 'lucide-react';
-import { apiFetch, API_URL } from '@/lib/api';
-import { getToken } from '@/lib/auth';
+import { apiBlob, apiFetch } from '@/lib/api';
 
 interface Payment {
   id: string;
@@ -230,28 +229,10 @@ export default function ReportsPage() {
     if (filterMonth !== 'all') params.set('month', filterMonth);
     if (filterYear !== 'all') params.set('year', filterYear);
     const query = params.toString();
-    return `${API_URL}/api/reports/financial.pdf${query ? `?${query}` : ''}`;
+    return `/api/reports/financial.pdf${query ? `?${query}` : ''}`;
   };
 
-  const fetchReportPdf = async () => {
-    const token = getToken();
-    const response = await fetch(getReportUrl(), {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined
-    });
-
-    if (!response.ok) {
-      let message = 'Gagal membuat laporan PDF';
-      try {
-        const data = await response.json();
-        message = data.error || message;
-      } catch {
-        // Keep the default message when the response is not JSON.
-      }
-      throw new Error(message);
-    }
-
-    return response.blob();
-  };
+  const fetchReportPdf = async () => apiBlob(getReportUrl());
 
   const previewReport = async () => {
     setIsPdfLoading(true);

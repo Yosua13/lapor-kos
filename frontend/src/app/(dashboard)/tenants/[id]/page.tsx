@@ -42,7 +42,7 @@ import {
   ChevronLeft,
   PhoneCall
 } from 'lucide-react';
-import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
+import { apiFetch, getImageUrl } from '@/lib/api';
 
 interface Tenant {
   id: string;
@@ -276,12 +276,7 @@ export default function TenantProfilePage() {
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-      const response = await fetch(`${API_URL}/api/tenants/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!response.ok) throw new Error('Gagal menghapus penghuni');
+      await apiFetch(`/api/tenants/${id}`, { method: 'DELETE' });
       router.push('/tenants');
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -306,14 +301,10 @@ export default function TenantProfilePage() {
       if (files.ktp) data.append('ktp', files.ktp);
       if (files.selfie) data.append('selfie', files.selfie);
 
-      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-      const response = await fetch(`${API_URL}/api/tenants/${id}`, {
+      await apiFetch(`/api/tenants/${id}`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: data
       });
-
-      if (!response.ok) throw new Error('Gagal memperbarui profil');
 
       setIsEditing(false);
       setFiles({ ktp: null, selfie: null });
@@ -353,14 +344,10 @@ export default function TenantProfilePage() {
       if (editFiles.selfie) data.append('selfie', editFiles.selfie);
       if (editFiles.additional_doc) data.append('additional_doc', editFiles.additional_doc);
 
-      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-      const response = await fetch(`${API_URL}/api/tenants/${id}`, {
+      await apiFetch(`/api/tenants/${id}`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: data
       });
-
-      if (!response.ok) throw new Error('Gagal memperbarui profil');
 
       setIsEditing(false);
       setEditFiles({ ktp: null, selfie: null, additional_doc: null });
@@ -379,20 +366,10 @@ export default function TenantProfilePage() {
 
     setIsChangingRoom(true);
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-      const response = await fetch(`${API_URL}/api/tenants/${id}/change-room`, {
+      await apiFetch(`/api/tenants/${id}/change-room`, {
         method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify({ room_id: selectedRoomId })
       });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Gagal memindahkan kamar');
-      }
 
       setShowChangeRoomModal(false);
       fetchData();
@@ -412,7 +389,6 @@ export default function TenantProfilePage() {
 
     setIsExtending(true);
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
       const payload = {
         start_date: extendData.start_date,
         rental_duration: parseInt(extendData.rental_duration, 10),
@@ -426,19 +402,10 @@ export default function TenantProfilePage() {
         notes: extendData.notes
       };
 
-      const response = await fetch(`${API_URL}/api/tenants/${id}/extend-contract`, {
+      await apiFetch(`/api/tenants/${id}/extend-contract`, {
         method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
         body: JSON.stringify(payload)
       });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Gagal memperpanjang kontrak');
-      }
 
       setShowExtendModal(false);
       fetchData();
@@ -453,16 +420,7 @@ export default function TenantProfilePage() {
   const handleCheckoutSubmit = async () => {
     setIsCheckingOut(true);
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-      const response = await fetch(`${API_URL}/api/tenants/${id}/checkout`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Gagal melakukan checkout');
-      }
+      await apiFetch(`/api/tenants/${id}/checkout`, { method: 'POST' });
 
       setShowCheckoutModal(false);
       fetchData();

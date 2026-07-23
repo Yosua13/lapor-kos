@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -8,9 +9,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
-func AuthMiddleware() gin.HandlerFunc {
+type ActiveUserReader interface {
+	IsUserActive(context.Context, uuid.UUID) (bool, error)
+}
+
+func AuthMiddleware(activeUserReaders ...ActiveUserReader) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		tokenString := ""
@@ -65,6 +71,20 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found in token"})
 			c.Abort()
 			return
+		}
+		if len(activeUserReaders) > 0 && activeUserReaders[0] != nil {
+			parsedUserID, parseErr := uuid.Parse(userID)
+			if parseErr != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user ID"})
+				c.Abort()
+				return
+			}
+			active, lookupErr := activeUserReaders[0].IsUserActive(c.Request.Context(), parsedUserID)
+			if lookupErr != nil || !active {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Account is inactive"})
+				c.Abort()
+				return
+			}
 		}
 
 		c.Set("user_id", userID)

@@ -28,13 +28,15 @@ type User struct {
 	EmergencyContactRelation *string    `json:"emergency_contact_relation,omitempty" db:"emergency_contact_relation"`
 	EmergencyContactName     *string    `json:"emergency_contact_name,omitempty" db:"emergency_contact_name"`
 	AdditionalDocURL         *string    `json:"additional_doc_url,omitempty" db:"additional_doc_url"`
+	DefaultPropertyName      string     `json:"-" db:"-"`
 	CreatedAt                time.Time  `json:"created_at" db:"created_at"`
 }
 
 type RegisterRequest struct {
-	Name     string `json:"name" binding:"required"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
+	Name         string `json:"name" binding:"required"`
+	Email        string `json:"email" binding:"required,email"`
+	Password     string `json:"password" binding:"required,min=8"`
+	PropertyName string `json:"property_name" binding:"required"`
 }
 
 type LoginRequest struct {

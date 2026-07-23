@@ -19,7 +19,7 @@ import {
   Loader2,
   FileText
 } from 'lucide-react';
-import { apiFetch, API_URL } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 
 const STEPS = [
   { id: 1, title: 'Data Kamar' },
@@ -196,8 +196,6 @@ function AddRoomContent() {
   const submitToServer = async (isDraft: boolean) => {
     setIsSubmitting(true);
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
-
       const data = new FormData();
       data.append('room_number', roomData.room_number);
       data.append('price_per_month', roomData.price_per_month.replace(/\./g, ''));
@@ -239,18 +237,10 @@ function AddRoomContent() {
       if (files.ktp) data.append('ktp', files.ktp);
       if (files.selfie) data.append('selfie', files.selfie);
 
-      const response = await fetch(`${API_URL}/api/rooms/with-tenant`, {
+      const resData = await apiFetch<{ room?: { id?: string } }>('/api/rooms/with-tenant', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
         body: data
       });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || 'Gagal menyimpan data');
-      }
-
-      const resData = await response.json();
 
       if (isDraft) {
         if (resData.room && resData.room.id) {

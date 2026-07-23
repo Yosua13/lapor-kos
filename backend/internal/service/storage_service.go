@@ -2,10 +2,12 @@ package service
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -45,9 +47,24 @@ func (s *StorageService) IsConfigured() bool {
 	return s.supabaseURL != "" && s.serviceKey != "" && s.bucket != ""
 }
 
-// UploadFile uploads a file from a multipart.FileHeader to Supabase Storage and returns the public URL.
-// prefix is an optional prefix string (e.g., "ktp", "selfie", "payment") for the filename.
+// UploadFile is retained for tenant compatibility. New staff-managed uploads
+// must use UploadPropertyFile so an object can never be written outside a
+// property namespace. It returns a private object key, not a public URL.
 func (s *StorageService) UploadFile(fileHeader *multipart.FileHeader, prefix string) (string, error) {
+	return s.uploadPrivateFile(fileHeader, "legacy", prefix)
+}
+
+// UploadPropertyFile stores an object in a private, property-specific prefix.
+// The returned value is an opaque object key. Call CreateSignedURL only after
+// the caller has been authorized for that property.
+func (s *StorageService) UploadPropertyFile(fileHeader *multipart.FileHeader, propertyID uuid.UUID, prefix string) (string, error) {
+	if propertyID == uuid.Nil {
+		return "", fmt.Errorf("property ID is required")
+	}
+	return s.uploadPrivateFile(fileHeader, "properties/"+propertyID.String(), prefix)
+}
+
+func (s *StorageService) uploadPrivateFile(fileHeader *multipart.FileHeader, namespace, prefix string) (string, error) {
 	if !s.IsConfigured() {
 		return "", fmt.Errorf("supabase storage is not configured")
 	}
@@ -79,9 +96,10 @@ func (s *StorageService) UploadFile(fileHeader *multipart.FileHeader, prefix str
 
 	// Generate a unique filename
 	filename := fmt.Sprintf("%s_%d_%s%s", sanitizeUploadPrefix(prefix), time.Now().UnixNano(), uuid.New().String(), ext)
+	objectKey := strings.Trim(namespace, "/") + "/" + filename
 
 	// Build the Supabase Storage upload URL
-	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", s.supabaseURL, s.bucket, filename)
+	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", strings.TrimRight(s.supabaseURL, "/"), url.PathEscape(s.bucket), escapeObjectKey(objectKey))
 
 	// Create and send the HTTP PUT request
 	req, err := http.NewRequest(http.MethodPost, uploadURL, bytes.NewReader(fileBytes))
@@ -90,7 +108,7 @@ func (s *StorageService) UploadFile(fileHeader *multipart.FileHeader, prefix str
 	}
 	req.Header.Set("Authorization", "Bearer "+s.serviceKey)
 	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("x-upsert", "true")
+	req.Header.Set("x-upsert", "false")
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -103,9 +121,65 @@ func (s *StorageService) UploadFile(fileHeader *multipart.FileHeader, prefix str
 		return "", fmt.Errorf("supabase upload failed (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	// Build and return the public URL
-	publicURL := fmt.Sprintf("%s/storage/v1/object/public/%s/%s", s.supabaseURL, s.bucket, filename)
-	return publicURL, nil
+	return objectKey, nil
+}
+
+// CreateSignedURL exchanges a private object key for a short-lived URL. The
+// caller must authorize property/resource access before invoking this method.
+func (s *StorageService) CreateSignedURL(objectKey string, expiresIn time.Duration) (string, error) {
+	if !s.IsConfigured() {
+		return "", fmt.Errorf("supabase storage is not configured")
+	}
+	objectKey = strings.TrimSpace(strings.TrimLeft(objectKey, "/"))
+	if objectKey == "" || strings.Contains(objectKey, "..") {
+		return "", fmt.Errorf("invalid object key")
+	}
+	seconds := int(expiresIn.Seconds())
+	if seconds <= 0 || seconds > 15*60 {
+		seconds = 5 * 60
+	}
+	body := []byte(fmt.Sprintf(`{"expiresIn":%d}`, seconds))
+	signURL := fmt.Sprintf("%s/storage/v1/object/sign/%s/%s", strings.TrimRight(s.supabaseURL, "/"), url.PathEscape(s.bucket), escapeObjectKey(objectKey))
+	req, err := http.NewRequest(http.MethodPost, signURL, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+s.serviceKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign storage object: %w", err)
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("supabase sign failed (status %d): %s", resp.StatusCode, string(responseBody))
+	}
+	// Avoid another dependency for a two-field Supabase response.
+	var payload struct {
+		SignedURL string `json:"signedURL"`
+	}
+	if err := json.Unmarshal(responseBody, &payload); err != nil {
+		return "", fmt.Errorf("invalid signed URL response: %w", err)
+	}
+	if payload.SignedURL == "" {
+		return "", fmt.Errorf("signed URL response was empty")
+	}
+	if strings.HasPrefix(payload.SignedURL, "http://") || strings.HasPrefix(payload.SignedURL, "https://") {
+		return payload.SignedURL, nil
+	}
+	return strings.TrimRight(s.supabaseURL, "/") + "/storage/v1" + payload.SignedURL, nil
+}
+
+func escapeObjectKey(key string) string {
+	parts := strings.Split(strings.Trim(key, "/"), "/")
+	for i := range parts {
+		parts[i] = url.PathEscape(parts[i])
+	}
+	return strings.Join(parts, "/")
 }
 
 func sanitizeUploadPrefix(prefix string) string {
