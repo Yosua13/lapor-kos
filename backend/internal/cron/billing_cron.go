@@ -41,7 +41,7 @@ func (c *BillingCron) processMonthlyBills() {
 
 	// Get all active contracts that are paid monthly
 	query := `
-		SELECT id, owner_id, monthly_rent, electricity_bill, water_bill, other_bills, payment_due_day 
+		SELECT id, property_id, owner_id, monthly_rent, electricity_bill, water_bill, other_bills, payment_due_day
 		FROM contracts 
 		WHERE status = 'active' AND payment_interval = 'monthly'
 	`
@@ -57,55 +57,36 @@ func (c *BillingCron) processMonthlyBills() {
 	currentYear := now.Year()
 
 	for rows.Next() {
-		var contractID, ownerID uuid.UUID
+		var contractID, propertyID, ownerID uuid.UUID
 		var monthlyRent, electricityBill, waterBill, otherBills float64
 		var paymentDueDay int
 
-		err := rows.Scan(&contractID, &ownerID, &monthlyRent, &electricityBill, &waterBill, &otherBills, &paymentDueDay)
+		err := rows.Scan(&contractID, &propertyID, &ownerID, &monthlyRent, &electricityBill, &waterBill, &otherBills, &paymentDueDay)
 		if err != nil {
 			log.Printf("[CRON] Row scan error: %v", err)
 			continue
 		}
 
-		// Check if payment for current month and year already exists
-		var exists bool
-		checkQuery := `
-			SELECT EXISTS(
-				SELECT 1 FROM payments 
-				WHERE contract_id = $1 AND period_month = $2 AND period_year = $3
-			)
-		`
-		err = c.db.QueryRow(ctx, checkQuery, contractID, currentMonth, currentYear).Scan(&exists)
+		// The database uniqueness constraint is the concurrency boundary. An
+		// atomic INSERT avoids the race in the old SELECT EXISTS + INSERT flow.
+		dueDate := time.Date(currentYear, now.Month(), paymentDueDay, 23, 59, 59, 0, now.Location())
+		insertQuery := `
+			INSERT INTO payments (
+				id, property_id, contract_id, owner_id, period_month, period_year,
+				amount_rent, amount_electricity, amount_water, amount_other,
+				total_paid, status, due_date, notes
+			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			ON CONFLICT (contract_id, period_month, period_year) DO NOTHING`
+		paymentID := uuid.New()
+		tag, err := c.db.Exec(ctx, insertQuery,
+			paymentID, propertyID, contractID, ownerID, currentMonth, currentYear,
+			monthlyRent, electricityBill, waterBill, otherBills,
+			0, "unpaid", dueDate, "Tagihan bulanan otomatis dibuat sistem.",
+		)
 		if err != nil {
-			log.Printf("[CRON] Failed to check existing payment: %v", err)
-			continue
-		}
-
-		if !exists {
-			// Generate due date based on payment_due_day (e.g., the 5th of this month)
-			dueDate := time.Date(currentYear, now.Month(), paymentDueDay, 23, 59, 59, 0, now.Location())
-			
-			// If payment_due_day is in the past (e.g. today is 10th but due is 5th), it means the bill is already overdue upon creation, or we can just leave it as is.
-			// Usually, cron creates it a few days *before* the month starts, but since we run this daily, we'll just insert it.
-			
-			insertQuery := `
-				INSERT INTO payments (
-					id, contract_id, owner_id, period_month, period_year, 
-					amount_rent, amount_electricity, amount_water, amount_other, 
-					total_paid, status, due_date, notes
-				) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-			`
-			paymentID := uuid.New()
-			_, err = c.db.Exec(ctx, insertQuery, 
-				paymentID, contractID, ownerID, currentMonth, currentYear,
-				monthlyRent, electricityBill, waterBill, otherBills,
-				0, "unpaid", dueDate, "Tagihan bulanan otomatis dibuat sistem.",
-			)
-			if err != nil {
-				log.Printf("[CRON] Failed to create automated bill for contract %s: %v", contractID, err)
-			} else {
-				log.Printf("[CRON] Successfully created bill for contract %s, Period: %d-%d", contractID, currentMonth, currentYear)
-			}
+			log.Printf("[CRON] Failed to create automated bill for property %s contract %s: %v", propertyID, contractID, err)
+		} else if tag.RowsAffected() > 0 {
+			log.Printf("[CRON] Successfully created bill for property %s contract %s, Period: %d-%d", propertyID, contractID, currentMonth, currentYear)
 		}
 	}
 

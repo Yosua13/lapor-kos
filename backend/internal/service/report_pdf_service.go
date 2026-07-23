@@ -84,19 +84,19 @@ func (s *ReportPDFService) GenerateFinancialReport(data FinancialReportPDFData) 
 
 	for _, item := range items {
 		pdf.Rect(x, y, 45, 15, "FDF")
-		
+
 		// Draw label
 		pdf.SetFont("Arial", "B", 7)
 		pdf.SetTextColor(100, 116, 139)
-		pdf.SetXY(x + 2, y + 2)
+		pdf.SetXY(x+2, y+2)
 		pdf.Cell(41, 4, strings.ToUpper(item.label))
-		
+
 		// Draw value
 		pdf.SetFont("Arial", "B", 9)
 		pdf.SetTextColor(15, 23, 42)
-		pdf.SetXY(x + 2, y + 8)
+		pdf.SetXY(x+2, y+8)
 		pdf.Cell(41, 4, item.value)
-		
+
 		x += 45
 	}
 	pdf.SetXY(15, y+15)
@@ -118,7 +118,7 @@ func (s *ReportPDFService) GenerateFinancialReport(data FinancialReportPDFData) 
 
 	pdf.SetDrawColor(226, 232, 240)
 	pdf.SetTextColor(51, 65, 85)
-	
+
 	breakdownItems := [][2]string{
 		{"Sewa Kamar", formatRupiahFloat(rent)},
 		{"Listrik", formatRupiahFloat(electricity)},
@@ -144,7 +144,7 @@ func (s *ReportPDFService) GenerateFinancialReport(data FinancialReportPDFData) 
 	pdf.SetFillColor(15, 23, 42)
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFont("Arial", "B", 8)
-	
+
 	headers := []string{"No", "Periode", "Kamar", "Penghuni", "Tagihan", "Dibayar"}
 	widths := []float64{10, 30, 25, 45, 35, 35}
 	for i, h := range headers {
@@ -201,7 +201,7 @@ func (s *ReportPDFService) GenerateFinancialReport(data FinancialReportPDFData) 
 	// Signature
 	pdf.SetFont("Arial", "", 10)
 	pdf.SetTextColor(15, 23, 42)
-	
+
 	ySig := pdf.GetY()
 	// Ensure signature is on same page or check height, fpdf handles pages automatically, but we can write it on right
 	pdf.SetXY(120, ySig)
