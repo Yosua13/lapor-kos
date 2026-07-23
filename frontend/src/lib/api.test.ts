@@ -65,5 +65,20 @@ describe('api client property scope', () => {
     const blob = await apiBlob('/api/reports/financial.pdf');
     expect(await blob.text()).toBe('pdf-data');
   });
+
+  it('shares concurrent reads for the same property-scoped resource', async () => {
+    let resolveFetch: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    }));
+
+    const first = apiFetch<{ id: string }[]>('/api/rooms');
+    const second = apiFetch<{ id: string }[]>('/api/rooms');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveFetch?.(jsonResponse([{ id: 'room-1' }]));
+    await expect(first).resolves.toEqual([{ id: 'room-1' }]);
+    await expect(second).resolves.toEqual([{ id: 'room-1' }]);
+  });
 });
 
