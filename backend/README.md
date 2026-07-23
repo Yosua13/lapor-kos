@@ -86,14 +86,23 @@ SUPABASE_BUCKET=uploads
 Untuk menjalankan server backend dalam mode pengembangan (*development*):
 
 ```bash
-go run main.go
+go run ./cmd/api
 ```
 
 Setelah dijalankan, server akan:
 * Melakukan koneksi ke database PostgreSQL.
-* Menjalankan **migrasi skema database** secara otomatis (*auto-migration*).
 * Menjalankan scheduler **Cron Job** untuk mengecek tagihan bulanan pada latar belakang.
 * Berjalan dan mendengarkan permintaan API pada alamat: **`http://localhost:8081`**
+
+Migrasi tidak dijalankan otomatis ketika aplikasi mulai. Terapkan semua file SQL
+di direktori `migrations/` secara berurutan sebelum menjalankan versi aplikasi
+yang baru. Untuk perubahan multi-properti, jalankan fase `013`, periksa hasil
+backfill `014`, lalu terapkan constraint `015`.
+
+Endpoint operasional lama tetap tersedia dengan header `X-Property-ID`.
+Endpoint kanonis tersedia di bawah
+`/api/v1/properties/:property_id/...`. Nilai properti selalu diverifikasi oleh
+server terhadap membership pengguna yang masih aktif.
 
 ---
 
