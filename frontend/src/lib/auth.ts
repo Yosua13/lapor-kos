@@ -1,7 +1,10 @@
+import { clearStoredActivePropertyId } from '@/features/properties/storage';
+
 export const TOKEN_KEY = 'auth_token';
 
 export const setToken = (token: string, remember: boolean = true) => {
   if (typeof window !== 'undefined') {
+    clearStoredActivePropertyId();
     if (remember) {
       localStorage.setItem(TOKEN_KEY, token);
     } else {
@@ -24,6 +27,7 @@ export const removeToken = () => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
+    clearStoredActivePropertyId();
     const secure = window.location.protocol === 'https:' ? '; Secure' : '';
     document.cookie = `${TOKEN_KEY}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict${secure}`;
   }

@@ -1,3 +1,4 @@
+import { getStoredActivePropertyId } from '@/features/properties/storage';
 import { getToken, removeToken } from './auth';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081';
@@ -14,48 +15,108 @@ export const getImageUrl = (url: string | null | undefined): string => {
   return `${API_URL}${url}`;
 };
 
-interface RequestOptions extends RequestInit {
+export interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
+  propertyScoped?: boolean;
 }
 
-export const apiFetch = async (endpoint: string, options: RequestOptions = {}) => {
-  const { params, ...fetchOptions } = options;
-  
-  let url = `${API_URL}${endpoint}`;
-  if (params) {
-    const searchParams = new URLSearchParams(params);
-    url += `?${searchParams.toString()}`;
-  }
+const isUnscopedEndpoint = (endpoint: string): boolean => (
+  endpoint.startsWith('/api/auth/') || endpoint === '/api/properties' || endpoint.startsWith('/api/properties/')
+);
 
+const buildUrl = (endpoint: string, params?: Record<string, string>): string => {
+  const url = new URL(endpoint, `${API_URL.replace(/\/$/, '')}/`);
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
+  }
+  return url.toString();
+};
+
+const buildHeaders = (endpoint: string, options: RequestOptions): Headers => {
+  const headers = new Headers(options.headers || {});
   const token = getToken();
-  const headers = new Headers(fetchOptions.headers || {});
-  
+
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  
-  if (!(fetchOptions.body instanceof FormData) && !headers.has('Content-Type')) {
+
+  const shouldScope = options.propertyScoped ?? !isUnscopedEndpoint(endpoint);
+  const propertyId = shouldScope ? getStoredActivePropertyId() : null;
+  if (propertyId && !headers.has('X-Property-ID')) {
+    headers.set('X-Property-ID', propertyId);
+  }
+
+  if (options.body != null && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(url, {
+  return headers;
+};
+
+type ErrorPayload = { error?: string; message?: string };
+
+const parseError = async (response: Response): Promise<ErrorPayload> => {
+  try {
+    const data = await response.clone().json();
+    return typeof data === 'object' && data ? data as ErrorPayload : {};
+  } catch {
+    try {
+      const message = await response.text();
+      return message ? { message } : {};
+    } catch {
+      return {};
+    }
+  }
+};
+
+const request = async (endpoint: string, options: RequestOptions = {}): Promise<Response> => {
+  const { params } = options;
+  const fetchOptions: RequestInit = { ...options };
+  delete (fetchOptions as RequestOptions).params;
+  delete (fetchOptions as RequestOptions).propertyScoped;
+  const response = await fetch(buildUrl(endpoint, params), {
     ...fetchOptions,
-    headers,
+    headers: buildHeaders(endpoint, options),
   });
 
-  const data = await response.json();
-
-  if (response.status === 401 || (response.status === 404 && data.error === 'User not found')) {
-    removeToken();
-    if (typeof window !== 'undefined' && window.location.pathname !== '/login' && window.location.pathname !== '/register') {
-      window.location.href = '/login';
-    }
-    throw new Error(data.error || 'Sesi telah berakhir. Silakan masuk kembali.');
-  }
-
   if (!response.ok) {
-    throw new Error(data.error || 'Something went wrong');
+    const data = await parseError(response);
+    const message = data.error || data.message || `Permintaan gagal (${response.status})`;
+
+    if (response.status === 401 || (response.status === 404 && data.error === 'User not found')) {
+      removeToken();
+      if (
+        typeof window !== 'undefined' &&
+        window.location.pathname !== '/login' &&
+        window.location.pathname !== '/register'
+      ) {
+        window.location.assign('/login');
+      }
+    }
+
+    throw new Error(message);
   }
 
-  return data;
+  return response;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const apiFetch = async <T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> => {
+  const response = await request(endpoint, options);
+
+  if (response.status === 204 || response.headers.get('content-length') === '0') {
+    return undefined as T;
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return await response.text() as T;
+  }
+
+  return await response.json() as T;
+};
+
+export const apiBlob = async (endpoint: string, options: RequestOptions = {}): Promise<Blob> => {
+  const response = await request(endpoint, options);
+  return response.blob();
 };
