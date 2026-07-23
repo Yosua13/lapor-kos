@@ -1,18 +1,20 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type ComplaintHandler struct {
 	complaintRepo  *repository.ComplaintRepository
-	userRepo       repository.UserRepo
 	aiService      service.AIServiceInterface
 	waService      service.WhatsAppServiceInterface
 	storageService *service.StorageService
@@ -20,14 +22,12 @@ type ComplaintHandler struct {
 
 func NewComplaintHandler(
 	complaintRepo *repository.ComplaintRepository,
-	userRepo repository.UserRepo,
 	aiService service.AIServiceInterface,
 	waService service.WhatsAppServiceInterface,
 	storageService *service.StorageService,
 ) *ComplaintHandler {
 	return &ComplaintHandler{
 		complaintRepo:  complaintRepo,
-		userRepo:       userRepo,
 		aiService:      aiService,
 		waService:      waService,
 		storageService: storageService,
@@ -53,7 +53,7 @@ func (h *ComplaintHandler) CreateComplaint(c *gin.Context) {
 	}
 
 	// 1. Dapatkan room ID, dan owner ID berdasarkan active contract penyewa
-	roomID, ownerID, err := h.complaintRepo.FindActiveContractByTenantUser(c.Request.Context(), userID)
+	roomID, ownerID, propertyID, err := h.complaintRepo.FindActiveContractByTenantUser(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Penyewa harus memiliki kontrak aktif untuk mengirimkan komplain."})
 		return
@@ -79,11 +79,11 @@ func (h *ComplaintHandler) CreateComplaint(c *gin.Context) {
 			waMessage = &defaultWarning
 		}
 
-		// Ambil data WhatsApp group link milik owner
-		ownerUser, err := h.userRepo.FindByID(c.Request.Context(), ownerID)
-		if err == nil && ownerUser.WhatsAppGroupLink != nil && *ownerUser.WhatsAppGroupLink != "" {
+		// Pengaturan grup adalah milik properti, bukan profil global owner.
+		groupLink, err := h.complaintRepo.FindPropertyWhatsAppGroupLink(c.Request.Context(), propertyID)
+		if err == nil && groupLink != "" {
 			// Kirim pesan riil / simulasi ke WhatsApp group
-			sent, sendErr := h.waService.SendMessageToGroup(c.Request.Context(), *ownerUser.WhatsAppGroupLink, *waMessage)
+			sent, sendErr := h.waService.SendMessageToGroup(c.Request.Context(), groupLink, *waMessage)
 			if sendErr == nil && sent {
 				waSent = true
 			}
@@ -92,6 +92,7 @@ func (h *ComplaintHandler) CreateComplaint(c *gin.Context) {
 
 	// 4. Simpan komplain ke database
 	complaint := &model.Complaint{
+		PropertyID:  propertyID,
 		UserID:      userID,
 		OwnerID:     ownerID,
 		RoomID:      roomID,
@@ -105,7 +106,10 @@ func (h *ComplaintHandler) CreateComplaint(c *gin.Context) {
 		WAMessage:   waMessage,
 	}
 
-	if err := h.complaintRepo.Create(c.Request.Context(), complaint); err != nil {
+	if err := h.complaintRepo.Create(c.Request.Context(), complaint); errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Penyewa harus memiliki kontrak aktif untuk mengirimkan komplain."})
+		return
+	} else if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan komplain: " + err.Error()})
 		return
 	}
@@ -139,18 +143,13 @@ func (h *ComplaintHandler) GetTenantComplaints(c *gin.Context) {
 }
 
 func (h *ComplaintHandler) GetOwnerComplaints(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	userID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
 		return
 	}
 
-	complaints, err := h.complaintRepo.FindByOwner(c.Request.Context(), userID)
+	complaints, err := h.complaintRepo.FindByProperty(c.Request.Context(), scope.PropertyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil daftar komplain: " + err.Error()})
 		return
@@ -164,14 +163,9 @@ func (h *ComplaintHandler) GetOwnerComplaints(c *gin.Context) {
 }
 
 func (h *ComplaintHandler) UpdateComplaintStatus(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
-	}
-	ownerID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
 		return
 	}
 
@@ -188,7 +182,11 @@ func (h *ComplaintHandler) UpdateComplaintStatus(c *gin.Context) {
 		return
 	}
 
-	err = h.complaintRepo.UpdateStatus(c.Request.Context(), complaintID, ownerID, req.Status)
+	err = h.complaintRepo.UpdateStatus(c.Request.Context(), complaintID, scope.PropertyID, req.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Komplain tidak ditemukan"})
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui status komplain: " + err.Error()})
 		return
@@ -198,14 +196,15 @@ func (h *ComplaintHandler) UpdateComplaintStatus(c *gin.Context) {
 }
 
 func (h *ComplaintHandler) UpdateWhatsAppGroup(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
 		return
 	}
-	ownerID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+	// The legacy schema stores this setting on the owner user. Do not let a
+	// delegated staff membership accidentally update its own unrelated profile.
+	if scope.Role != model.PropertyRoleOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Forbidden"})
 		return
 	}
 
@@ -215,7 +214,7 @@ func (h *ComplaintHandler) UpdateWhatsAppGroup(c *gin.Context) {
 		return
 	}
 
-	err = h.userRepo.UpdateWhatsAppGroupLink(c.Request.Context(), ownerID, req.WhatsAppGroupLink)
+	err := h.complaintRepo.UpdatePropertyWhatsAppGroupLink(c.Request.Context(), scope.PropertyID, req.WhatsAppGroupLink)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui grup WhatsApp: " + err.Error()})
 		return
@@ -225,13 +224,29 @@ func (h *ComplaintHandler) UpdateWhatsAppGroup(c *gin.Context) {
 }
 
 func (h *ComplaintHandler) UploadPhoto(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user context"})
+		return
+	}
+	_, _, propertyID, err := h.complaintRepo.FindActiveContractByTenantUser(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Penyewa harus memiliki kontrak aktif untuk mengunggah foto."})
+		return
+	}
+
 	fileHeader, err := c.FormFile("photo")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "File foto wajib diunggah"})
 		return
 	}
 
-	photoURL, err := h.storageService.UploadFile(fileHeader, "complaint")
+	photoURL, err := h.storageService.UploadPropertyFile(fileHeader, propertyID, "complaint")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal menyimpan file foto: " + err.Error()})
 		return

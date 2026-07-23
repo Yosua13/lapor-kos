@@ -52,6 +52,11 @@ func (m *MockUserRepository) FindByVerificationToken(ctx context.Context, token 
 	return args.Get(0).(*model.User), args.Error(1)
 }
 
+func (m *MockUserRepository) IsUserActive(ctx context.Context, id uuid.UUID) (bool, error) {
+	args := m.Called(ctx, id)
+	return args.Bool(0), args.Error(1)
+}
+
 func (m *MockUserRepository) VerifyUser(ctx context.Context, id uuid.UUID) error {
 	args := m.Called(ctx, id)
 	return args.Error(0)
@@ -82,7 +87,7 @@ func (m *MockUserRepository) UpdatePassword(ctx context.Context, id uuid.UUID, n
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) GetTenantProfile(ctx context.Context, id uuid.UUID) (map[string]interface{}, error) {
+func (m *MockUserRepository) GetMyTenantProfile(ctx context.Context, id uuid.UUID) (map[string]interface{}, error) {
 	args := m.Called(ctx, id)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
@@ -90,32 +95,38 @@ func (m *MockUserRepository) GetTenantProfile(ctx context.Context, id uuid.UUID)
 	return args.Get(0).(map[string]interface{}), args.Error(1)
 }
 
-func (m *MockUserRepository) UpdateTenantProfile(ctx context.Context, id uuid.UUID, name string, phone string, roomIDStr string, entryDateStr string, rentalDuration int, ktpURL *string, selfieURL *string, dateOfBirth *time.Time, gender *string, job *string, emergencyContactPhone *string, emergencyContactRelation *string, emergencyContactName *string, additionalDocURL *string) error {
-	args := m.Called(ctx, id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName, additionalDocURL)
+func (m *MockUserRepository) GetTenantProfile(ctx context.Context, propertyID, id uuid.UUID) (map[string]interface{}, error) {
+	args := m.Called(ctx, propertyID, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(map[string]interface{}), args.Error(1)
+}
+
+func (m *MockUserRepository) UpdateTenantProfile(ctx context.Context, propertyID, id uuid.UUID, name string, phone string, roomIDStr string, entryDateStr string, rentalDuration int, ktpURL *string, selfieURL *string, dateOfBirth *time.Time, gender *string, job *string, emergencyContactPhone *string, emergencyContactRelation *string, emergencyContactName *string, additionalDocURL *string) error {
+	args := m.Called(ctx, propertyID, id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName, additionalDocURL)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) DeleteTenant(ctx context.Context, id uuid.UUID) error {
-	args := m.Called(ctx, id)
+func (m *MockUserRepository) DeleteTenant(ctx context.Context, propertyID, id uuid.UUID) error {
+	args := m.Called(ctx, propertyID, id)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) CheckoutTenant(ctx context.Context, id uuid.UUID) error {
-	args := m.Called(ctx, id)
+func (m *MockUserRepository) CheckoutTenant(ctx context.Context, propertyID, id uuid.UUID) error {
+	args := m.Called(ctx, propertyID, id)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) ChangeRoom(ctx context.Context, userID uuid.UUID, roomIDStr string) error {
-	args := m.Called(ctx, userID, roomIDStr)
+func (m *MockUserRepository) ChangeRoom(ctx context.Context, propertyID, userID uuid.UUID, roomIDStr string) error {
+	args := m.Called(ctx, propertyID, userID, roomIDStr)
 	return args.Error(0)
 }
 
-func (m *MockUserRepository) ExtendContract(ctx context.Context, userID uuid.UUID, ownerID uuid.UUID, startDate time.Time, rentalDuration int, monthlyRent float64, electricityBill float64, waterBill float64, otherBills float64, deposit float64, paymentInterval string, paymentDueDay int, notes string) error {
-	args := m.Called(ctx, userID, ownerID, startDate, rentalDuration, monthlyRent, electricityBill, waterBill, otherBills, deposit, paymentInterval, paymentDueDay, notes)
+func (m *MockUserRepository) ExtendContract(ctx context.Context, propertyID, ownerID, userID uuid.UUID, startDate time.Time, rentalDuration int, monthlyRent float64, electricityBill float64, waterBill float64, otherBills float64, deposit float64, paymentInterval string, paymentDueDay int, notes string) error {
+	args := m.Called(ctx, propertyID, ownerID, userID, startDate, rentalDuration, monthlyRent, electricityBill, waterBill, otherBills, deposit, paymentInterval, paymentDueDay, notes)
 	return args.Error(0)
 }
-
-
 
 // MockEmailService is a mock implementation of EmailServiceInterface
 type MockEmailService struct {
@@ -141,9 +152,10 @@ func TestRegister(t *testing.T) {
 		h := NewAuthHandler(mockRepo, mockEmail, nil)
 
 		reqBody := model.RegisterRequest{
-			Name:     "Test User",
-			Email:    "test@example.com",
-			Password: "password123",
+			Name:         "Test User",
+			Email:        "test@example.com",
+			Password:     "password123",
+			PropertyName: "Kos Test",
 		}
 		jsonBody, _ := json.Marshal(reqBody)
 
@@ -169,9 +181,10 @@ func TestRegister(t *testing.T) {
 		h := NewAuthHandler(mockRepo, mockEmail, nil)
 
 		reqBody := model.RegisterRequest{
-			Name:     "Test User",
-			Email:    "test@example.com",
-			Password: "password123",
+			Name:         "Test User",
+			Email:        "test@example.com",
+			Password:     "password123",
+			PropertyName: "Kos Test",
 		}
 		jsonBody, _ := json.Marshal(reqBody)
 
@@ -201,6 +214,7 @@ func TestLogin(t *testing.T) {
 			Email:        "test@example.com",
 			PasswordHash: string(hashedPassword),
 			IsVerified:   true,
+			IsActive:     true,
 		}
 
 		mockRepo.On("FindByEmail", mock.Anything, "test@example.com").Return(user, nil)
