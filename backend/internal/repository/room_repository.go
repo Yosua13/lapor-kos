@@ -3,9 +3,12 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -18,142 +21,146 @@ func NewRoomRepository(db *pgxpool.Pool) *RoomRepository {
 	return &RoomRepository{db: db}
 }
 
-func (r *RoomRepository) Create(ctx context.Context, room *model.Room) error {
-	query := `INSERT INTO rooms (room_number, price_per_month, description, status) 
-	          VALUES ($1, $2, $3, $4) RETURNING id, created_at`
-	return r.db.QueryRow(ctx, query, room.RoomNumber, room.PricePerMonth, room.Description, room.Status).
-		Scan(&room.ID, &room.CreatedAt)
+func (r *RoomRepository) Create(ctx context.Context, propertyID uuid.UUID, room *model.Room) error {
+	room.PropertyID = propertyID
+	return r.db.QueryRow(ctx, `
+		INSERT INTO rooms (
+			property_id, room_number, price_per_month, description, status,
+			type, floor, is_draft
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		RETURNING id, created_at`,
+		propertyID, strings.TrimSpace(room.RoomNumber), room.PricePerMonth,
+		room.Description, room.Status, room.Type, room.Floor, room.IsDraft,
+	).Scan(&room.ID, &room.CreatedAt)
 }
 
-func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room, user *model.User, contract *model.Contract, payment *model.Payment, ownerID uuid.UUID) error {
+func (r *RoomRepository) CreateWithTenant(
+	ctx context.Context,
+	propertyID, actorID uuid.UUID,
+	room *model.Room,
+	user *model.User,
+	contract *model.Contract,
+	payment *model.Payment,
+) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// 1. Create Room
-	roomQuery := `INSERT INTO rooms (room_number, price_per_month, description, status, type, floor, is_draft) 
-	              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`
-	err = tx.QueryRow(ctx, roomQuery, room.RoomNumber, room.PricePerMonth, room.Description, room.Status, room.Type, room.Floor, room.IsDraft).
-		Scan(&room.ID, &room.CreatedAt)
+	room.PropertyID = propertyID
+	err = tx.QueryRow(ctx, `
+		INSERT INTO rooms (
+			property_id, room_number, price_per_month, description, status,
+			type, floor, is_draft
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		RETURNING id, created_at`,
+		propertyID, strings.TrimSpace(room.RoomNumber), room.PricePerMonth,
+		room.Description, room.Status, room.Type, room.Floor, room.IsDraft,
+	).Scan(&room.ID, &room.CreatedAt)
 	if err != nil {
 		return err
 	}
 
-	// 2. Find or Create User
-	var userID uuid.UUID
-	
-	hasUserData := user.Name != "" || user.Phone != ""
-	if room.Status == "occupied" && hasUserData {
-		if user.Email == "" && user.Phone != "" {
-			user.Email = user.Phone + "@tenant.local"
-		} else if user.Email == "" {
-			user.Email = uuid.New().String() + "@tenant.local"
-		}
-		
-		err = tx.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", user.Email).Scan(&userID)
+	if room.Status == "occupied" && hasTenantData(user) {
+		userID, err := findOrCreateTenant(ctx, tx, user)
 		if err != nil {
-			pass := user.Phone
-			if pass == "" {
-				pass = "password123"
-			}
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
-			if err != nil {
-				return err
-			}
-			userID = uuid.New()
-			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone, ktp_url, selfie_url, date_of_birth, gender, job, emergency_contact_phone, emergency_contact_relation, emergency_contact_name, additional_doc_url) 
-			              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
-			err = tx.QueryRow(ctx, userQuery, userID, user.Name, user.Email, string(hashedPassword), "tenant", true, user.Phone, user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job, user.EmergencyContactPhone, user.EmergencyContactRelation, user.EmergencyContactName, user.AdditionalDocURL).Scan(&userID)
-			if err != nil {
-				return err
-			}
-		} else {
-			// Update ktp/selfie/phone if provided
-			updateQ := `UPDATE users SET 
-				phone = COALESCE(NULLIF($1, ''), phone), 
-				ktp_url = COALESCE($2, ktp_url), 
-				selfie_url = COALESCE($3, selfie_url),
-				date_of_birth = COALESCE($4, date_of_birth),
-				gender = COALESCE($5, gender),
-				job = COALESCE($6, job),
-				emergency_contact_phone = COALESCE($7, emergency_contact_phone),
-				emergency_contact_relation = COALESCE($8, emergency_contact_relation),
-				emergency_contact_name = COALESCE($9, emergency_contact_name),
-				additional_doc_url = COALESCE($10, additional_doc_url)
-				WHERE id = $11`
-			_, err = tx.Exec(ctx, updateQ, user.Phone, user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job, user.EmergencyContactPhone, user.EmergencyContactRelation, user.EmergencyContactName, user.AdditionalDocURL, userID)
-			if err != nil {
+			return err
+		}
+		if err := createRoomContractAndBill(
+			ctx, tx, propertyID, actorID, room.ID, userID, contract, payment,
+		); err != nil {
+			return err
+		}
+		if !room.IsDraft {
+			if err := updateRoomStatus(ctx, tx, propertyID, room.ID, "occupied"); err != nil {
 				return err
 			}
 		}
+	}
 
-		// 3. Create Contract
-		contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills, payment_interval) 
-						  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
-		
-		startDate := contract.StartDate
-		rentalDuration := contract.RentalDuration
-		endDate := startDate.AddDate(0, rentalDuration, 0)
-		dueDate := startDate.AddDate(0, 1, -3)
-		
-		paymentDueDay := contract.PaymentDueDay
-		if paymentDueDay == 0 {
-			paymentDueDay = dueDate.Day()
-		}
-		
-		notes := contract.Notes
-		if notes == "" {
-			notes = fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
-		}
-		
-		err = tx.QueryRow(ctx, contractQuery, room.ID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, contract.PaymentInterval).Scan(&contract.ID)
+	return tx.Commit(ctx)
+}
+
+func (r *RoomRepository) UpdateWithTenant(
+	ctx context.Context,
+	propertyID, actorID uuid.UUID,
+	room *model.Room,
+	user *model.User,
+	contract *model.Contract,
+	payment *model.Payment,
+) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	command, err := tx.Exec(ctx, `
+		UPDATE rooms SET room_number=$1, price_per_month=$2, description=$3,
+			status=$4, type=$5, floor=$6, is_draft=$7
+		WHERE id=$8 AND property_id=$9`,
+		strings.TrimSpace(room.RoomNumber), room.PricePerMonth, room.Description,
+		room.Status, room.Type, room.Floor, room.IsDraft, room.ID, propertyID,
+	)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() != 1 {
+		return pgx.ErrNoRows
+	}
+	room.PropertyID = propertyID
+
+	if room.Status == "occupied" && hasTenantData(user) {
+		userID, err := findOrCreateTenant(ctx, tx, user)
 		if err != nil {
 			return err
 		}
 
-		// 4. Create Initial Payment
-		paymentID := uuid.New()
-		payment.ID = paymentID
-		payment.ContractID = contract.ID
-		payment.OwnerID = &ownerID
-		payment.PeriodMonth = int(startDate.Month())
-		payment.PeriodYear = startDate.Year()
-		
-		var pRent, pElec, pWater, pOther float64
-		if contract.PaymentInterval == "per_contract" {
-			pRent = contract.MonthlyRent * float64(rentalDuration)
-			pElec = contract.ElectricityBill * float64(rentalDuration)
-			pWater = contract.WaterBill * float64(rentalDuration)
-			pOther = (contract.OtherBills * float64(rentalDuration)) + contract.Deposit
-		} else {
-			pRent = contract.MonthlyRent
-			pElec = contract.ElectricityBill
-			pWater = contract.WaterBill
-			pOther = contract.OtherBills + contract.Deposit
-		}
-
-		payment.AmountRent = pRent
-		payment.AmountElectricity = pElec
-		payment.AmountWater = pWater
-		payment.AmountOther = pOther
-		payment.TotalPaid = 0
-		payment.PaymentMethod = ""
-		payment.Status = "unpaid"
-		payment.DueDate = dueDate
-		payment.Notes = notes
-
-		paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
-						 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
-		_, err = tx.Exec(ctx, paymentQuery, payment.ID, payment.ContractID, payment.OwnerID, payment.PeriodMonth, payment.PeriodYear, payment.AmountRent, payment.AmountElectricity, payment.AmountWater, payment.AmountOther, payment.TotalPaid, payment.PaymentMethod, payment.Status, payment.DueDate, payment.Notes)
-		if err != nil {
+		var existingID uuid.UUID
+		err = tx.QueryRow(ctx, `
+			SELECT id FROM contracts
+			WHERE property_id=$1 AND room_id=$2 AND status='active'
+			FOR UPDATE`, propertyID, room.ID,
+		).Scan(&existingID)
+		if err != nil && err != pgx.ErrNoRows {
 			return err
 		}
-
-		// 4. Update Room Status to Occupied (if not draft)
-		if !room.IsDraft {
-			_, err = tx.Exec(ctx, `UPDATE rooms SET status = 'occupied' WHERE id = $1`, room.ID)
+		if err == pgx.ErrNoRows {
+			if err := createRoomContractAndBill(
+				ctx, tx, propertyID, actorID, room.ID, userID, contract, payment,
+			); err != nil {
+				return err
+			}
+		} else {
+			contract.ID = existingID
+			contract.PropertyID = propertyID
+			contract.OwnerID = actorID
+			prepareContract(contract)
+			_, err = tx.Exec(ctx, `
+				UPDATE contracts SET user_id=$1, start_date=$2, end_date=$3,
+					rental_duration=$4, monthly_rent=$5, total_price=$6,
+					payment_due_day=$7, notes=$8, electricity_bill=$9,
+					water_bill=$10, other_bills=$11, payment_interval=$12,
+					deposit=$13
+				WHERE id=$14 AND property_id=$15`,
+				userID, contract.StartDate, contract.EndDate,
+				contract.RentalDuration, contract.MonthlyRent, contract.TotalPrice,
+				contract.PaymentDueDay, contract.Notes, contract.ElectricityBill,
+				contract.WaterBill, contract.OtherBills, contract.PaymentInterval,
+				contract.Deposit, contract.ID, propertyID,
+			)
+			if err != nil {
+				return err
+			}
+			rent, electricity, water, other := initialBillAmounts(contract)
+			_, err = tx.Exec(ctx, `
+				UPDATE payments SET amount_rent=$1, amount_electricity=$2,
+					amount_water=$3, amount_other=$4, due_date=$5
+				WHERE property_id=$6 AND contract_id=$7 AND status='unpaid'`,
+				rent, electricity, water, other,
+				contract.StartDate.AddDate(0, 1, -3), propertyID, contract.ID,
+			)
 			if err != nil {
 				return err
 			}
@@ -163,369 +170,292 @@ func (r *RoomRepository) CreateWithTenant(ctx context.Context, room *model.Room,
 	return tx.Commit(ctx)
 }
 
-func (r *RoomRepository) UpdateWithTenant(ctx context.Context, room *model.Room, user *model.User, contract *model.Contract, payment *model.Payment, ownerID uuid.UUID) error {
+func (r *RoomRepository) AssignTenant(
+	ctx context.Context,
+	propertyID, actorID, roomID uuid.UUID,
+	user *model.User,
+	contract *model.Contract,
+) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
 
-	// 1. Update Room
-	roomQuery := `UPDATE rooms SET room_number=$1, price_per_month=$2, description=$3, status=$4, type=$5, floor=$6, is_draft=$7 WHERE id=$8`
-	_, err = tx.Exec(ctx, roomQuery, room.RoomNumber, room.PricePerMonth, room.Description, room.Status, room.Type, room.Floor, room.IsDraft, room.ID)
+	var status string
+	if err := tx.QueryRow(ctx, `
+		SELECT status FROM rooms
+		WHERE id=$1 AND property_id=$2 FOR UPDATE`, roomID, propertyID,
+	).Scan(&status); err != nil {
+		return err
+	}
+	if status == "occupied" {
+		return fmt.Errorf("kamar tidak tersedia")
+	}
+	userID, err := findOrCreateTenant(ctx, tx, user)
 	if err != nil {
 		return err
 	}
-
-	// 2. Find or Create User
-	var userID uuid.UUID
-	
-	hasUserData := user.Name != "" || user.Phone != ""
-	if room.Status == "occupied" && hasUserData {
-		if user.Email == "" && user.Phone != "" {
-			user.Email = user.Phone + "@tenant.local"
-		} else if user.Email == "" {
-			user.Email = uuid.New().String() + "@tenant.local"
-		}
-		
-		err = tx.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", user.Email).Scan(&userID)
-		if err != nil {
-			pass := user.Phone
-			if pass == "" {
-				pass = "password123"
-			}
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
-			if err != nil {
-				return err
-			}
-			userID = uuid.New()
-			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone, ktp_url, selfie_url, date_of_birth, gender, job, emergency_contact_phone, emergency_contact_relation, emergency_contact_name, additional_doc_url) 
-			              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
-			err = tx.QueryRow(ctx, userQuery, userID, user.Name, user.Email, string(hashedPassword), "tenant", true, user.Phone, user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job, user.EmergencyContactPhone, user.EmergencyContactRelation, user.EmergencyContactName, user.AdditionalDocURL).Scan(&userID)
-			if err != nil {
-				return err
-			}
-		} else {
-			updateQ := `UPDATE users SET 
-				name = COALESCE(NULLIF($1, ''), name), 
-				phone = COALESCE(NULLIF($2, ''), phone), 
-				ktp_url = COALESCE($3, ktp_url), 
-				selfie_url = COALESCE($4, selfie_url),
-				date_of_birth = COALESCE($5, date_of_birth),
-				gender = COALESCE($6, gender),
-				job = COALESCE($7, job),
-				emergency_contact_phone = COALESCE($8, emergency_contact_phone),
-				emergency_contact_relation = COALESCE($9, emergency_contact_relation),
-				emergency_contact_name = COALESCE($10, emergency_contact_name),
-				additional_doc_url = COALESCE($11, additional_doc_url)
-				WHERE id = $12`
-			_, err = tx.Exec(ctx, updateQ, user.Name, user.Phone, user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job, user.EmergencyContactPhone, user.EmergencyContactRelation, user.EmergencyContactName, user.AdditionalDocURL, userID)
-			if err != nil {
-				return err
-			}
-		}
-
-		// 3. Upsert Contract (since it's updating draft, contract might or might not exist)
-		var contractID uuid.UUID
-		err = tx.QueryRow(ctx, "SELECT id FROM contracts WHERE room_id = $1 AND status = 'active'", room.ID).Scan(&contractID)
-		
-		startDate := contract.StartDate
-		rentalDuration := contract.RentalDuration
-		endDate := startDate.AddDate(0, rentalDuration, 0)
-		dueDate := startDate.AddDate(0, 1, -3)
-		
-		paymentDueDay := contract.PaymentDueDay
-		if paymentDueDay == 0 {
-			paymentDueDay = dueDate.Day()
-		}
-		
-		notes := contract.Notes
-		if notes == "" {
-			notes = fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
-		}
-
-		if err != nil { // contract doesn't exist, insert
-			contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills, payment_interval) 
-							  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
-			err = tx.QueryRow(ctx, contractQuery, room.ID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, contract.PaymentInterval).Scan(&contract.ID)
-			if err != nil {
-				return err
-			}
-
-			paymentID := uuid.New()
-			payment.ID = paymentID
-			payment.ContractID = contract.ID
-			payment.OwnerID = &ownerID
-			payment.PeriodMonth = int(startDate.Month())
-			payment.PeriodYear = startDate.Year()
-			var pRent, pElec, pWater, pOther float64
-			if contract.PaymentInterval == "per_contract" {
-				pRent = contract.MonthlyRent * float64(rentalDuration)
-				pElec = contract.ElectricityBill * float64(rentalDuration)
-				pWater = contract.WaterBill * float64(rentalDuration)
-				pOther = (contract.OtherBills * float64(rentalDuration)) + contract.Deposit
-			} else {
-				pRent = contract.MonthlyRent
-				pElec = contract.ElectricityBill
-				pWater = contract.WaterBill
-				pOther = contract.OtherBills + contract.Deposit
-			}
-
-			payment.AmountRent = pRent
-			payment.AmountElectricity = pElec
-			payment.AmountWater = pWater
-			payment.AmountOther = pOther
-			payment.TotalPaid = 0
-			payment.PaymentMethod = ""
-			payment.Status = "unpaid"
-			payment.DueDate = dueDate
-			payment.Notes = "Initial payment generated on contract creation"
-
-			paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
-							 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
-			_, err = tx.Exec(ctx, paymentQuery, payment.ID, payment.ContractID, payment.OwnerID, payment.PeriodMonth, payment.PeriodYear, payment.AmountRent, payment.AmountElectricity, payment.AmountWater, payment.AmountOther, payment.TotalPaid, payment.PaymentMethod, payment.Status, payment.DueDate, payment.Notes)
-			if err != nil {
-				return err
-			}
-
-		} else { // contract exists, update
-			contract.ID = contractID
-			contractUpdate := `UPDATE contracts SET user_id=$1, start_date=$2, end_date=$3, rental_duration=$4, monthly_rent=$5, total_price=$6, payment_due_day=$7, notes=$8, electricity_bill=$9, water_bill=$10, other_bills=$11, payment_interval=$12, deposit=$13 WHERE id=$14`
-			_, err = tx.Exec(ctx, contractUpdate, userID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, paymentDueDay, notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, contract.PaymentInterval, contract.Deposit, contract.ID)
-			if err != nil {
-				return err
-			}
-
-			// Update the unpaid initial payment if it exists
-			var pRent, pElec, pWater, pOther float64
-			if contract.PaymentInterval == "per_contract" {
-				pRent = contract.MonthlyRent * float64(rentalDuration)
-				pElec = contract.ElectricityBill * float64(rentalDuration)
-				pWater = contract.WaterBill * float64(rentalDuration)
-				pOther = (contract.OtherBills * float64(rentalDuration)) + contract.Deposit
-			} else {
-				pRent = contract.MonthlyRent
-				pElec = contract.ElectricityBill
-				pWater = contract.WaterBill
-				pOther = contract.OtherBills + contract.Deposit
-			}
-
-			paymentUpdate := `UPDATE payments SET amount_rent=$1, amount_electricity=$2, amount_water=$3, amount_other=$4, due_date=$5 
-							  WHERE contract_id=$6 AND status='unpaid' RETURNING id`
-			err = tx.QueryRow(ctx, paymentUpdate, pRent, pElec, pWater, pOther, dueDate, contract.ID).Scan(&payment.ID)
-			if err != nil { // if payment doesn't exist, insert one!
-				paymentID := uuid.New()
-				payment.ID = paymentID
-				payment.ContractID = contract.ID
-				payment.OwnerID = &ownerID
-				payment.PeriodMonth = int(startDate.Month())
-				payment.PeriodYear = startDate.Year()
-				payment.AmountRent = pRent
-				payment.AmountElectricity = pElec
-				payment.AmountWater = pWater
-				payment.AmountOther = pOther
-				payment.TotalPaid = 0
-				payment.PaymentMethod = ""
-				payment.Status = "unpaid"
-				payment.DueDate = dueDate
-				payment.Notes = notes
-
-				paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
-								 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
-				_, err = tx.Exec(ctx, paymentQuery, payment.ID, payment.ContractID, payment.OwnerID, payment.PeriodMonth, payment.PeriodYear, payment.AmountRent, payment.AmountElectricity, payment.AmountWater, payment.AmountOther, payment.TotalPaid, payment.PaymentMethod, payment.Status, payment.DueDate, payment.Notes)
-				if err != nil {
-					return err
-				}
-			} else {
-				payment.ContractID = contract.ID
-				payment.AmountRent = pRent
-				payment.AmountElectricity = pElec
-				payment.AmountWater = pWater
-				payment.AmountOther = pOther
-				payment.Status = "unpaid"
-				payment.DueDate = dueDate
-			}
-		}
-
-		// 4. Update Room Status to Occupied (if not draft)
-		if !room.IsDraft {
-			_, err = tx.Exec(ctx, `UPDATE rooms SET status = 'occupied' WHERE id = $1`, room.ID)
-			if err != nil {
-				return err
-			}
-		}
+	if err := createRoomContractAndBill(
+		ctx, tx, propertyID, actorID, roomID, userID, contract, &model.Payment{},
+	); err != nil {
+		return err
 	}
-
+	if err := updateRoomStatus(ctx, tx, propertyID, roomID, "occupied"); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
-
-func (r *RoomRepository) AssignTenant(ctx context.Context, roomID uuid.UUID, user *model.User, contract *model.Contract, ownerID uuid.UUID) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	var userID uuid.UUID
-	if user.Email != "" {
-		err = tx.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", user.Email).Scan(&userID)
-		if err != nil {
-			pass := user.Phone
-			if pass == "" {
-				pass = "password123"
-			}
-			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
-			if err != nil {
-				return err
-			}
-			userID = uuid.New()
-			userQuery := `INSERT INTO users (id, name, email, password_hash, role, is_verified, phone, ktp_url, selfie_url) 
-			              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`
-			err = tx.QueryRow(ctx, userQuery, userID, user.Name, user.Email, string(hashedPassword), "tenant", true, user.Phone, user.KtpURL, user.SelfieURL).Scan(&userID)
-			if err != nil {
-				return err
-			}
-		} else {
-            // Update ktp/selfie/phone if provided
-            updateQ := `UPDATE users SET phone = COALESCE(NULLIF($1, ''), phone), ktp_url = COALESCE($2, ktp_url), selfie_url = COALESCE($3, selfie_url) WHERE id = $4`
-            _, err = tx.Exec(ctx, updateQ, user.Phone, user.KtpURL, user.SelfieURL, userID)
-            if err != nil {
-                return err
-            }
-        }
-	} else {
-		return fmt.Errorf("email is required")
-	}
-
-	contractQuery := `INSERT INTO contracts (room_id, user_id, owner_id, start_date, end_date, rental_duration, monthly_rent, total_price, deposit, payment_due_day, status, notes, electricity_bill, water_bill, other_bills, payment_interval) 
-	                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`
-	
-	startDate := contract.StartDate
-	rentalDuration := contract.RentalDuration
-	endDate := startDate.AddDate(0, rentalDuration, 0)
-	dueDate := startDate.AddDate(0, 1, -3)
-
-	paymentDueDay := contract.PaymentDueDay
-	if paymentDueDay == 0 {
-		paymentDueDay = dueDate.Day()
-	}
-	
-	notes := contract.Notes
-	if notes == "" {
-		notes = fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", paymentDueDay)
-	}
-	
-	err = tx.QueryRow(ctx, contractQuery, roomID, userID, ownerID, startDate, endDate, rentalDuration, contract.MonthlyRent, contract.TotalPrice, contract.Deposit, paymentDueDay, "active", notes, contract.ElectricityBill, contract.WaterBill, contract.OtherBills, contract.PaymentInterval).Scan(&contract.ID)
-	if err != nil {
-		return err
-	}
-
-	// Create Initial Payment
-	paymentID := uuid.New()
-	
-	var pRent, pElec, pWater, pOther float64
-	if contract.PaymentInterval == "per_contract" {
-		pRent = contract.MonthlyRent * float64(rentalDuration)
-		pElec = contract.ElectricityBill * float64(rentalDuration)
-		pWater = contract.WaterBill * float64(rentalDuration)
-		pOther = (contract.OtherBills * float64(rentalDuration)) + contract.Deposit
-	} else {
-		pRent = contract.MonthlyRent
-		pElec = contract.ElectricityBill
-		pWater = contract.WaterBill
-		pOther = contract.OtherBills + contract.Deposit
-	}
-
-	paymentQuery := `INSERT INTO payments (id, contract_id, owner_id, period_month, period_year, amount_rent, amount_electricity, amount_water, amount_other, total_paid, payment_method, status, due_date, notes)
-					 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`
-	_, err = tx.Exec(ctx, paymentQuery, paymentID, contract.ID, ownerID, int(startDate.Month()), startDate.Year(), pRent, pElec, pWater, pOther, 0.0, "", "unpaid", dueDate, notes)
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.Exec(ctx, `UPDATE rooms SET status = 'occupied' WHERE id = $1`, roomID)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
-}
-
-func (r *RoomRepository) FindAll(ctx context.Context) ([]model.Room, error) {
-	query := `SELECT id, room_number, price_per_month, description, status, floor, is_draft, type, created_at FROM rooms ORDER BY room_number ASC`
-	rows, err := r.db.Query(ctx, query)
+func (r *RoomRepository) FindAll(ctx context.Context, propertyID uuid.UUID) ([]model.Room, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, property_id, room_number, price_per_month,
+			COALESCE(description,''), status, floor, is_draft, type, created_at
+		FROM rooms WHERE property_id=$1 ORDER BY room_number`, propertyID,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var rooms []model.Room
+	rooms := make([]model.Room, 0)
 	for rows.Next() {
 		var room model.Room
-		err := rows.Scan(&room.ID, &room.RoomNumber, &room.PricePerMonth, &room.Description, &room.Status, &room.Floor, &room.IsDraft, &room.Type, &room.CreatedAt)
-		if err != nil {
+		if err := rows.Scan(
+			&room.ID, &room.PropertyID, &room.RoomNumber, &room.PricePerMonth,
+			&room.Description, &room.Status, &room.Floor, &room.IsDraft,
+			&room.Type, &room.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		rooms = append(rooms, room)
 	}
-	return rooms, nil
+	return rooms, rows.Err()
 }
 
-func (r *RoomRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Room, error) {
-	query := `SELECT id, room_number, price_per_month, description, status, floor, is_draft, type, created_at FROM rooms WHERE id = $1`
+func (r *RoomRepository) FindByID(ctx context.Context, propertyID, id uuid.UUID) (*model.Room, error) {
 	room := &model.Room{}
-	err := r.db.QueryRow(ctx, query, id).Scan(&room.ID, &room.RoomNumber, &room.PricePerMonth, &room.Description, &room.Status, &room.Floor, &room.IsDraft, &room.Type, &room.CreatedAt)
+	err := r.db.QueryRow(ctx, `
+		SELECT id, property_id, room_number, price_per_month,
+			COALESCE(description,''), status, floor, is_draft, type, created_at
+		FROM rooms WHERE property_id=$1 AND id=$2`, propertyID, id,
+	).Scan(
+		&room.ID, &room.PropertyID, &room.RoomNumber, &room.PricePerMonth,
+		&room.Description, &room.Status, &room.Floor, &room.IsDraft,
+		&room.Type, &room.CreatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
 	return room, nil
 }
 
-func (r *RoomRepository) Update(ctx context.Context, room *model.Room) error {
-	query := `UPDATE rooms SET room_number = $1, price_per_month = $2, description = $3, status = $4, floor = $5, type = $6 WHERE id = $7`
-	_, err := r.db.Exec(ctx, query, room.RoomNumber, room.PricePerMonth, room.Description, room.Status, room.Floor, room.Type, room.ID)
-	return err
+func (r *RoomRepository) Update(ctx context.Context, propertyID uuid.UUID, room *model.Room) error {
+	command, err := r.db.Exec(ctx, `
+		UPDATE rooms SET room_number=$1, price_per_month=$2, description=$3,
+			status=$4, floor=$5, type=$6, is_draft=$7
+		WHERE id=$8 AND property_id=$9`,
+		strings.TrimSpace(room.RoomNumber), room.PricePerMonth, room.Description,
+		room.Status, room.Floor, room.Type, room.IsDraft, room.ID, propertyID,
+	)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() != 1 {
+		return pgx.ErrNoRows
+	}
+	room.PropertyID = propertyID
+	return nil
 }
 
-func (r *RoomRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM rooms WHERE id = $1`, id)
-	return err
+func (r *RoomRepository) Delete(ctx context.Context, propertyID, id uuid.UUID) error {
+	return r.DeleteWithTenant(ctx, propertyID, id, false)
 }
 
-func (r *RoomRepository) DeleteWithTenant(ctx context.Context, id uuid.UUID, deleteTenant bool) error {
+// DeleteWithTenant removes only relations in the selected property. Global
+// user identities and history in other properties are deliberately retained.
+func (r *RoomRepository) DeleteWithTenant(
+	ctx context.Context, propertyID, id uuid.UUID, endActiveTenancy bool,
+) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer tx.Rollback(ctx) //nolint:errcheck
 
-	if deleteTenant {
-		var userIDs []uuid.UUID
-		rows, err := tx.Query(ctx, "SELECT DISTINCT user_id FROM contracts WHERE room_id = $1 AND status = 'active' AND user_id IS NOT NULL", id)
-		if err == nil {
-			for rows.Next() {
-				var uID uuid.UUID
-				if errScan := rows.Scan(&uID); errScan == nil {
-					userIDs = append(userIDs, uID)
-				}
-			}
-			rows.Close()
-		}
-
-		for _, uID := range userIDs {
-			_, _ = tx.Exec(ctx, "DELETE FROM payments WHERE contract_id IN (SELECT id FROM contracts WHERE user_id = $1)", uID)
-			_, _ = tx.Exec(ctx, "DELETE FROM complaints WHERE user_id = $1", uID)
-			_, _ = tx.Exec(ctx, "DELETE FROM contracts WHERE user_id = $1", uID)
-			_, _ = tx.Exec(ctx, "DELETE FROM users WHERE id = $1", uID)
+	var lockedID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+		SELECT id FROM rooms WHERE property_id=$1 AND id=$2 FOR UPDATE`,
+		propertyID, id,
+	).Scan(&lockedID); err != nil {
+		return err
+	}
+	var activeContracts int
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(*) FROM contracts
+		WHERE property_id=$1 AND room_id=$2 AND status='active'`,
+		propertyID, id,
+	).Scan(&activeContracts); err != nil {
+		return err
+	}
+	if activeContracts > 0 && !endActiveTenancy {
+		return fmt.Errorf("room has an active tenancy")
+	}
+	if activeContracts > 0 {
+		if _, err := tx.Exec(ctx, `
+			UPDATE contracts SET status='cancelled', end_date=CURRENT_DATE,
+				room_id=NULL
+			WHERE property_id=$1 AND room_id=$2 AND status='active'`,
+			propertyID, id,
+		); err != nil {
+			return err
 		}
 	}
+	command, err := tx.Exec(ctx,
+		`DELETE FROM rooms WHERE property_id=$1 AND id=$2`, propertyID, id,
+	)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() != 1 {
+		return pgx.ErrNoRows
+	}
+	return tx.Commit(ctx)
+}
 
-	_, _ = tx.Exec(ctx, "DELETE FROM complaints WHERE room_id = $1", id)
-	_, err = tx.Exec(ctx, "DELETE FROM rooms WHERE id = $1", id)
+func hasTenantData(user *model.User) bool {
+	return user != nil && (strings.TrimSpace(user.Name) != "" || strings.TrimSpace(user.Email) != "")
+}
+
+func findOrCreateTenant(ctx context.Context, tx pgx.Tx, user *model.User) (uuid.UUID, error) {
+	if user == nil || strings.TrimSpace(user.Email) == "" {
+		return uuid.Nil, fmt.Errorf("tenant email is required")
+	}
+	email := strings.ToLower(strings.TrimSpace(user.Email))
+	var userID uuid.UUID
+	err := tx.QueryRow(ctx, `SELECT id FROM users WHERE LOWER(email)=$1`, email).Scan(&userID)
+	if err == nil {
+		// Existing identities may belong to other properties. Do not mutate their
+		// global PII here; only attach a scoped contract.
+		return userID, nil
+	}
+	if err != pgx.ErrNoRows {
+		return uuid.Nil, err
+	}
+	randomPassword := uuid.NewString() + uuid.NewString()
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(randomPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	userID = uuid.New()
+	err = tx.QueryRow(ctx, `
+		INSERT INTO users (
+			id,name,email,password_hash,role,is_verified,phone,ktp_url,selfie_url,
+			is_active,date_of_birth,gender,job,emergency_contact_phone,
+			emergency_contact_relation,emergency_contact_name,additional_doc_url
+		) VALUES ($1,$2,$3,$4,'tenant',TRUE,$5,$6,$7,TRUE,$8,$9,$10,$11,$12,$13,$14)
+		RETURNING id`,
+		userID, user.Name, email, string(hashedPassword), user.Phone,
+		user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job,
+		user.EmergencyContactPhone, user.EmergencyContactRelation,
+		user.EmergencyContactName, user.AdditionalDocURL,
+	).Scan(&userID)
+	return userID, err
+}
+
+func prepareContract(contract *model.Contract) {
+	if contract.RentalDuration <= 0 {
+		contract.RentalDuration = 1
+	}
+	if contract.StartDate.IsZero() {
+		contract.StartDate = time.Now()
+	}
+	contract.EndDate = contract.StartDate.AddDate(0, contract.RentalDuration, 0)
+	if contract.PaymentInterval == "" {
+		contract.PaymentInterval = "monthly"
+	}
+	if contract.PaymentDueDay <= 0 {
+		contract.PaymentDueDay = contract.StartDate.AddDate(0, 1, -3).Day()
+	}
+	if contract.Status == "" {
+		contract.Status = "active"
+	}
+	if contract.Notes == "" {
+		contract.Notes = fmt.Sprintf(
+			"Perpanjangan kontrak dilakukan paling lambat pada tanggal %d",
+			contract.PaymentDueDay,
+		)
+	}
+}
+
+func createRoomContractAndBill(
+	ctx context.Context,
+	tx pgx.Tx,
+	propertyID, actorID, roomID, userID uuid.UUID,
+	contract *model.Contract,
+	payment *model.Payment,
+) error {
+	prepareContract(contract)
+	contract.PropertyID = propertyID
+	contract.OwnerID = actorID
+	contract.RoomID = &roomID
+	contract.UserID = &userID
+	err := tx.QueryRow(ctx, `
+		INSERT INTO contracts (
+			property_id,room_id,user_id,owner_id,start_date,end_date,
+			rental_duration,monthly_rent,total_price,deposit,payment_due_day,
+			status,notes,electricity_bill,water_bill,other_bills,payment_interval
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+		RETURNING id,created_at`,
+		propertyID, roomID, userID, actorID, contract.StartDate, contract.EndDate,
+		contract.RentalDuration, contract.MonthlyRent, contract.TotalPrice,
+		contract.Deposit, contract.PaymentDueDay, contract.Status, contract.Notes,
+		contract.ElectricityBill, contract.WaterBill, contract.OtherBills,
+		contract.PaymentInterval,
+	).Scan(&contract.ID, &contract.CreatedAt)
 	if err != nil {
 		return err
 	}
 
-	return tx.Commit(ctx)
+	rent, electricity, water, other := initialBillAmounts(contract)
+	payment.ID = uuid.New()
+	payment.PropertyID = propertyID
+	payment.ContractID = contract.ID
+	payment.OwnerID = &actorID
+	payment.PeriodMonth = int(contract.StartDate.Month())
+	payment.PeriodYear = contract.StartDate.Year()
+	payment.AmountRent = rent
+	payment.AmountElectricity = electricity
+	payment.AmountWater = water
+	payment.AmountOther = other
+	payment.Status = "unpaid"
+	payment.DueDate = contract.StartDate.AddDate(0, 1, -3)
+	payment.Notes = contract.Notes
+	_, err = tx.Exec(ctx, `
+		INSERT INTO payments (
+			id,property_id,contract_id,owner_id,period_month,period_year,
+			amount_rent,amount_electricity,amount_water,amount_other,
+			total_paid,payment_method,status,due_date,notes
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,'','unpaid',$11,$12)`,
+		payment.ID, propertyID, contract.ID, actorID, payment.PeriodMonth,
+		payment.PeriodYear, rent, electricity, water, other, payment.DueDate,
+		payment.Notes,
+	)
+	return err
+}
+
+func updateRoomStatus(
+	ctx context.Context, tx pgx.Tx, propertyID, roomID uuid.UUID, status string,
+) error {
+	command, err := tx.Exec(ctx, `
+		UPDATE rooms SET status=$1 WHERE property_id=$2 AND id=$3`,
+		status, propertyID, roomID,
+	)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() != 1 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }

@@ -8,6 +8,7 @@ import (
 
 type Room struct {
 	ID            uuid.UUID `json:"id"`
+	PropertyID    uuid.UUID `json:"property_id"`
 	RoomNumber    string    `json:"room_number"`
 	PricePerMonth float64   `json:"price_per_month"`
 	Description   string    `json:"description"`
