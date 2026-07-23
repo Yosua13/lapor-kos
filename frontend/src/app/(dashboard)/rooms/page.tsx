@@ -32,7 +32,9 @@ import {
   ChevronDown,
   CheckSquare
 } from 'lucide-react';
-import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
+import { apiFetch, getImageUrl } from '@/lib/api';
+import { CAPABILITIES } from '@/features/authorization/permissions';
+import { useAuthorization } from '@/features/authorization/useAuthorization';
 
 interface Room {
   id: string;
@@ -53,6 +55,8 @@ interface Room {
 
 export default function RoomsPage() {
   const router = useRouter();
+  const { can } = useAuthorization();
+  const canWriteRooms = can(CAPABILITIES.ROOM_WRITE);
   const [mounted, setMounted] = useState(false);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [tenants, setTenants] = useState<any[]>([]);
@@ -355,20 +359,14 @@ export default function RoomsPage() {
       if (files.ktp) data.append('ktp', files.ktp);
       if (files.selfie) data.append('selfie', files.selfie);
 
-      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1];
       const url = editingRoom 
-        ? `${API_URL}/api/rooms/${editingRoom.id}/assign-tenant`
-        : `${API_URL}/api/rooms/with-tenant`;
+        ? `/api/rooms/${editingRoom.id}/assign-tenant`
+        : '/api/rooms/with-tenant';
 
-      const response = await fetch(url, {
+      await apiFetch(url, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
         body: data
       });
-
-      if (!response.ok) throw new Error('Gagal menambah kamar dan penghuni');
 
       setIsModalOpen(false);
       fetchRooms();
@@ -562,13 +560,15 @@ export default function RoomsPage() {
             <button className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-[#1f2937] font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
               <UploadCloud className="w-4 h-4" /> Export
             </button>
-            <button
-              type="button"
-              onClick={() => router.push('/rooms/add')}
-              className="flex-1 sm:flex-none px-4 py-2.5 bg-[#0e8a7a] text-white font-bold text-[13px] rounded-[10px] hover:bg-[#0c7567] transition-all flex items-center justify-center gap-2 shadow-sm"
-            >
-              <Plus className="w-4 h-4" /> Tambah Kamar
-            </button>
+            {canWriteRooms && (
+              <button
+                type="button"
+                onClick={() => router.push('/rooms/add')}
+                className="flex-1 sm:flex-none px-4 py-2.5 bg-[#0e8a7a] text-white font-bold text-[13px] rounded-[10px] hover:bg-[#0c7567] transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                <Plus className="w-4 h-4" /> Tambah Kamar
+              </button>
+            )}
           </div>
         </div>
 
@@ -613,7 +613,7 @@ export default function RoomsPage() {
                           }`}>
                             {isOccupied ? 'Terisi' : 'Kosong'}
                           </span>
-                          <div className="relative">
+                          {canWriteRooms && <div className="relative">
                             <button 
                               onClick={(e) => { e.stopPropagation(); setActiveMenuRoomId(activeMenuRoomId === room.id ? null : room.id); }}
                               className="text-gray-400 hover:text-gray-600 transition-colors"
@@ -640,7 +640,7 @@ export default function RoomsPage() {
                                 </div>
                               </>
                             )}
-                          </div>
+                          </div>}
                         </div>
                       </div>
 
@@ -691,9 +691,11 @@ export default function RoomsPage() {
                             <p className="text-[11px] text-gray-500 leading-tight px-4">Siap untuk diisi penghuni baru</p>
                           </div>
 
-                          <button onClick={() => handleAssignTenant(room)} className="w-full py-2.5 bg-[#0e8a7a] hover:bg-[#0c7567] text-white rounded-[10px] text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto shadow-sm">
-                            <Plus className="w-4 h-4" /> Tambah Penghuni
-                          </button>
+                          {canWriteRooms && (
+                            <button onClick={() => handleAssignTenant(room)} className="w-full py-2.5 bg-[#0e8a7a] hover:bg-[#0c7567] text-white rounded-[10px] text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto shadow-sm">
+                              <Plus className="w-4 h-4" /> Tambah Penghuni
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -775,39 +777,32 @@ export default function RoomsPage() {
                             >
                               <ExternalLink className="w-3.5 h-3.5" /> Detail Penghuni
                             </button>
-                          ) : (
+                          ) : canWriteRooms ? (
                             <button 
                               onClick={() => handleAssignTenant(room)}
                               className="px-3.5 py-2 text-[11px] font-bold text-white bg-[#0e8a7a] hover:bg-[#0c7567] rounded-xl transition-colors inline-flex items-center gap-1 cursor-pointer shadow-sm"
                             >
                               <Plus className="w-3.5 h-3.5" /> Tambah Penghuni
                             </button>
-                          )}
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setActiveMenuRoomId(activeMenuRoomId === room.id ? null : room.id); }} 
-                            className="p-2 text-gray-400 hover:text-brand-navy rounded-xl transition-colors cursor-pointer hover:bg-gray-50"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-
-                          {/* Dropdown Menu */}
-                          {activeMenuRoomId === room.id && (
+                          ) : null}
+                          {canWriteRooms && (
                             <>
-                              <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setActiveMenuRoomId(null); }} />
-                              <div className="absolute right-0 top-10 z-20 bg-white border border-gray-100 rounded-xl shadow-lg py-1.5 w-28 text-left animate-in fade-in slide-in-from-top-2 duration-200">
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); handleOpenModal(room); setActiveMenuRoomId(null); }}
-                                  className="w-full px-4 py-2 text-xs font-bold text-gray-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" /> Edit
-                                </button>
-                                <button 
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteClick(room); setActiveMenuRoomId(null); }}
-                                  className="w-full px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" /> Hapus
-                                </button>
-                              </div>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setActiveMenuRoomId(activeMenuRoomId === room.id ? null : room.id); }}
+                                className="p-2 text-gray-400 hover:text-brand-navy rounded-xl transition-colors cursor-pointer hover:bg-gray-50"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+
+                              {activeMenuRoomId === room.id && (
+                                <>
+                                  <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setActiveMenuRoomId(null); }} />
+                                  <div className="absolute right-0 top-10 z-20 bg-white border border-gray-100 rounded-xl shadow-lg py-1.5 w-28 text-left animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <button onClick={(e) => { e.stopPropagation(); handleOpenModal(room); setActiveMenuRoomId(null); }} className="w-full px-4 py-2 text-xs font-bold text-gray-700 hover:bg-slate-50 flex items-center gap-2 transition-colors cursor-pointer"><Edit2 className="w-3.5 h-3.5" /> Edit</button>
+                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(room); setActiveMenuRoomId(null); }} className="w-full px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors cursor-pointer"><Trash2 className="w-3.5 h-3.5" /> Hapus</button>
+                                  </div>
+                                </>
+                              )}
                             </>
                           )}
                         </div>

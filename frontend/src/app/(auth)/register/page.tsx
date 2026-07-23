@@ -6,13 +6,14 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, Loader2, User, CheckCircle2, X } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, Loader2, User, CheckCircle2, X, Building2 } from 'lucide-react';
 import Image from 'next/image';
 import { apiFetch } from '@/lib/api';
 import AuthCarousel from '@/components/AuthCarousel';
 
 const registerSchema = z.object({
   name: z.string().min(3, 'Nama minimal 3 karakter'),
+  property_name: z.string().min(3, 'Nama properti minimal 3 karakter'),
   email: z.string().email('Format email tidak valid'),
   password: z.string().min(8, 'Password minimal 8 karakter'),
   termsAccepted: z.boolean().refine(val => val === true, 'Anda harus menyetujui Syarat & Ketentuan serta Kebijakan Privasi'),
@@ -42,11 +43,17 @@ export default function RegisterPage() {
     try {
       await apiFetch('/api/auth/register', {
         method: 'POST',
-        body: JSON.stringify(data),
+        propertyScoped: false,
+        body: JSON.stringify({
+          name: data.name,
+          property_name: data.property_name,
+          email: data.email,
+          password: data.password,
+        }),
       });
       setShowPopup(true);
-    } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan saat mendaftar. Silakan coba lagi.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Terjadi kesalahan saat mendaftar. Silakan coba lagi.');
     } finally {
       setIsLoading(false);
     }
@@ -133,6 +140,26 @@ export default function RegisterPage() {
                 />
               </div>
               {errors.name && <p className="text-xs text-red-500 ml-1">{errors.name.message}</p>}
+            </div>
+
+            {/* Initial Property Field */}
+            <div className="space-y-2">
+              <label htmlFor="property_name" className="text-sm font-medium text-navy ml-1">
+                Nama Properti
+              </label>
+              <div className="relative group">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-teal transition-colors">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <input
+                  {...register('property_name')}
+                  type="text"
+                  id="property_name"
+                  placeholder="Contoh: Kos Melati"
+                  className={`w-full bg-white border ${errors.property_name ? 'border-red-300' : 'border-gray-200'} rounded-xl py-3.5 pl-12 pr-4 text-navy placeholder:text-gray-300 focus:outline-none focus:border-teal focus:ring-4 focus:ring-teal/5 transition-all`}
+                />
+              </div>
+              {errors.property_name && <p className="text-xs text-red-500 ml-1">{errors.property_name.message}</p>}
             </div>
 
             {/* Email Field */}

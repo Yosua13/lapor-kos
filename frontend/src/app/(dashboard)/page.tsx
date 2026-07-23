@@ -30,10 +30,12 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
-import { getToken } from '@/lib/auth';
+import { useSession } from '@/features/session/SessionProvider';
+import { useActiveProperty } from '@/features/properties/PropertyProvider';
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<any>(null);
+	const { user } = useSession();
+	const { activeProperty, isLoading: isPropertyLoading } = useActiveProperty();
   const [tenantProfile, setTenantProfile] = useState<any>(null);
   const [tenantPayments, setTenantPayments] = useState<any[]>([]);
   const [rooms, setRooms] = useState<any[]>([]);
@@ -50,12 +52,17 @@ export default function DashboardPage() {
   useEffect(() => {
     setMounted(true);
     const fetchData = async () => {
+	  if (!user || isPropertyLoading) return;
+	  // A new owner has no selected property yet. DashboardShell renders the
+	  // onboarding state, so do not send property-scoped API requests that
+	  // would otherwise fail with a missing property context.
+	  if (user.role !== 'tenant' && !activeProperty) {
+		setIsLoading(false);
+		return;
+	  }
       setIsLoading(true);
       try {
-        const userData = await apiFetch('/api/auth/me');
-        setUser(userData);
-        
-        if (userData.role === 'tenant') {
+		if (user.role === 'tenant') {
           const [profileData, paymentsData] = await Promise.all([
             apiFetch('/api/tenants/me'),
             apiFetch('/api/payments/my')
@@ -86,7 +93,7 @@ export default function DashboardPage() {
       }
     };
     fetchData();
-  }, []);
+	}, [activeProperty, isPropertyLoading, user]);
 
   const totalRooms = rooms.length;
   const occupiedRooms = rooms.filter(r => r.status === 'occupied').length;

@@ -21,6 +21,8 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { CAPABILITIES } from '@/features/authorization/permissions';
+import { useAuthorization } from '@/features/authorization/useAuthorization';
 
 interface HouseRule {
   id?: string;
@@ -58,8 +60,8 @@ const categoryLabels: Record<CategoryType, string> = {
 };
 
 export default function HouseRulesPage() {
+  const { can } = useAuthorization();
   const [rules, setRules] = useState<HouseRule[]>([]);
-  const [userRole, setUserRole] = useState<string>('tenant');
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('semua');
@@ -87,11 +89,6 @@ export default function HouseRulesPage() {
       setIsLoading(true);
     }
     try {
-      // 1. Get current user role
-      const me = await apiFetch('/api/auth/me');
-      setUserRole(me.role);
-
-      // 2. Get dynamic rules
       const data = await apiFetch('/api/rules');
       setRules(data);
     } catch (err) {
@@ -274,7 +271,7 @@ export default function HouseRulesPage() {
     return counts;
   }, [rules]);
 
-  const isOwner = userRole === 'owner';
+  const isOwner = can(CAPABILITIES.RULE_WRITE);
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-8 pb-16">

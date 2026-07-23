@@ -21,7 +21,9 @@ import {
   Loader2,
   RefreshCw
 } from 'lucide-react';
-import { apiFetch, API_URL, getImageUrl } from '@/lib/api';
+import { apiFetch, getImageUrl } from '@/lib/api';
+import { CAPABILITIES } from '@/features/authorization/permissions';
+import { useAuthorization } from '@/features/authorization/useAuthorization';
 
 interface Complaint {
   id: string;
@@ -44,6 +46,7 @@ interface Complaint {
 
 export default function ComplaintDetailPage() {
   const router = useRouter();
+  const { can, isTenant } = useAuthorization();
   const params = useParams();
   const id = params?.id as string;
 
@@ -62,7 +65,7 @@ export default function ComplaintDetailPage() {
       setUser(userData);
       
       let complaintsData: Complaint[] = [];
-      if (userData.role === 'owner') {
+      if (!isTenant) {
         complaintsData = await apiFetch('/api/complaints');
       } else {
         complaintsData = await apiFetch('/api/complaints/my');
@@ -167,7 +170,7 @@ export default function ComplaintDetailPage() {
     );
   }
 
-  const isOwner = user?.role === 'owner';
+  const isOwner = can(CAPABILITIES.COMPLAINT_MANAGE);
   const cat = getCategoryDetails(complaint.category);
   const CategoryIcon = cat.icon;
   const status = getStatusBadge(complaint.status);
