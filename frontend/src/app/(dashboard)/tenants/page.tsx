@@ -9,6 +9,8 @@ import {
   LayoutGrid, List as ListIcon
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuthorization } from '@/features/authorization/useAuthorization';
+import { CAPABILITIES } from '@/features/authorization/permissions';
 
 interface Tenant {
   id: string;
@@ -39,6 +41,7 @@ interface Tenant {
 
 export default function TenantsPage() {
   const router = useRouter();
+  const { can } = useAuthorization();
   const [mounted, setMounted] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -242,9 +245,10 @@ export default function TenantsPage() {
     <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full animate-slide-up -mt-4 lg:-mt-8">
 
       {/* HEADER */}
-      <div className="shrink-0 mb-3">
-        <h1 className="text-[28px] font-display font-extrabold text-brand-navy">Penghuni & Kontrak</h1>
-        <p className="text-[15px] text-gray-500 mt-1">Kelola data penghuni dan kontrak kamar kos Anda.</p>
+      <div className="shrink-0 mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div><h1 className="text-[28px] font-display font-extrabold text-brand-navy">Penghuni & Kontrak</h1>
+        <p className="text-[15px] text-gray-500 mt-1">Kelola data penghuni dan kontrak kamar kos Anda.</p></div>
+        {can(CAPABILITIES.TENANT_WRITE) && <button onClick={() => router.push('/tenants/invitations')} className="rounded-lg bg-brand-teal px-4 py-2 text-sm font-bold text-white">Undang calon penghuni</button>}
       </div>
 
       {/* TABS (Pills) */}
