@@ -117,3 +117,19 @@ go test ./... -v
 # Menjalankan test khusus untuk generator laporan PDF
 go test -v ./internal/service -run TestGenerateFinancialReport
 ```
+
+### Uji Isolasi Dua Properti (Epic 01)
+
+Acceptance test Epic 01 menjalankan data sementara untuk dua owner, dua
+properti, dan resource operasional yang sama. Seluruh perubahan dilakukan di
+dalam transaksi lalu di-rollback.
+
+Gunakan database khusus pengujian dan jalankan:
+
+```powershell
+$env:TEST_DATABASE_URL='postgresql://...'
+go test -tags=integration ./internal/repository -run TestPropertyIsolationWithTwoOwners -v
+```
+
+Test ini memeriksa isolasi read, update, delete, laporan/export, file, dan
+validitas nomor kamar yang sama pada dua properti berbeda.
