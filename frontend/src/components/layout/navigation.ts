@@ -63,7 +63,7 @@ const staffNavigation: NavigationSection[] = [
     section: 'OPERASIONAL',
     items: [
       { name: 'Peraturan Kos', href: '/rules', icon: BookOpen, capability: CAPABILITIES.RULE_READ },
-      { name: 'Kalender', href: '/calendar', icon: Calendar, capability: CAPABILITIES.CONTRACT_READ },
+      { name: 'Kalender', href: '/calendar', icon: Calendar, capability: CAPABILITIES.CALENDAR_READ },
       { name: 'Komplain', href: '/complaints', icon: MessageSquare, capability: CAPABILITIES.COMPLAINT_READ },
     ],
   },
@@ -95,7 +95,7 @@ const staffPathCapabilities: Array<[string, Capability]> = [
   ['/payments', CAPABILITIES.PAYMENT_READ],
   ['/reports', CAPABILITIES.REPORT_READ],
   ['/rules', CAPABILITIES.RULE_READ],
-  ['/calendar', CAPABILITIES.CONTRACT_READ],
+  ['/calendar', CAPABILITIES.CALENDAR_READ],
   ['/complaints', CAPABILITIES.COMPLAINT_READ],
 ];
 

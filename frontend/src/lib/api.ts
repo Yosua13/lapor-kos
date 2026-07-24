@@ -55,6 +55,12 @@ const buildHeaders = (endpoint: string, options: RequestOptions): Headers => {
 
 type ErrorPayload = { error?: string; message?: string };
 
+// React Strict Mode intentionally re-runs effects in development. Multiple
+// components can also ask for the same resource while the first request is
+// still pending. Share only in-flight GET requests: this removes duplicate
+// network hits without keeping stale data after a mutation or navigation.
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
+
 const parseError = async (response: Response): Promise<ErrorPayload> => {
   try {
     const data = await response.clone().json();
@@ -100,8 +106,7 @@ const request = async (endpoint: string, options: RequestOptions = {}): Promise<
   return response;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const apiFetch = async <T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> => {
+const readApiResponse = async <T>(endpoint: string, options: RequestOptions): Promise<T> => {
   const response = await request(endpoint, options);
 
   if (response.status === 204 || response.headers.get('content-length') === '0') {
@@ -114,6 +119,36 @@ export const apiFetch = async <T = any>(endpoint: string, options: RequestOption
   }
 
   return await response.json() as T;
+};
+
+const getRequestKey = (endpoint: string, options: RequestOptions): string => {
+  const headers = buildHeaders(endpoint, options);
+  return [
+    buildUrl(endpoint, options.params),
+    headers.get('Authorization') ?? '',
+    headers.get('X-Property-ID') ?? '',
+    headers.get('Accept') ?? '',
+  ].join('|');
+};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const apiFetch = <T = any>(endpoint: string, options: RequestOptions = {}): Promise<T> => {
+  const method = (options.method ?? 'GET').toUpperCase();
+  if (method !== 'GET') return readApiResponse<T>(endpoint, options);
+
+  const requestKey = getRequestKey(endpoint, options);
+  const existing = inFlightGetRequests.get(requestKey) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const pending = readApiResponse<T>(endpoint, options);
+  inFlightGetRequests.set(requestKey, pending);
+  const clear = () => {
+    if (inFlightGetRequests.get(requestKey) === pending) {
+      inFlightGetRequests.delete(requestKey);
+    }
+  };
+  void pending.then(clear, clear);
+  return pending;
 };
 
 export const apiBlob = async (endpoint: string, options: RequestOptions = {}): Promise<Blob> => {
