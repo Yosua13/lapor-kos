@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,13 @@ import (
 
 	"github.com/google/uuid"
 )
+
+type UploadedPrivateFile struct {
+	ObjectKey string
+	MimeType  string
+	SizeBytes int64
+	Checksum  string
+}
 
 const MaxUploadSizeBytes int64 = 5 << 20
 
@@ -64,34 +72,52 @@ func (s *StorageService) UploadPropertyFile(fileHeader *multipart.FileHeader, pr
 	return s.uploadPrivateFile(fileHeader, "properties/"+propertyID.String(), prefix)
 }
 
+// UploadTenantDocument writes identity documents into a non-guessable,
+// tenant-specific private namespace. Its metadata is returned for persistence
+// in the files table and must never be exposed as a public URL.
+func (s *StorageService) UploadTenantDocument(fileHeader *multipart.FileHeader, propertyID, tenantProfileID uuid.UUID, prefix string) (*UploadedPrivateFile, error) {
+	if propertyID == uuid.Nil || tenantProfileID == uuid.Nil {
+		return nil, fmt.Errorf("property and tenant profile IDs are required")
+	}
+	return s.uploadPrivateFileMetadata(fileHeader, "properties/"+propertyID.String()+"/tenant-profiles/"+tenantProfileID.String(), prefix)
+}
+
 func (s *StorageService) uploadPrivateFile(fileHeader *multipart.FileHeader, namespace, prefix string) (string, error) {
+	file, err := s.uploadPrivateFileMetadata(fileHeader, namespace, prefix)
+	if err != nil {
+		return "", err
+	}
+	return file.ObjectKey, nil
+}
+
+func (s *StorageService) uploadPrivateFileMetadata(fileHeader *multipart.FileHeader, namespace, prefix string) (*UploadedPrivateFile, error) {
 	if !s.IsConfigured() {
-		return "", fmt.Errorf("supabase storage is not configured")
+		return nil, fmt.Errorf("supabase storage is not configured")
 	}
 	if fileHeader.Size > MaxUploadSizeBytes {
-		return "", fmt.Errorf("file is too large, maximum size is 5MB")
+		return nil, fmt.Errorf("file is too large, maximum size is 5MB")
 	}
 
 	// Open the uploaded file
 	src, err := fileHeader.Open()
 	if err != nil {
-		return "", fmt.Errorf("failed to open uploaded file: %w", err)
+		return nil, fmt.Errorf("failed to open uploaded file: %w", err)
 	}
 	defer src.Close()
 
 	// Read file contents with a hard limit so malicious clients cannot exhaust memory.
 	fileBytes, err := io.ReadAll(io.LimitReader(src, MaxUploadSizeBytes+1))
 	if err != nil {
-		return "", fmt.Errorf("failed to read uploaded file: %w", err)
+		return nil, fmt.Errorf("failed to read uploaded file: %w", err)
 	}
 	if int64(len(fileBytes)) > MaxUploadSizeBytes {
-		return "", fmt.Errorf("file is too large, maximum size is 5MB")
+		return nil, fmt.Errorf("file is too large, maximum size is 5MB")
 	}
 
 	contentType := http.DetectContentType(fileBytes)
 	ext, ok := allowedUploadExtensions[contentType]
 	if !ok {
-		return "", fmt.Errorf("unsupported file type")
+		return nil, fmt.Errorf("unsupported file type")
 	}
 
 	// Generate a unique filename
@@ -104,7 +130,7 @@ func (s *StorageService) uploadPrivateFile(fileHeader *multipart.FileHeader, nam
 	// Create and send the HTTP PUT request
 	req, err := http.NewRequest(http.MethodPost, uploadURL, bytes.NewReader(fileBytes))
 	if err != nil {
-		return "", fmt.Errorf("failed to create upload request: %w", err)
+		return nil, fmt.Errorf("failed to create upload request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+s.serviceKey)
 	req.Header.Set("Content-Type", contentType)
@@ -112,16 +138,17 @@ func (s *StorageService) uploadPrivateFile(fileHeader *multipart.FileHeader, nam
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to upload file to supabase: %w", err)
+		return nil, fmt.Errorf("failed to upload file: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("supabase upload failed (status %d): %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("supabase upload failed (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	return objectKey, nil
+	checksum := sha256.Sum256(fileBytes)
+	return &UploadedPrivateFile{ObjectKey: objectKey, MimeType: contentType, SizeBytes: int64(len(fileBytes)), Checksum: fmt.Sprintf("%x", checksum)}, nil
 }
 
 // CreateSignedURL exchanges a private object key for a short-lived URL. The

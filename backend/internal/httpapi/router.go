@@ -15,16 +15,17 @@ import (
 )
 
 type handlers struct {
-	auth      *handler.AuthHandler
-	property  *handler.PropertyHandler
-	room      *handler.RoomHandler
-	contract  *handler.ContractHandler
-	payment   *handler.PaymentHandler
-	calendar  *handler.CalendarHandler
-	complaint *handler.ComplaintHandler
-	houseRule *handler.HouseRuleHandler
-	report    *handler.ReportHandler
-	file      *handler.FileHandler
+	auth            *handler.AuthHandler
+	property        *handler.PropertyHandler
+	room            *handler.RoomHandler
+	contract        *handler.ContractHandler
+	payment         *handler.PaymentHandler
+	calendar        *handler.CalendarHandler
+	complaint       *handler.ComplaintHandler
+	houseRule       *handler.HouseRuleHandler
+	report          *handler.ReportHandler
+	file            *handler.FileHandler
+	tenantLifecycle *handler.TenantLifecycleHandler
 }
 
 type repositories struct {
@@ -48,18 +49,20 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	calendarRepo := repository.NewCalendarRepository(db)
 	complaintRepo := repository.NewComplaintRepository(db)
 	houseRuleRepo := repository.NewHouseRuleRepository(db)
+	tenantLifecycleRepo := repository.NewTenantLifecycleRepository(db)
 
 	h := handlers{
-		auth:      handler.NewAuthHandler(userRepo, emailService, storageService),
-		property:  handler.NewPropertyHandler(propertyRepo),
-		room:      handler.NewRoomHandler(roomRepo, storageService),
-		contract:  handler.NewContractHandler(contractRepo),
-		payment:   handler.NewPaymentHandler(paymentRepo, storageService, userRepo),
-		calendar:  handler.NewCalendarHandler(calendarRepo),
-		complaint: handler.NewComplaintHandler(complaintRepo, aiService, whatsAppService, storageService),
-		houseRule: handler.NewHouseRuleHandler(houseRuleRepo, userRepo),
-		report:    handler.NewReportHandler(paymentRepo, userRepo, reportPDFService),
-		file:      handler.NewFileHandler(storageService),
+		auth:            handler.NewAuthHandler(userRepo, emailService, storageService),
+		property:        handler.NewPropertyHandler(propertyRepo),
+		room:            handler.NewRoomHandler(roomRepo, storageService),
+		contract:        handler.NewContractHandler(contractRepo),
+		payment:         handler.NewPaymentHandler(paymentRepo, storageService, userRepo),
+		calendar:        handler.NewCalendarHandler(calendarRepo),
+		complaint:       handler.NewComplaintHandler(complaintRepo, aiService, whatsAppService, storageService),
+		houseRule:       handler.NewHouseRuleHandler(houseRuleRepo, userRepo),
+		report:          handler.NewReportHandler(paymentRepo, userRepo, reportPDFService),
+		file:            handler.NewFileHandler(storageService),
+		tenantLifecycle: handler.NewTenantLifecycleHandler(tenantLifecycleRepo, userRepo, emailService, storageService),
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
@@ -91,10 +94,34 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	registerAuthRoutes(api, h.auth, repos.user)
 	registerPropertyRoutes(api, h.property, repos)
 	registerLegacyTenantRoutes(api, h, repos)
+	registerTenantLifecycleRoutes(api, h.tenantLifecycle, repos)
 	registerPropertyOperations(api, h, repos)
 	registerPropertyOperations(api.Group("/v1/properties/:property_id"), h, repos)
 
 	return router, nil
+}
+
+func registerTenantLifecycleRoutes(api *gin.RouterGroup, tenantHandler *handler.TenantLifecycleHandler, repos repositories) {
+	// Invitation lookup and activation are intentionally public: the random,
+	// single-use token is the capability. No property or user data is exposed.
+	api.GET("/tenant-invitations/:token", middleware.RateLimit(20, time.Minute), tenantHandler.PreviewInvitation)
+	api.POST("/tenant-invitations/activate", middleware.RateLimit(10, time.Minute), tenantHandler.ActivateInvitation)
+
+	authn := middleware.AuthMiddleware(repos.user)
+	propertyRepo := repos.property
+	invitations := api.Group("/tenant-invitations", authn)
+	invitations.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantRead), tenantHandler.ListInvitations)
+	invitations.POST("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantWrite), tenantHandler.CreateInvitation)
+	invitations.DELETE("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantWrite), tenantHandler.RevokeInvitation)
+
+	profiles := api.Group("/tenant-profiles", authn)
+	profiles.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantRead), tenantHandler.ListProfiles)
+	profiles.GET("/:profile_id/documents", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantRead), tenantHandler.ListDocuments)
+	profiles.POST("/:profile_id/documents", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantWrite), tenantHandler.UploadDocument)
+	profiles.GET("/:profile_id/documents/:document_id/sign", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantRead), tenantHandler.SignDocument)
+
+	tenantRole := middleware.RoleMiddleware(repos.db, "tenant")
+	api.GET("/tenants/me/documents/:document_id/sign", authn, tenantRole, tenantHandler.SignMyDocument)
 }
 
 func registerAuthRoutes(api *gin.RouterGroup, authHandler *handler.AuthHandler, userRepo *repository.UserRepository) {

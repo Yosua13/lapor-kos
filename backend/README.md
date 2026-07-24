@@ -97,7 +97,9 @@ Setelah dijalankan, server akan:
 Migrasi tidak dijalankan otomatis ketika aplikasi mulai. Terapkan semua file SQL
 di direktori `migrations/` secara berurutan sebelum menjalankan versi aplikasi
 yang baru. Untuk perubahan multi-properti, jalankan fase `013`, periksa hasil
-backfill `014`, lalu terapkan constraint `015`.
+backfill `014`, lalu terapkan constraint `015`. Setelah itu, fase `016`
+menambahkan profile tenant, invitation, consent, dokumen privat, dan
+pencabutan sesi untuk Epic 02.
 
 Endpoint operasional lama tetap tersedia dengan header `X-Property-ID`.
 Endpoint kanonis tersedia di bawah

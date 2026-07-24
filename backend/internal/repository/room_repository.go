@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type RoomRepository struct {
@@ -342,25 +341,10 @@ func findOrCreateTenant(ctx context.Context, tx pgx.Tx, user *model.User) (uuid.
 	if err != pgx.ErrNoRows {
 		return uuid.Nil, err
 	}
-	randomPassword := uuid.NewString() + uuid.NewString()
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(randomPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	userID = uuid.New()
-	err = tx.QueryRow(ctx, `
-		INSERT INTO users (
-			id,name,email,password_hash,role,is_verified,phone,ktp_url,selfie_url,
-			is_active,date_of_birth,gender,job,emergency_contact_phone,
-			emergency_contact_relation,emergency_contact_name,additional_doc_url
-		) VALUES ($1,$2,$3,$4,'tenant',TRUE,$5,$6,$7,TRUE,$8,$9,$10,$11,$12,$13,$14)
-		RETURNING id`,
-		userID, user.Name, email, string(hashedPassword), user.Phone,
-		user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job,
-		user.EmergencyContactPhone, user.EmergencyContactRelation,
-		user.EmergencyContactName, user.AdditionalDocURL,
-	).Scan(&userID)
-	return userID, err
+	// New tenant identities must be created through the invitation activation
+	// flow. It lets the tenant choose their password and verify contact details;
+	// this legacy room flow may only attach an already activated account.
+	return uuid.Nil, fmt.Errorf("tenant account has not been activated; create an invitation first")
 }
 
 func prepareContract(contract *model.Contract) {

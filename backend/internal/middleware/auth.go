@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -14,6 +15,10 @@ import (
 
 type ActiveUserReader interface {
 	IsUserActive(context.Context, uuid.UUID) (bool, error)
+}
+
+type SessionValidityReader interface {
+	IsSessionValid(context.Context, uuid.UUID, time.Time) (bool, error)
 }
 
 func AuthMiddleware(activeUserReaders ...ActiveUserReader) gin.HandlerFunc {
@@ -84,6 +89,20 @@ func AuthMiddleware(activeUserReaders ...ActiveUserReader) gin.HandlerFunc {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Account is inactive"})
 				c.Abort()
 				return
+			}
+			if sessionReader, ok := activeUserReaders[0].(SessionValidityReader); ok {
+				issuedAt, issuedAtErr := claims.GetIssuedAt()
+				if issuedAtErr != nil || issuedAt == nil {
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "Token issue time is invalid"})
+					c.Abort()
+					return
+				}
+				valid, sessionErr := sessionReader.IsSessionValid(c.Request.Context(), parsedUserID, issuedAt.Time)
+				if sessionErr != nil || !valid {
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "Session has been revoked"})
+					c.Abort()
+					return
+				}
 			}
 		}
 

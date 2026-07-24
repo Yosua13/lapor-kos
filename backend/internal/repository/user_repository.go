@@ -105,6 +105,20 @@ func (r *UserRepository) IsUserActive(ctx context.Context, id uuid.UUID) (bool, 
 	return active, err
 }
 
+// IsSessionValid makes JWT revocation stateful without storing individual
+// tokens. Tokens issued at or before revoked_after are rejected by middleware.
+func (r *UserRepository) IsSessionValid(ctx context.Context, id uuid.UUID, issuedAt time.Time) (bool, error) {
+	var revokedAfter time.Time
+	err := r.db.QueryRow(ctx, `SELECT revoked_after FROM tenant_session_revocations WHERE user_id=$1`, id).Scan(&revokedAfter)
+	if err == pgx.ErrNoRows {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return issuedAt.After(revokedAfter), nil
+}
+
 func (r *UserRepository) VerifyUser(ctx context.Context, id uuid.UUID) error {
 	command, err := r.db.Exec(ctx, `
 		UPDATE users SET is_verified=TRUE,verification_token=NULL WHERE id=$1`, id,
@@ -398,6 +412,17 @@ func (r *UserRepository) endTenantContracts(ctx context.Context, propertyID, use
 		if err := updateRoomStatus(ctx, tx, propertyID, roomID, "available"); err != nil {
 			return err
 		}
+	}
+	// A checkout/deactivation terminates the tenant's active access. This is
+	// intentionally global to the identity because JWTs are not property-bound.
+	if _, err := tx.Exec(ctx, `UPDATE tenant_profiles SET status='inactive',deactivated_at=NOW(),updated_at=NOW() WHERE property_id=$1 AND user_id=$2 AND status='active'`, propertyID, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO tenant_session_revocations (user_id,revoked_after,reason)
+		VALUES ($1,NOW(),$2)
+		ON CONFLICT (user_id) DO UPDATE SET revoked_after=EXCLUDED.revoked_after,reason=EXCLUDED.reason,updated_at=NOW()`, userID, "checkout"); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }
