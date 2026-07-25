@@ -9,7 +9,6 @@ import {
   Plus, 
   FileText, 
   Upload, 
-  Download, 
   CheckCircle2, 
   AlertTriangle, 
   Loader2, 
@@ -35,7 +34,6 @@ export default function PaymentsPage() {
   const { can } = useAuthorization();
   const canCreateBill = can(CAPABILITIES.PAYMENT_WRITE);
   const canVerifyPayment = can(CAPABILITIES.PAYMENT_VERIFY);
-  const canExportPayment = can(CAPABILITIES.REPORT_EXPORT);
   const formatRupiah = (value: number | string) => {
     if (value === undefined || value === null) return '';
     const num = typeof value === 'string' ? parseInt(value.replace(/\D/g, '')) || 0 : value;
@@ -378,11 +376,6 @@ export default function PaymentsPage() {
           </div>
 
           <div className="flex items-center gap-3 w-full lg:w-auto shrink-0 justify-end">
-            {canExportPayment && (
-              <button className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-[#1f2937] font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm bg-white">
-                <Download className="w-4 h-4" /> Export Data
-              </button>
-            )}
             {canCreateBill && (
               <button
                 type="button"
