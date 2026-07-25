@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertCircle,
   BarChart3,
@@ -98,7 +99,12 @@ const getStatusLabel = (status: string) => {
 };
 
 export default function ReportsPage() {
+  const [mounted, setMounted] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [user, setUser] = useState<UserData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -611,56 +617,31 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {pdfUrl && (
-        <div className="fixed inset-0 z-[9999] bg-slate-950/70 backdrop-blur-sm p-4 lg:p-8 flex items-center justify-center">
-          <div className="w-full max-w-6xl h-[90vh] bg-white dark:bg-slate-950 rounded-[24px] overflow-hidden shadow-2xl border border-white/10 flex flex-col">
-            <div className="h-16 px-5 lg:px-6 border-b border-gray-200 dark:border-slate-800 flex items-center justify-between gap-4 shrink-0">
-              <div className="min-w-0">
-                <h3 className="text-sm lg:text-base font-display font-extrabold text-brand-navy truncate">Preview Laporan Keuangan</h3>
-                <p className="text-[11px] text-gray-500 truncate">{reportTitle}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={downloadPreview}
-                  className="h-10 px-3 rounded-[10px] border border-gray-200 dark:border-slate-800 text-brand-navy hover:bg-gray-50 dark:hover:bg-slate-900 transition-colors flex items-center gap-2 text-xs font-bold"
-                >
-                  <Download className="w-4 h-4" />
-                  <span className="hidden sm:inline">Download</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={openPdfInNewTab}
-                  className="h-10 px-3 rounded-[10px] border border-gray-200 dark:border-slate-800 text-brand-navy hover:bg-gray-50 dark:hover:bg-slate-900 transition-colors flex items-center gap-2 text-xs font-bold"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span className="hidden sm:inline">Tab Baru</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={printPreview}
-                  className="h-10 px-3 rounded-[10px] bg-brand-teal hover:bg-brand-teal-light text-white dark:text-slate-950 transition-colors flex items-center gap-2 text-xs font-bold"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span className="hidden sm:inline">Cetak</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={closePreview}
-                  className="h-10 w-10 rounded-[10px] border border-gray-200 dark:border-slate-800 text-brand-navy hover:bg-gray-50 dark:hover:bg-slate-900 transition-colors flex items-center justify-center"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+      {pdfUrl && mounted && createPortal(
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closePreview();
+          }}
+          className="fixed inset-0 z-[99999] bg-black/25 p-4 sm:p-6 lg:p-10 flex items-center justify-center"
+        >
+          <div className="relative w-full max-w-4xl h-[85vh] sm:h-[88vh] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col">
+            <button
+              type="button"
+              onClick={closePreview}
+              className="absolute top-3 right-3 z-30 h-9 w-9 rounded-full bg-white/90 hover:bg-white text-gray-700 border border-gray-200 shadow-md flex items-center justify-center transition-all hover:scale-105"
+              aria-label="Tutup preview"
+            >
+              <X className="w-5 h-5" />
+            </button>
             <iframe
               ref={reportFrameRef}
               src={pdfUrl}
-              title="Preview laporan keuangan"
-              className="flex-1 w-full bg-slate-100 dark:bg-slate-900"
+              title="Preview Laporan Keuangan"
+              className="w-full h-full border-none bg-slate-50"
             />
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
