@@ -138,8 +138,18 @@ func (m *MockEmailService) SendVerificationEmail(email string, token string) err
 	return args.Error(0)
 }
 
+func (m *MockEmailService) SendTenantAccountVerificationEmail(email string, token string) error {
+	args := m.Called(email, token)
+	return args.Error(0)
+}
+
 func (m *MockEmailService) SendOTPEmail(email string, otp string) error {
 	args := m.Called(email, otp)
+	return args.Error(0)
+}
+
+func (m *MockEmailService) SendTenantInvitationEmail(email string, invitationURL string, expiresAt time.Time) error {
+	args := m.Called(email, invitationURL, expiresAt)
 	return args.Error(0)
 }
 

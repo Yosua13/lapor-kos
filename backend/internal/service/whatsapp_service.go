@@ -14,6 +14,7 @@ import (
 
 type WhatsAppServiceInterface interface {
 	SendMessageToGroup(ctx context.Context, groupLinkOrID string, message string) (bool, error)
+	SendMessage(ctx context.Context, phone string, message string) (bool, error)
 }
 
 type WhatsAppService struct {
@@ -28,21 +29,34 @@ func NewWhatsAppService() *WhatsAppService {
 	}
 }
 
+func (s *WhatsAppService) IsConfigured() bool {
+	return s.apiURL != "" && s.apiToken != ""
+}
+
 func (s *WhatsAppService) SendMessageToGroup(ctx context.Context, groupLinkOrID string, message string) (bool, error) {
-	if groupLinkOrID == "" {
-		log.Println("[WHATSAPP SERVICE] Failed: Target group ID/link is empty")
-		return false, fmt.Errorf("target group ID/link is empty")
+	return s.sendMessage(ctx, groupLinkOrID, message)
+}
+
+// SendMessage delivers a direct WhatsApp notification to an invited tenant.
+func (s *WhatsAppService) SendMessage(ctx context.Context, phone string, message string) (bool, error) {
+	return s.sendMessage(ctx, phone, message)
+}
+
+func (s *WhatsAppService) sendMessage(ctx context.Context, target string, message string) (bool, error) {
+	if target == "" {
+		log.Println("[WHATSAPP SERVICE] Failed: Target is empty")
+		return false, fmt.Errorf("target is empty")
 	}
 
 	// If no URL or Token is configured in .env, simulate/mock it
 	if s.apiURL == "" || s.apiToken == "" {
-		log.Printf("\n--- [SIMULATOR WHATSAPP GROUP SEND] ---\nTarget Link/ID: %s\nPesan: %s\n---------------------------------------\n", groupLinkOrID, message)
+		log.Printf("\n--- [SIMULATOR WHATSAPP SEND] ---\nTarget: %s\nPesan: %s\n---------------------------------\n", target, message)
 		return true, nil
 	}
 
 	// Prepare url-encoded parameters for general WhatsApp Gateways like Fonnte
 	data := url.Values{}
-	data.Set("target", groupLinkOrID)
+	data.Set("target", target)
 	data.Set("message", message)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", s.apiURL, strings.NewReader(data.Encode()))
@@ -72,6 +86,6 @@ func (s *WhatsAppService) SendMessageToGroup(ctx context.Context, groupLinkOrID 
 		return false, fmt.Errorf("API returned status %d", resp.StatusCode)
 	}
 
-	log.Printf("[WHATSAPP SERVICE] Message successfully sent to group %s. Response: %s\n", groupLinkOrID, string(bodyBytes))
+	log.Printf("[WHATSAPP SERVICE] Message successfully sent to %s. Response: %s\n", target, string(bodyBytes))
 	return true, nil
 }

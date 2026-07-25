@@ -62,7 +62,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		houseRule:       handler.NewHouseRuleHandler(houseRuleRepo, userRepo),
 		report:          handler.NewReportHandler(paymentRepo, userRepo, reportPDFService),
 		file:            handler.NewFileHandler(storageService),
-		tenantLifecycle: handler.NewTenantLifecycleHandler(tenantLifecycleRepo, userRepo, emailService, storageService),
+		tenantLifecycle: handler.NewTenantLifecycleHandler(tenantLifecycleRepo, userRepo, emailService, whatsAppService, storageService),
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
@@ -104,6 +104,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 func registerTenantLifecycleRoutes(api *gin.RouterGroup, tenantHandler *handler.TenantLifecycleHandler, repos repositories) {
 	// Invitation lookup and activation are intentionally public: the random,
 	// single-use token is the capability. No property or user data is exposed.
+	api.GET("/tenant-invitations/activation-status", middleware.RateLimit(30, time.Minute), tenantHandler.ActivationStatus)
 	api.GET("/tenant-invitations/:token", middleware.RateLimit(20, time.Minute), tenantHandler.PreviewInvitation)
 	api.POST("/tenant-invitations/activate", middleware.RateLimit(10, time.Minute), tenantHandler.ActivateInvitation)
 

@@ -40,23 +40,43 @@ func (r *TenantLifecycleRepository) CreateInvitation(ctx context.Context, proper
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	email := strings.ToLower(strings.TrimSpace(req.Email))
+	phone := strings.TrimSpace(req.Phone)
+	deliveryMethod := strings.TrimSpace(req.DeliveryMethod)
 	name := strings.TrimSpace(req.FullName)
-	if name == "" || email == "" {
-		return nil, fmt.Errorf("tenant name and email are required")
+	if name == "" || (deliveryMethod != "email" && deliveryMethod != "whatsapp") {
+		return nil, fmt.Errorf("tenant name and delivery method are required")
+	}
+	if deliveryMethod == "email" && email == "" {
+		return nil, fmt.Errorf("email is required for email delivery")
+	}
+	if deliveryMethod == "whatsapp" && phone == "" {
+		return nil, fmt.Errorf("phone is required for WhatsApp delivery")
 	}
 
 	var profileID uuid.UUID
 	var status string
-	err = tx.QueryRow(ctx, `SELECT id,status FROM tenant_profiles WHERE property_id=$1 AND LOWER(email)=LOWER($2) FOR UPDATE`, propertyID, email).Scan(&profileID, &status)
+	lookupQuery, lookupValue := `SELECT id,status FROM tenant_profiles WHERE property_id=$1 AND LOWER(email)=LOWER($2) FOR UPDATE`, email
+	if deliveryMethod == "whatsapp" {
+		lookupQuery, lookupValue = `SELECT id,status FROM tenant_profiles WHERE property_id=$1 AND phone=$2 FOR UPDATE`, phone
+	}
+	err = tx.QueryRow(ctx, lookupQuery, propertyID, lookupValue).Scan(&profileID, &status)
 	if err == pgx.ErrNoRows {
+		var profileEmail any
+		if email != "" {
+			profileEmail = email
+		}
 		err = tx.QueryRow(ctx, `
 			INSERT INTO tenant_profiles (property_id,full_name,email,phone,status,created_by)
-			VALUES ($1,$2,$3,$4,'invited',$5) RETURNING id`, propertyID, name, email, strings.TrimSpace(req.Phone), actorID).Scan(&profileID)
+			VALUES ($1,$2,$3,$4,'invited',$5) RETURNING id`, propertyID, name, profileEmail, phone, actorID).Scan(&profileID)
 	} else if err == nil {
 		if status == "active" {
 			return nil, ErrProfileAlreadyActive
 		}
-		_, err = tx.Exec(ctx, `UPDATE tenant_profiles SET full_name=$1,phone=$2,status='invited',updated_at=NOW() WHERE id=$3`, name, strings.TrimSpace(req.Phone), profileID)
+		var profileEmail any
+		if email != "" {
+			profileEmail = email
+		}
+		_, err = tx.Exec(ctx, `UPDATE tenant_profiles SET full_name=$1,email=COALESCE($2,email),phone=$3,status='invited',updated_at=NOW() WHERE id=$4`, name, profileEmail, phone, profileID)
 	}
 	if err != nil {
 		return nil, err
@@ -65,10 +85,10 @@ func (r *TenantLifecycleRepository) CreateInvitation(ctx context.Context, proper
 		return nil, err
 	}
 
-	invitation := &model.TenantInvitation{PropertyID: propertyID, TenantProfileID: profileID, FullName: name, Email: email, Status: "pending", ExpiresAt: expiresAt}
+	invitation := &model.TenantInvitation{PropertyID: propertyID, TenantProfileID: profileID, FullName: name, Email: email, Phone: phone, DeliveryMethod: deliveryMethod, Status: "pending", ExpiresAt: expiresAt}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO tenant_invitations (property_id,tenant_profile_id,token_digest,status,expires_at,created_by)
-		VALUES ($1,$2,$3,'pending',$4,$5) RETURNING id,created_at`, propertyID, profileID, tokenDigest, expiresAt, actorID).Scan(&invitation.ID, &invitation.CreatedAt)
+		INSERT INTO tenant_invitations (property_id,tenant_profile_id,token_digest,status,expires_at,created_by,delivery_method)
+		VALUES ($1,$2,$3,'pending',$4,$5,$6) RETURNING id,created_at`, propertyID, profileID, tokenDigest, expiresAt, actorID, deliveryMethod).Scan(&invitation.ID, &invitation.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +100,7 @@ func (r *TenantLifecycleRepository) CreateInvitation(ctx context.Context, proper
 
 func (r *TenantLifecycleRepository) ListInvitations(ctx context.Context, propertyID uuid.UUID) ([]model.TenantInvitation, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT i.id,i.property_id,i.tenant_profile_id,p.full_name,p.email,
+		SELECT i.id,i.property_id,i.tenant_profile_id,p.full_name,COALESCE(p.email,''),p.phone,i.delivery_method,
 			CASE WHEN i.status='pending' AND i.expires_at <= NOW() THEN 'expired' ELSE i.status END,
 			i.expires_at,i.used_at,i.created_at
 		FROM tenant_invitations i JOIN tenant_profiles p ON p.id=i.tenant_profile_id
@@ -92,7 +112,7 @@ func (r *TenantLifecycleRepository) ListInvitations(ctx context.Context, propert
 	result := make([]model.TenantInvitation, 0)
 	for rows.Next() {
 		var invitation model.TenantInvitation
-		if err := rows.Scan(&invitation.ID, &invitation.PropertyID, &invitation.TenantProfileID, &invitation.FullName, &invitation.Email, &invitation.Status, &invitation.ExpiresAt, &invitation.UsedAt, &invitation.CreatedAt); err != nil {
+		if err := rows.Scan(&invitation.ID, &invitation.PropertyID, &invitation.TenantProfileID, &invitation.FullName, &invitation.Email, &invitation.Phone, &invitation.DeliveryMethod, &invitation.Status, &invitation.ExpiresAt, &invitation.UsedAt, &invitation.CreatedAt); err != nil {
 			return nil, err
 		}
 		result = append(result, invitation)
@@ -110,11 +130,11 @@ func (r *TenantLifecycleRepository) RevokeInvitation(ctx context.Context, proper
 func (r *TenantLifecycleRepository) PreviewInvitation(ctx context.Context, digest string) (*model.TenantInvitation, error) {
 	invitation := &model.TenantInvitation{}
 	err := r.db.QueryRow(ctx, `
-		SELECT i.id,i.property_id,i.tenant_profile_id,p.full_name,p.email,
+		SELECT i.id,i.property_id,i.tenant_profile_id,p.full_name,COALESCE(p.email,''),p.phone,i.delivery_method,
 			CASE WHEN i.status='pending' AND i.expires_at > NOW() THEN 'pending' ELSE 'unavailable' END,
 			i.expires_at,i.used_at,i.created_at
 		FROM tenant_invitations i JOIN tenant_profiles p ON p.id=i.tenant_profile_id
-		WHERE i.token_digest=$1`, digest).Scan(&invitation.ID, &invitation.PropertyID, &invitation.TenantProfileID, &invitation.FullName, &invitation.Email, &invitation.Status, &invitation.ExpiresAt, &invitation.UsedAt, &invitation.CreatedAt)
+		WHERE i.token_digest=$1`, digest).Scan(&invitation.ID, &invitation.PropertyID, &invitation.TenantProfileID, &invitation.FullName, &invitation.Email, &invitation.Phone, &invitation.DeliveryMethod, &invitation.Status, &invitation.ExpiresAt, &invitation.UsedAt, &invitation.CreatedAt)
 	if err != nil {
 		return nil, ErrInvitationUnavailable
 	}
@@ -124,11 +144,28 @@ func (r *TenantLifecycleRepository) PreviewInvitation(ctx context.Context, diges
 	return invitation, nil
 }
 
+// IsInvitationActivationVerified is safe for the activation page because the
+// invitation token is already a high-entropy, single-use capability.
+func (r *TenantLifecycleRepository) IsInvitationActivationVerified(ctx context.Context, digest string) (bool, error) {
+	var verified bool
+	err := r.db.QueryRow(ctx, `
+		SELECT u.is_verified
+		FROM tenant_invitations i
+		JOIN tenant_profiles p ON p.id=i.tenant_profile_id
+		JOIN users u ON u.id=p.user_id
+		WHERE i.token_digest=$1 AND i.status='accepted'`, digest).Scan(&verified)
+	if err != nil {
+		return false, ErrInvitationUnavailable
+	}
+	return verified, nil
+}
+
 type ActivationInput struct {
 	TokenDigest     string
 	PasswordHash    string
 	VerificationKey string
 	ExistingUserID  *uuid.UUID
+	Email           string
 	PolicyVersion   string
 	SourceIP        string
 	UserAgent       string
@@ -160,8 +197,17 @@ func (r *TenantLifecycleRepository) ActivateInvitation(ctx context.Context, inpu
 
 	var name, email, profileStatus string
 	var linkedUserID *uuid.UUID
-	if err = tx.QueryRow(ctx, `SELECT full_name,email,status,user_id FROM tenant_profiles WHERE id=$1 AND property_id=$2 FOR UPDATE`, profileID, propertyID).Scan(&name, &email, &profileStatus, &linkedUserID); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT full_name,COALESCE(email,''),status,user_id FROM tenant_profiles WHERE id=$1 AND property_id=$2 FOR UPDATE`, profileID, propertyID).Scan(&name, &email, &profileStatus, &linkedUserID); err != nil {
 		return nil, err
+	}
+	if email == "" {
+		email = strings.ToLower(strings.TrimSpace(input.Email))
+		if email == "" {
+			return nil, fmt.Errorf("email is required to activate the account")
+		}
+		if _, err = tx.Exec(ctx, `UPDATE tenant_profiles SET email=$1,updated_at=NOW() WHERE id=$2`, email, profileID); err != nil {
+			return nil, err
+		}
 	}
 	if profileStatus == "active" {
 		return nil, ErrProfileAlreadyActive
@@ -207,7 +253,7 @@ func (r *TenantLifecycleRepository) ActivateInvitation(ctx context.Context, inpu
 }
 
 func (r *TenantLifecycleRepository) ListProfiles(ctx context.Context, propertyID uuid.UUID) ([]model.TenantProfile, error) {
-	rows, err := r.db.Query(ctx, `SELECT id,property_id,user_id,full_name,email,phone,status,activated_at,created_at FROM tenant_profiles WHERE property_id=$1 ORDER BY created_at DESC`, propertyID)
+	rows, err := r.db.Query(ctx, `SELECT id,property_id,user_id,full_name,COALESCE(email,''),phone,status,activated_at,created_at FROM tenant_profiles WHERE property_id=$1 ORDER BY created_at DESC`, propertyID)
 	if err != nil {
 		return nil, err
 	}

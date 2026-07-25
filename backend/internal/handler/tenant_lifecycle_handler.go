@@ -7,6 +7,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/mail"
+	"os"
 	"strings"
 	"time"
 
@@ -20,14 +22,15 @@ import (
 )
 
 type TenantLifecycleHandler struct {
-	repo    *repository.TenantLifecycleRepository
-	users   repository.UserRepo
-	email   service.EmailServiceInterface
-	storage *service.StorageService
+	repo     *repository.TenantLifecycleRepository
+	users    repository.UserRepo
+	email    service.EmailServiceInterface
+	whatsApp service.WhatsAppServiceInterface
+	storage  *service.StorageService
 }
 
-func NewTenantLifecycleHandler(repo *repository.TenantLifecycleRepository, users repository.UserRepo, email service.EmailServiceInterface, storage *service.StorageService) *TenantLifecycleHandler {
-	return &TenantLifecycleHandler{repo: repo, users: users, email: email, storage: storage}
+func NewTenantLifecycleHandler(repo *repository.TenantLifecycleRepository, users repository.UserRepo, email service.EmailServiceInterface, whatsApp service.WhatsAppServiceInterface, storage *service.StorageService) *TenantLifecycleHandler {
+	return &TenantLifecycleHandler{repo: repo, users: users, email: email, whatsApp: whatsApp, storage: storage}
 }
 
 func (h *TenantLifecycleHandler) CreateInvitation(c *gin.Context) {
@@ -39,6 +42,21 @@ func (h *TenantLifecycleHandler) CreateInvitation(c *gin.Context) {
 	var req model.CreateTenantInvitationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	req.DeliveryMethod = strings.ToLower(strings.TrimSpace(req.DeliveryMethod))
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Phone = normalizeIndonesianPhone(req.Phone)
+	if req.DeliveryMethod != "email" && req.DeliveryMethod != "whatsapp" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Delivery method must be email or WhatsApp"})
+		return
+	}
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid email is required"})
+		return
+	}
+	if req.Phone == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "A valid Indonesian WhatsApp number is required"})
 		return
 	}
 	hours := req.ExpiresInHours
@@ -64,9 +82,27 @@ func (h *TenantLifecycleHandler) CreateInvitation(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create tenant invitation"})
 		return
 	}
-	// Delivery integration intentionally stays best-effort; the raw token is
-	// returned once so an owner can deliver it through an approved channel.
-	c.JSON(http.StatusCreated, gin.H{"invitation": invitation, "activation_token": token, "activation_path": "/activate-invitation?token=" + token})
+	activationURL := strings.TrimRight(frontendURL(), "/") + "/activate-invitation?token=" + token
+	deliveryStatus := "sent"
+	var deliveryErr error
+	if req.DeliveryMethod == "email" {
+		if sender, ok := h.email.(interface{ IsConfigured() bool }); ok && !sender.IsConfigured() {
+			deliveryErr = errors.New("SMTP is not configured")
+		} else {
+			deliveryErr = h.email.SendTenantInvitationEmail(req.Email, activationURL, invitation.ExpiresAt)
+		}
+	} else {
+		if sender, ok := h.whatsApp.(interface{ IsConfigured() bool }); ok && !sender.IsConfigured() {
+			deliveryErr = errors.New("WhatsApp gateway is not configured")
+		} else {
+			_, deliveryErr = h.whatsApp.SendMessage(c.Request.Context(), whatsappTarget(req.Phone), "Halo "+strings.TrimSpace(req.FullName)+", Anda diundang untuk mengaktifkan akun Lapor Kos. Buat kata sandi Anda melalui tautan berikut: "+activationURL+". Tautan berlaku sampai "+invitation.ExpiresAt.In(time.Local).Format("02 Jan 2006 15:04 MST")+".")
+		}
+	}
+	if deliveryErr != nil {
+		deliveryStatus = "failed"
+		log.Printf("tenant invitation delivery failed (%s): %v", req.DeliveryMethod, deliveryErr)
+	}
+	c.JSON(http.StatusCreated, gin.H{"invitation": invitation, "delivery": gin.H{"method": req.DeliveryMethod, "status": deliveryStatus}})
 }
 
 func (h *TenantLifecycleHandler) ListInvitations(c *gin.Context) {
@@ -124,7 +160,7 @@ func (h *TenantLifecycleHandler) PreviewInvitation(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Invitation is invalid, expired, or unavailable"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"full_name": invitation.FullName, "email": invitation.Email, "expires_at": invitation.ExpiresAt})
+	c.JSON(http.StatusOK, gin.H{"full_name": invitation.FullName, "email": invitation.Email, "email_required": invitation.Email == "", "expires_at": invitation.ExpiresAt})
 }
 
 func (h *TenantLifecycleHandler) ActivateInvitation(c *gin.Context) {
@@ -138,8 +174,16 @@ func (h *TenantLifecycleHandler) ActivateInvitation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invitation is invalid, expired, or unavailable"})
 		return
 	}
+	activationEmail := strings.ToLower(strings.TrimSpace(preview.Email))
+	if activationEmail == "" {
+		activationEmail = strings.ToLower(strings.TrimSpace(req.Email))
+		if _, emailErr := mail.ParseAddress(activationEmail); emailErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "A valid email is required to create the account"})
+			return
+		}
+	}
 	var existingID *uuid.UUID
-	existing, lookupErr := h.users.FindByEmail(c.Request.Context(), preview.Email)
+	existing, lookupErr := h.users.FindByEmail(c.Request.Context(), activationEmail)
 	if lookupErr == nil {
 		if strings.TrimSpace(req.ExistingPassword) == "" || bcrypt.CompareHashAndPassword([]byte(existing.PasswordHash), []byte(req.ExistingPassword)) != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Existing account verification failed"})
@@ -167,7 +211,7 @@ func (h *TenantLifecycleHandler) ActivateInvitation(c *gin.Context) {
 		}
 	}
 	result, err := h.repo.ActivateInvitation(c.Request.Context(), repository.ActivationInput{
-		TokenDigest: repository.InvitationDigest(req.Token), PasswordHash: passwordHash, VerificationKey: verificationKey,
+		TokenDigest: repository.InvitationDigest(req.Token), PasswordHash: passwordHash, VerificationKey: verificationKey, Email: activationEmail,
 		ExistingUserID: existingID, PolicyVersion: req.PolicyVersion, SourceIP: clientIP(c), UserAgent: c.GetHeader("User-Agent"),
 	})
 	if err != nil {
@@ -180,9 +224,23 @@ func (h *TenantLifecycleHandler) ActivateInvitation(c *gin.Context) {
 		return
 	}
 	if result.NewAccount {
-		_ = h.email.SendVerificationEmail(result.Email, verificationKey)
+		_ = h.email.SendTenantAccountVerificationEmail(result.Email, verificationKey)
 	}
 	c.JSON(http.StatusCreated, gin.H{"message": "Tenant profile activated", "requires_contact_verification": result.RequiresVerification})
+}
+
+func (h *TenantLifecycleHandler) ActivationStatus(c *gin.Context) {
+	token := strings.TrimSpace(c.Query("token"))
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invitation token is required"})
+		return
+	}
+	verified, err := h.repo.IsInvitationActivationVerified(c.Request.Context(), repository.InvitationDigest(token))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Invitation activation was not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"verified": verified})
 }
 
 func (h *TenantLifecycleHandler) UploadDocument(c *gin.Context) {
@@ -308,3 +366,28 @@ func clientIP(c *gin.Context) string {
 	}
 	return c.ClientIP()
 }
+
+func frontendURL() string {
+	if value := strings.TrimSpace(os.Getenv("FRONTEND_URL")); value != "" {
+		return value
+	}
+	return "http://localhost:3000"
+}
+
+func normalizeIndonesianPhone(value string) string {
+	digits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, value)
+	if strings.HasPrefix(digits, "0") {
+		digits = "62" + digits[1:]
+	}
+	if !strings.HasPrefix(digits, "62") || len(digits) < 11 || len(digits) > 14 {
+		return ""
+	}
+	return digits
+}
+
+func whatsappTarget(phone string) string { return strings.TrimPrefix(phone, "+") }

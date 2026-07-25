@@ -20,8 +20,9 @@ type TenantProfile struct {
 
 type CreateTenantInvitationRequest struct {
 	FullName       string `json:"full_name" binding:"required"`
-	Email          string `json:"email" binding:"required,email"`
+	Email          string `json:"email"`
 	Phone          string `json:"phone"`
+	DeliveryMethod string `json:"delivery_method" binding:"required"`
 	ExpiresInHours int    `json:"expires_in_hours"`
 }
 
@@ -29,6 +30,7 @@ type ActivateTenantInvitationRequest struct {
 	Token            string `json:"token" binding:"required"`
 	Password         string `json:"password" binding:"required,min=8"`
 	ExistingPassword string `json:"existing_password"`
+	Email            string `json:"email"`
 	PolicyVersion    string `json:"policy_version" binding:"required"`
 }
 
@@ -38,6 +40,8 @@ type TenantInvitation struct {
 	TenantProfileID uuid.UUID  `json:"tenant_profile_id"`
 	FullName        string     `json:"full_name"`
 	Email           string     `json:"email"`
+	Phone           string     `json:"phone"`
+	DeliveryMethod  string     `json:"delivery_method"`
 	Status          string     `json:"status"`
 	ExpiresAt       time.Time  `json:"expires_at"`
 	UsedAt          *time.Time `json:"used_at,omitempty"`
