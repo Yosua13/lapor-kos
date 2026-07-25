@@ -67,7 +67,7 @@ func (r *PropertyRepository) CreateWithOwner(ctx context.Context, actorID uuid.U
 	var membershipID uuid.UUID
 	err = tx.QueryRow(ctx, `
 		INSERT INTO property_memberships (property_id, user_id, role, permissions, status, created_by)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		VALUES ($1, $2, $3, $4::jsonb, $5, $6)
 		RETURNING id
 	`, property.ID, actorID, string(model.PropertyRoleOwner), string(permissionsJSON), string(model.MembershipStatusActive), actorID).
 		Scan(&membershipID)
@@ -266,6 +266,7 @@ func (r *PropertyRepository) ListMembers(ctx context.Context, propertyID uuid.UU
 		FROM property_memberships pm
 		JOIN users u ON u.id = pm.user_id
 		WHERE pm.property_id = $1
+		  AND pm.status <> 'revoked'
 		ORDER BY CASE pm.status WHEN 'active' THEN 0 WHEN 'suspended' THEN 1 ELSE 2 END,
 		         CASE pm.role WHEN 'property_owner' THEN 0 ELSE 1 END,
 		         lower(u.name), pm.id
@@ -335,7 +336,7 @@ func (r *PropertyRepository) AddMemberByEmail(ctx context.Context, propertyID, a
 	case errors.Is(existingErr, pgx.ErrNoRows):
 		err = tx.QueryRow(ctx, `
 			INSERT INTO property_memberships (property_id, user_id, role, permissions, status, created_by)
-			VALUES ($1, $2, $3, $4, 'active', $5)
+			VALUES ($1, $2, $3, $4::jsonb, 'active', $5)
 			RETURNING id
 		`, propertyID, userID, string(role), string(permissionsJSON), actorID).Scan(&membershipID)
 		if err != nil {
@@ -430,9 +431,9 @@ func (r *PropertyRepository) UpdateMember(ctx context.Context, propertyID, membe
 	tag, err := tx.Exec(ctx, `
 		UPDATE property_memberships
 		SET role = $3,
-		    status = $4,
-		    permissions = $5,
-		    revoked_at = CASE WHEN $4 = 'revoked' THEN COALESCE(revoked_at, NOW()) ELSE NULL END,
+		    status = $4::varchar,
+		    permissions = $5::jsonb,
+		    revoked_at = CASE WHEN $4::text = 'revoked' THEN COALESCE(revoked_at, NOW()) ELSE NULL END,
 		    updated_at = NOW()
 		WHERE id = $1 AND property_id = $2
 	`, membershipID, propertyID, string(role), string(status), string(permissionsJSON))
@@ -478,7 +479,10 @@ func (r *PropertyRepository) RevokeMember(ctx context.Context, propertyID, membe
 		return fmt.Errorf("lock property member for revoke: %w", err)
 	}
 	if model.MembershipStatus(status) == model.MembershipStatusRevoked {
-		return ErrPropertyMemberNotFound
+		// A repeated delete request can happen when an older browser response is
+		// rendered just before the list refreshes. Revocation is the desired end
+		// state, so treat it as an idempotent success rather than a misleading 404.
+		return tx.Commit(ctx)
 	}
 	if model.PropertyRole(role) == model.PropertyRoleOwner && model.MembershipStatus(status) == model.MembershipStatusActive {
 		if err := ensureAnotherActiveOwner(ctx, tx, propertyID, membershipID); err != nil {
