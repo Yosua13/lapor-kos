@@ -311,7 +311,7 @@ export default function TenantsPage() {
       <div className="shrink-0 mb-3 flex flex-wrap items-start justify-between gap-3">
         <div><h1 className="text-[28px] font-display font-extrabold text-brand-navy">Penghuni & Kontrak</h1>
         <p className="text-[15px] text-gray-500 mt-1">Kelola data penghuni dan kontrak kamar kos Anda.</p></div>
-        {can(CAPABILITIES.TENANT_WRITE) && <button onClick={() => router.push('/tenants/invitations')} className="rounded-lg bg-brand-teal px-4 py-2 text-sm font-bold text-white">Undang calon penghuni</button>}
+        {can(CAPABILITIES.TENANT_WRITE) && <button onClick={() => router.push('/tenants/invitations')} className="rounded-lg bg-[#0e8a7a] hover:bg-[#0c7567] px-4 py-2 text-sm font-bold text-white">Undang calon penghuni</button>}
       </div>
 
       {/* TABS (Pills) */}
