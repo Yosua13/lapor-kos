@@ -6,7 +6,7 @@ properti aktif.
 
 | ID | Skenario | Langkah ringkas | Hasil yang diharapkan |
 | --- | --- | --- | --- |
-| TI-01 | Buat invitation | Buka `/tenants/invitations`, isi nama, email, telepon, lalu buat invitation. | Baris invitation berstatus `pending`; tautan aktivasi hanya muncul sesaat setelah dibuat; kata sandi tidak pernah ditampilkan. |
+| TI-01 | Buat invitation | Buka `/tenants/invitations`, isi nama, pilih **Email** atau **WhatsApp**, lalu isi alamat email atau nomor HP sesuai pilihan dan kirim undangan. | Baris invitation berstatus `pending`; sistem mengirim tautan aktivasi ke kanal yang dipilih; kata sandi dan token tidak pernah ditampilkan kepada owner. Calon tenant membuka tautan tersebut untuk membuat kata sandinya sendiri. |
 | TI-02 | Aktivasi akun baru | Buka tautan di browser incognito, isi password minimal 8 karakter, centang persetujuan, lalu aktifkan. | Profile menjadi `active`, invitation `accepted`, satu consent record tersimpan; aplikasi meminta verifikasi email sebelum login. |
 | TI-03 | Token sekali pakai | Kirim ulang request aktivasi dari TI-02 atau buka tautannya kembali. | Ditolak dengan pesan bahwa invitation tidak lagi dapat diaktifkan. |
 | TI-04 | Kedaluwarsa dan cabut | Buat invitation dengan masa berlaku 1 jam (API), atau cabut invitation dari daftar, kemudian buka tautannya. | Tautan yang dicabut ditolak; invitation lewat masa berlaku ditampilkan `expired` dan ditolak. |
