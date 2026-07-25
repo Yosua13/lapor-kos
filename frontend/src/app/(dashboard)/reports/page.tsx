@@ -346,7 +346,7 @@ export default function ReportsPage() {
             type="button"
             onClick={downloadReport}
             disabled={isPdfLoading}
-            className="h-12 px-4 rounded-[12px] bg-brand-teal hover:bg-brand-teal-light text-white dark:text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-teal/10 transition-colors"
+            className="h-12 px-4 rounded-[12px] bg-[#0e8a7a] hover:bg-[#0c7567] text-white dark:text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-teal/10 transition-colors"
           >
             {isPdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             Download PDF

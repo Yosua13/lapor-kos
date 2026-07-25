@@ -184,7 +184,7 @@ export default function PropertiesPage() {
           <p className="mt-1 text-sm text-brand-navy/50">Kelola identitas properti dan akses staf dari satu tempat.</p>
         </div>
         {canCreate && (
-          <button type="button" onClick={handleStartCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-teal px-5 py-3 text-sm font-bold text-white shadow-lg shadow-brand-teal/15">
+          <button type="button" onClick={handleStartCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0e8a7a] hover:bg-[#0c7567] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-brand-teal/15">
             <Plus className="h-4 w-4" /> Tambah properti
           </button>
         )}

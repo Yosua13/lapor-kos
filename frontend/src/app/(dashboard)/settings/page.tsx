@@ -292,7 +292,7 @@ export default function SettingsPage() {
                     <button
                       type="button"
                       onClick={() => setIsEditingProfile(true)}
-                      className="px-6 py-3 bg-brand-teal hover:bg-brand-teal-light text-white dark:text-slate-950 font-bold rounded-2xl shadow-lg shadow-brand-teal/10 hover:shadow-brand-teal/20 transition-all flex items-center gap-2 text-sm cursor-pointer"
+                      className="px-6 py-3 bg-[#0e8a7a] hover:bg-[#0c7567] text-white dark:text-slate-950 font-bold rounded-2xl shadow-lg shadow-brand-teal/10 hover:shadow-brand-teal/20 transition-all flex items-center gap-2 text-sm cursor-pointer"
                     >
                       <Edit2 className="w-4 h-4" />
                       <span>Ubah Profil</span>
