@@ -164,7 +164,22 @@ func (r *ContractRepository) FindByID(ctx context.Context, propertyID, id uuid.U
 }
 
 func (r *ContractRepository) Update(ctx context.Context, propertyID uuid.UUID, contract *model.Contract) error {
-	command, err := r.db.Exec(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var userID *uuid.UUID
+	var currentStatus string
+	if err = tx.QueryRow(ctx, `
+		SELECT user_id,status FROM contracts
+		WHERE id=$1 AND property_id=$2 FOR UPDATE`, contract.ID, propertyID,
+	).Scan(&userID, &currentStatus); err != nil {
+		return err
+	}
+
+	command, err := tx.Exec(ctx, `
 		UPDATE contracts SET
 			start_date=$1, end_date=$2, rental_duration=$3, monthly_rent=$4,
 			deposit=$5, payment_due_day=$6, status=$7, notes=$8,
@@ -181,7 +196,12 @@ func (r *ContractRepository) Update(ctx context.Context, propertyID uuid.UUID, c
 	if command.RowsAffected() != 1 {
 		return pgx.ErrNoRows
 	}
-	return nil
+	if currentStatus == "active" && contract.Status != "active" && userID != nil {
+		if err = revokeTenantSessionForProperty(ctx, tx, propertyID, *userID, "contract_deactivated"); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *ContractRepository) Delete(ctx context.Context, propertyID, id uuid.UUID) error {
@@ -191,11 +211,12 @@ func (r *ContractRepository) Delete(ctx context.Context, propertyID, id uuid.UUI
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var roomID *uuid.UUID
+	var roomID, userID *uuid.UUID
+	var status string
 	if err := tx.QueryRow(ctx, `
-		SELECT room_id FROM contracts
+		SELECT room_id,user_id,status FROM contracts
 		WHERE id = $1 AND property_id = $2 FOR UPDATE`, id, propertyID,
-	).Scan(&roomID); err != nil {
+	).Scan(&roomID, &userID, &status); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(ctx,
@@ -211,6 +232,11 @@ func (r *ContractRepository) Delete(ctx context.Context, propertyID, id uuid.UUI
 			return err
 		}
 	}
+	if status == "active" && userID != nil {
+		if err := revokeTenantSessionForProperty(ctx, tx, propertyID, *userID, "contract_deleted"); err != nil {
+			return err
+		}
+	}
 	return tx.Commit(ctx)
 }
 
@@ -223,7 +249,7 @@ const contractSelect = `
 		COALESCE(c.payment_interval,'monthly'), COALESCE(c.payment_due_day,1),
 		c.status, COALESCE(c.notes,''), c.created_at,
 		r.room_number, r.price_per_month, r.status,
-		u.name, u.phone, u.ktp_url, u.selfie_url,
+		COALESCE(NULLIF(tp.full_name,''),u.name),COALESCE(NULLIF(tp.phone,''),u.phone),NULL::text,NULL::text,
 		(SELECT p.status FROM payments p
 		 WHERE p.contract_id=c.id AND p.property_id=c.property_id
 		 ORDER BY p.period_year DESC,p.period_month DESC,p.due_date DESC LIMIT 1),
@@ -232,7 +258,8 @@ const contractSelect = `
 		 ORDER BY p.period_year DESC,p.period_month DESC,p.due_date DESC LIMIT 1)
 	FROM contracts c
 	LEFT JOIN rooms r ON r.id=c.room_id AND r.property_id=c.property_id
-	LEFT JOIN users u ON u.id=c.user_id`
+	LEFT JOIN users u ON u.id=c.user_id
+	LEFT JOIN tenant_profiles tp ON tp.property_id=c.property_id AND tp.user_id=c.user_id`
 
 type contractRow interface {
 	Scan(dest ...any) error

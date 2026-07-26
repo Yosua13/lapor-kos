@@ -7,19 +7,21 @@ import (
 )
 
 type User struct {
-	ID                       uuid.UUID  `json:"id" db:"id"`
-	Name                     string     `json:"name" db:"name"`
-	Email                    string     `json:"email" db:"email"`
-	PasswordHash             string     `json:"-" db:"password_hash"`
-	Role                     string     `json:"role" db:"role"`
-	IsVerified               bool       `json:"is_verified" db:"is_verified"`
-	VerificationToken        *string    `json:"-" db:"verification_token"`
-	OTPCode                  *string    `json:"-" db:"otp_code"`
-	OTPExpiresAt             *time.Time `json:"-" db:"otp_expires_at"`
-	WhatsAppGroupLink        *string    `json:"whatsapp_group_link,omitempty" db:"whatsapp_group_link"`
-	Phone                    string     `json:"phone" db:"phone"`
-	KtpURL                   *string    `json:"ktp_url,omitempty" db:"ktp_url"`
-	SelfieURL                *string    `json:"selfie_url,omitempty" db:"selfie_url"`
+	ID                uuid.UUID  `json:"id" db:"id"`
+	Name              string     `json:"name" db:"name"`
+	Email             string     `json:"email" db:"email"`
+	PasswordHash      string     `json:"-" db:"password_hash"`
+	Role              string     `json:"role" db:"role"`
+	IsVerified        bool       `json:"is_verified" db:"is_verified"`
+	VerificationToken *string    `json:"-" db:"verification_token"`
+	OTPCode           *string    `json:"-" db:"otp_code"`
+	OTPExpiresAt      *time.Time `json:"-" db:"otp_expires_at"`
+	WhatsAppGroupLink *string    `json:"whatsapp_group_link,omitempty" db:"whatsapp_group_link"`
+	Phone             string     `json:"phone" db:"phone"`
+	// Identity-document locations are intentionally never serialized with a
+	// user. They are exposed only by the tenant-document signed URL endpoints.
+	KtpURL                   *string    `json:"-" db:"ktp_url"`
+	SelfieURL                *string    `json:"-" db:"selfie_url"`
 	IsActive                 bool       `json:"is_active" db:"is_active"`
 	DateOfBirth              *time.Time `json:"date_of_birth,omitempty" db:"date_of_birth"`
 	Gender                   *string    `json:"gender,omitempty" db:"gender"`
@@ -27,7 +29,7 @@ type User struct {
 	EmergencyContactPhone    *string    `json:"emergency_contact_phone,omitempty" db:"emergency_contact_phone"`
 	EmergencyContactRelation *string    `json:"emergency_contact_relation,omitempty" db:"emergency_contact_relation"`
 	EmergencyContactName     *string    `json:"emergency_contact_name,omitempty" db:"emergency_contact_name"`
-	AdditionalDocURL         *string    `json:"additional_doc_url,omitempty" db:"additional_doc_url"`
+	AdditionalDocURL         *string    `json:"-" db:"additional_doc_url"`
 	DefaultPropertyName      string     `json:"-" db:"-"`
 	CreatedAt                time.Time  `json:"created_at" db:"created_at"`
 }

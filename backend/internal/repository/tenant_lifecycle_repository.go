@@ -19,6 +19,7 @@ var (
 	ErrInvitationUnavailable = errors.New("invitation is invalid, expired, or no longer available")
 	ErrProfileAlreadyActive  = errors.New("tenant profile is already active")
 	ErrDocumentNotFound      = errors.New("tenant document not found")
+	ErrDocumentAuditFailed   = errors.New("tenant document access audit failed")
 )
 
 type TenantLifecycleRepository struct{ db *pgxpool.Pool }
@@ -324,7 +325,9 @@ func (r *TenantLifecycleRepository) DocumentObjectKey(ctx context.Context, prope
 	if err := r.db.QueryRow(ctx, query, args...).Scan(&objectKey); err != nil {
 		return "", ErrDocumentNotFound
 	}
-	_, _ = r.db.Exec(ctx, `INSERT INTO tenant_document_access_logs (tenant_document_id,accessed_by,action,request_id) VALUES ($1,$2,'signed_url',$3)`, documentID, actorID, requestID)
+	if _, err := r.db.Exec(ctx, `INSERT INTO tenant_document_access_logs (tenant_document_id,accessed_by,action,request_id) VALUES ($1,$2,'signed_url',$3)`, documentID, actorID, requestID); err != nil {
+		return "", fmt.Errorf("%w: %v", ErrDocumentAuditFailed, err)
+	}
 	return objectKey, nil
 }
 

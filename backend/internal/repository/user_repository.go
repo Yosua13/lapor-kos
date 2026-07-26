@@ -28,7 +28,7 @@ type UserRepo interface {
 	UpdatePassword(context.Context, uuid.UUID, string) error
 	GetMyTenantProfile(context.Context, uuid.UUID) (map[string]any, error)
 	GetTenantProfile(context.Context, uuid.UUID, uuid.UUID) (map[string]any, error)
-	UpdateTenantProfile(context.Context, uuid.UUID, uuid.UUID, string, string, string, string, int, *string, *string, *time.Time, *string, *string, *string, *string, *string, *string) error
+	UpdateTenantProfile(context.Context, uuid.UUID, uuid.UUID, string, string, string, string, int, *time.Time, *string, *string, *string, *string, *string) error
 	DeleteTenant(context.Context, uuid.UUID, uuid.UUID) error
 	CheckoutTenant(context.Context, uuid.UUID, uuid.UUID) error
 	ChangeRoom(context.Context, uuid.UUID, uuid.UUID, string) error
@@ -177,10 +177,12 @@ func (r *UserRepository) GetMyTenantProfile(ctx context.Context, userID uuid.UUI
 func (r *UserRepository) GetTenantProfile(ctx context.Context, propertyID, userID uuid.UUID) (map[string]any, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT
-			u.id,u.name,u.email,COALESCE(u.phone,''),u.ktp_url,u.selfie_url,
-			u.is_active,u.date_of_birth,u.gender,u.job,u.emergency_contact_phone,
-			u.emergency_contact_relation,u.emergency_contact_name,
-			u.additional_doc_url,u.created_at,
+			u.id,COALESCE(NULLIF(tp.full_name,''),u.name),
+			COALESCE(NULLIF(tp.email,''),u.email),COALESCE(NULLIF(tp.phone,''),u.phone),
+			NULL::text,NULL::text,
+			u.is_active,tp.date_of_birth,tp.gender,tp.job,tp.emergency_contact_phone,
+			tp.emergency_contact_relation,tp.emergency_contact_name,
+			NULL::text,u.created_at,
 			c.id,c.property_id,c.start_date,c.end_date,c.rental_duration,
 			c.monthly_rent,c.total_price,COALESCE(c.deposit,0),
 			COALESCE(c.payment_interval,'monthly'),COALESCE(c.payment_due_day,1),
@@ -200,6 +202,7 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, propertyID, userI
 			WHERE user_id=u.id AND property_id=$1
 			ORDER BY (status='active') DESC,created_at DESC LIMIT 1
 		) c ON TRUE
+		LEFT JOIN tenant_profiles tp ON tp.property_id=c.property_id AND tp.user_id=u.id
 		LEFT JOIN rooms r ON r.id=c.room_id AND r.property_id=c.property_id
 		JOIN properties pr ON pr.id=c.property_id
 		WHERE u.id=$2`, propertyID, userID)
@@ -272,9 +275,8 @@ func (r *UserRepository) UpdateTenantProfile(
 	propertyID, userID uuid.UUID,
 	name, phone, roomIDText, entryDateText string,
 	rentalDuration int,
-	ktpURL, selfieURL *string,
 	dateOfBirth *time.Time,
-	gender, job, emergencyPhone, emergencyRelation, emergencyName, additionalDocURL *string,
+	gender, job, emergencyPhone, emergencyRelation, emergencyName *string,
 ) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -313,13 +315,30 @@ func (r *UserRepository) UpdateTenantProfile(
 		}
 	}
 
+	// A property owner may update property-scoped tenant details, but must never
+	// overwrite the global login identity (users.name, users.phone, email, or
+	// identity-document pointers). The tenant profile is the scoped projection.
 	command, err := tx.Exec(ctx, `
-		UPDATE users SET name=$1,phone=$2,ktp_url=COALESCE($3,ktp_url),
-			selfie_url=COALESCE($4,selfie_url),date_of_birth=$5,gender=$6,job=$7,
-			emergency_contact_phone=$8,emergency_contact_relation=$9,
-			emergency_contact_name=$10,additional_doc_url=COALESCE($11,additional_doc_url)
-		WHERE id=$12`, name, phone, ktpURL, selfieURL, dateOfBirth, gender, job,
-		emergencyPhone, emergencyRelation, emergencyName, additionalDocURL, userID,
+		INSERT INTO tenant_profiles (
+			property_id,user_id,full_name,email,phone,status,activated_at,
+			date_of_birth,gender,job,emergency_contact_phone,
+			emergency_contact_relation,emergency_contact_name
+		)
+		SELECT $1,u.id,$2,u.email,$3,'active',NOW(),$4,$5,$6,$7,$8,$9
+		FROM users u WHERE u.id=$10
+		ON CONFLICT (property_id,user_id) WHERE user_id IS NOT NULL
+		DO UPDATE SET
+			full_name=EXCLUDED.full_name,
+			phone=EXCLUDED.phone,
+			date_of_birth=EXCLUDED.date_of_birth,
+			gender=EXCLUDED.gender,
+			job=EXCLUDED.job,
+			emergency_contact_phone=EXCLUDED.emergency_contact_phone,
+			emergency_contact_relation=EXCLUDED.emergency_contact_relation,
+			emergency_contact_name=EXCLUDED.emergency_contact_name,
+			updated_at=NOW()`,
+		propertyID, name, phone, dateOfBirth, gender, job, emergencyPhone,
+		emergencyRelation, emergencyName, userID,
 	)
 	if err != nil {
 		return err
@@ -415,13 +434,11 @@ func (r *UserRepository) endTenantContracts(ctx context.Context, propertyID, use
 	}
 	// A checkout/deactivation terminates the tenant's active access. This is
 	// intentionally global to the identity because JWTs are not property-bound.
-	if _, err := tx.Exec(ctx, `UPDATE tenant_profiles SET status='inactive',deactivated_at=NOW(),updated_at=NOW() WHERE property_id=$1 AND user_id=$2 AND status='active'`, propertyID, userID); err != nil {
-		return err
+	reason := "checkout"
+	if status != "inactive" {
+		reason = "tenant_deleted"
 	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO tenant_session_revocations (user_id,revoked_after,reason)
-		VALUES ($1,NOW(),$2)
-		ON CONFLICT (user_id) DO UPDATE SET revoked_after=EXCLUDED.revoked_after,reason=EXCLUDED.reason,updated_at=NOW()`, userID, "checkout"); err != nil {
+	if err := revokeTenantSessionForProperty(ctx, tx, propertyID, userID, reason); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

@@ -27,11 +27,14 @@ type CreateTenantInvitationRequest struct {
 }
 
 type ActivateTenantInvitationRequest struct {
-	Token            string `json:"token" binding:"required"`
-	Password         string `json:"password" binding:"required,min=8"`
+	Token string `json:"token" binding:"required"`
+	// Password is required only when the invitation creates a new global
+	// identity. Existing users prove ownership with ExistingPassword instead.
+	Password         string `json:"password"`
 	ExistingPassword string `json:"existing_password"`
 	Email            string `json:"email"`
 	PolicyVersion    string `json:"policy_version" binding:"required"`
+	PolicyAccepted   bool   `json:"policy_accepted"`
 }
 
 type TenantInvitation struct {
