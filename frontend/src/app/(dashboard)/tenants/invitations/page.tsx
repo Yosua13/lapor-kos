@@ -83,6 +83,15 @@ export default function TenantInvitationsPage() {
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const suggestedName = params.get('name');
+    const suggestedEmail = params.get('email');
+    const suggestedPhone = params.get('phone');
+    if (suggestedName) setFullName(suggestedName);
+    if (suggestedEmail) setEmail(suggestedEmail);
+    if (suggestedPhone) setPhone(formatPhoneNumber(suggestedPhone));
+  }, []);
+  useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(null), 5000);
     return () => window.clearTimeout(timer);

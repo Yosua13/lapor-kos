@@ -154,8 +154,6 @@ function AddRoomContent() {
             newErrors.emergency_contact_phone = 'Nomor HP Darurat harus 11-13 digit!';
           }
         }
-        if (!files.ktp) newErrors.ktp = 'Foto KTP wajib diupload!';
-        if (!files.selfie) newErrors.selfie = 'Foto Selfie wajib diupload!';
       }
     } else if (step === 3) {
       if (roomData.status === 'occupied') {
@@ -221,9 +219,6 @@ function AddRoomContent() {
       data.append('emergency_contact_phone', tenantData.emergency_contact_phone);
       data.append('emergency_contact_relation', tenantData.emergency_contact_relation);
       data.append('emergency_contact_name', tenantData.emergency_contact_name);
-      if (files.additional_doc) {
-        data.append('additional_doc', files.additional_doc);
-      }
       data.append('entry_date', contractData.entry_date);
       data.append('rental_duration', contractData.rental_duration);
       data.append('electricity_bill', contractData.electricity_bill.replace(/\./g, '') || '0');
@@ -233,9 +228,6 @@ function AddRoomContent() {
       data.append('payment_interval', contractData.payment_interval);
       data.append('deposit', contractData.deposit.replace(/\./g, '') || '0');
       data.append('notes', contractData.notes);
-
-      if (files.ktp) data.append('ktp', files.ktp);
-      if (files.selfie) data.append('selfie', files.selfie);
 
       const resData = await apiFetch<{ room?: { id?: string } }>('/api/rooms/with-tenant', {
         method: 'POST',
@@ -253,7 +245,18 @@ function AddRoomContent() {
         router.push('/rooms');
       }
     } catch (err: any) {
-      alert(err.message || 'Terjadi kesalahan saat menyimpan data');
+      const message = err?.message || 'Terjadi kesalahan saat menyimpan data';
+      if (message.includes('activate their account through an invitation')) {
+        const params = new URLSearchParams({
+          name: tenantData.name,
+          email: tenantData.email,
+          phone: tenantData.phone,
+        });
+        alert('Calon penghuni harus mengaktifkan akun melalui undangan terlebih dahulu. Anda akan diarahkan ke halaman undangan.');
+        router.push(`/tenants/invitations?${params.toString()}`);
+        return;
+      }
+      alert(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -742,13 +745,14 @@ function AddRoomContent() {
                 </div>
 
                 <div className="border-t border-gray-100 pt-6 mt-6 w-full">
-                  <h3 className="font-bold text-[15px] text-brand-navy mb-4">Upload Dokumen</h3>
+                  <h3 className="font-bold text-[15px] text-brand-navy">Dokumen identitas</h3>
+                  <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-800">Untuk melindungi privasi calon penghuni, KTP, selfie, dan dokumen pendukung diunggah melalui profil tenant setelah akun diaktifkan dari undangan. Form tambah kamar tidak menyimpan dokumen identitas.</p>
                 </div>
 
                 <div className="flex flex-col lg:flex-row gap-6 items-start">
                   <div className="w-full lg:w-40 shrink-0 mt-1">
-                    <label className="text-[13px] font-bold text-gray-700 block mb-1">Upload KTP <span className="text-red-500">*</span></label>
-                    <p className="text-[11px] text-gray-400 leading-tight">Upload foto atau scan KTP yang masih berlaku.</p>
+                    <label className="text-[13px] font-bold text-gray-700 block mb-1">Upload KTP</label>
+                    <p className="text-[11px] text-gray-400 leading-tight">Tersedia setelah invitation diaktifkan.</p>
                   </div>
                   <div className="flex-1 w-full">
                     {files.ktp ? (
@@ -767,7 +771,7 @@ function AddRoomContent() {
                       </div>
                     ) : (
                       <div className={`border-2 border-dashed ${errors.ktp ? 'border-red-500 bg-red-50/30' : 'border-gray-200 bg-gray-50/50'} rounded-[16px] p-6 hover:border-brand-teal transition-colors flex items-center justify-center cursor-pointer relative`}>
-                        <input type="file" onChange={e => { handleFileChange(e, 'ktp'); if (errors.ktp) setErrors({ ...errors, ktp: '' }); }} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/jpeg,image/png" />
+                        <input type="file" disabled onChange={e => { handleFileChange(e, 'ktp'); if (errors.ktp) setErrors({ ...errors, ktp: '' }); }} className="absolute inset-0 cursor-not-allowed opacity-0" accept="image/jpeg,image/png" />
                         <div className="flex items-center gap-4">
                           <div className={`w-12 h-12 ${errors.ktp ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-[#0e8a7a]'} rounded-xl flex items-center justify-center shrink-0`}>
                             <FileText className="w-6 h-6" />
@@ -785,8 +789,8 @@ function AddRoomContent() {
 
                 <div className="flex flex-col lg:flex-row gap-6 items-start">
                   <div className="w-full lg:w-40 shrink-0 mt-1">
-                    <label className="text-[13px] font-bold text-gray-700 block mb-1">Upload Selfie <span className="text-red-500">*</span></label>
-                    <p className="text-[11px] text-gray-400 leading-tight">Upload selfie terbaru penghuni (wajah jelas).</p>
+                    <label className="text-[13px] font-bold text-gray-700 block mb-1">Upload Selfie</label>
+                    <p className="text-[11px] text-gray-400 leading-tight">Tersedia setelah invitation diaktifkan.</p>
                   </div>
                   <div className="flex-1 w-full">
                     {files.selfie ? (
@@ -805,7 +809,7 @@ function AddRoomContent() {
                       </div>
                     ) : (
                       <div className={`border-2 border-dashed ${errors.selfie ? 'border-red-500 bg-red-50/30' : 'border-gray-200 bg-gray-50/50'} rounded-[16px] p-6 hover:border-brand-teal transition-colors flex items-center justify-center cursor-pointer relative`}>
-                        <input type="file" onChange={e => { handleFileChange(e, 'selfie'); if (errors.selfie) setErrors({ ...errors, selfie: '' }); }} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/jpeg,image/png" />
+                        <input type="file" disabled onChange={e => { handleFileChange(e, 'selfie'); if (errors.selfie) setErrors({ ...errors, selfie: '' }); }} className="absolute inset-0 cursor-not-allowed opacity-0" accept="image/jpeg,image/png" />
                         <div className="flex items-center gap-4">
                           <div className={`w-12 h-12 ${errors.selfie ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-[#0e8a7a]'} rounded-xl flex items-center justify-center shrink-0`}>
                             <User className="w-6 h-6" />
@@ -824,7 +828,7 @@ function AddRoomContent() {
                 <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
                   <div className="w-full lg:w-40 shrink-0 mt-1">
                     <label className="text-[13px] font-bold text-gray-700 block mb-1">Dokumen Tambahan</label>
-                    <p className="text-[11px] text-gray-400 leading-tight">Optional. Upload file dokumen pendukung (KK, Surat Kerja, etc).</p>
+                    <p className="text-[11px] text-gray-400 leading-tight">Tersedia setelah invitation diaktifkan.</p>
                   </div>
                   <div className="flex-1 w-full">
                     {files.additional_doc ? (
@@ -875,7 +879,7 @@ function AddRoomContent() {
                             }
                             setFiles({ ...files, additional_doc: file });
                           }
-                        }} className="absolute inset-0 opacity-0 cursor-pointer" accept="image/jpeg,image/png,application/pdf" />
+                        }} className="absolute inset-0 cursor-not-allowed opacity-0" accept="image/jpeg,image/png,application/pdf" disabled />
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 bg-emerald-50 text-[#0e8a7a] rounded-xl flex items-center justify-center shrink-0">
                             <UploadCloud className="w-6 h-6" />
