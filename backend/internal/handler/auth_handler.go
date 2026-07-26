@@ -445,31 +445,21 @@ func (h *AuthHandler) UpdateTenantProfileByID(c *gin.Context) {
 		}
 	}
 
-	ktpPath, _ := h.uploadFile(c, "ktp")
-	selfiePath, _ := h.uploadFile(c, "selfie")
-	additionalDocPath, _ := h.uploadFile(c, "additional_doc")
-
-	var ktpURL *string
-	if ktpPath != "" {
-		ktpURL = &ktpPath
-	}
-	var selfieURL *string
-	if selfiePath != "" {
-		selfieURL = &selfiePath
-	}
-	var additionalDocURL *string
-	if additionalDocPath != "" {
-		additionalDocURL = &additionalDocPath
+	for _, fieldName := range []string{"ktp", "selfie", "additional_doc"} {
+		if _, formErr := c.FormFile(fieldName); formErr == nil {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Identity documents must be uploaded through the tenant profile document endpoint"})
+			return
+		}
 	}
 
-	err = h.repo.UpdateTenantProfile(c.Request.Context(), scope.PropertyID, id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName, additionalDocURL)
+	err = h.repo.UpdateTenantProfile(c.Request.Context(), scope.PropertyID, id, name, phone, roomIDStr, entryDateStr, rentalDuration, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName)
 	if err != nil {
 		log.Printf("Error updating tenant profile: %v\n", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update tenant profile: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Tenant profile updated successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "Property-scoped tenant details updated successfully"})
 }
 
 func (h *AuthHandler) CheckoutTenant(c *gin.Context) {

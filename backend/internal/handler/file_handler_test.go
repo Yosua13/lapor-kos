@@ -61,3 +61,27 @@ func TestSignPropertyFileRejectsPrefixConfusion(t *testing.T) {
 		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusNotFound, response.Body.String())
 	}
 }
+
+func TestSignPropertyFileRejectsTenantDocumentNamespace(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	propertyID := uuid.New()
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set("property_scope", model.PropertyScope{PropertyID: propertyID, ActorID: uuid.New()})
+		c.Next()
+	})
+	router.GET("/files/sign", NewFileHandler(nil).SignPropertyFile)
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/files/sign?key=properties/"+propertyID.String()+"/tenant-profiles/"+uuid.New().String()+"/ktp.jpg",
+		nil,
+	)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusNotFound, response.Body.String())
+	}
+}

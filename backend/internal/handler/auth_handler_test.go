@@ -103,8 +103,8 @@ func (m *MockUserRepository) GetTenantProfile(ctx context.Context, propertyID, i
 	return args.Get(0).(map[string]interface{}), args.Error(1)
 }
 
-func (m *MockUserRepository) UpdateTenantProfile(ctx context.Context, propertyID, id uuid.UUID, name string, phone string, roomIDStr string, entryDateStr string, rentalDuration int, ktpURL *string, selfieURL *string, dateOfBirth *time.Time, gender *string, job *string, emergencyContactPhone *string, emergencyContactRelation *string, emergencyContactName *string, additionalDocURL *string) error {
-	args := m.Called(ctx, propertyID, id, name, phone, roomIDStr, entryDateStr, rentalDuration, ktpURL, selfieURL, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName, additionalDocURL)
+func (m *MockUserRepository) UpdateTenantProfile(ctx context.Context, propertyID, id uuid.UUID, name string, phone string, roomIDStr string, entryDateStr string, rentalDuration int, dateOfBirth *time.Time, gender *string, job *string, emergencyContactPhone *string, emergencyContactRelation *string, emergencyContactName *string) error {
+	args := m.Called(ctx, propertyID, id, name, phone, roomIDStr, entryDateStr, rentalDuration, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName)
 	return args.Error(0)
 }
 

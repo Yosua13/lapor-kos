@@ -18,6 +18,7 @@ import (
 	"github.com/Yosua13/lapor-kos/backend/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -169,6 +170,11 @@ func (h *TenantLifecycleHandler) ActivateInvitation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	req.PolicyVersion = strings.TrimSpace(req.PolicyVersion)
+	if !req.PolicyAccepted || req.PolicyVersion == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Policy agreement is required"})
+		return
+	}
 	preview, err := h.repo.PreviewInvitation(c.Request.Context(), repository.InvitationDigest(req.Token))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invitation is invalid, expired, or unavailable"})
@@ -194,10 +200,18 @@ func (h *TenantLifecycleHandler) ActivateInvitation(c *gin.Context) {
 			return
 		}
 		existingID = &existing.ID
+	} else if !errors.Is(lookupErr, pgx.ErrNoRows) {
+		log.Printf("lookup existing tenant identity: %v", lookupErr)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate existing account"})
+		return
 	}
 	verificationKey := ""
 	passwordHash := ""
 	if existingID == nil {
+		if len(req.Password) < 8 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
+			return
+		}
 		passwordHashBytes, hashErr := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		if hashErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to secure password"})
@@ -254,7 +268,7 @@ func (h *TenantLifecycleHandler) UploadDocument(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant profile ID"})
 		return
 	}
-	if h.storage == nil || !h.storage.IsConfigured() {
+	if h.storage == nil || !h.storage.IsTenantDocumentConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Private document storage is not configured"})
 		return
 	}
@@ -301,7 +315,7 @@ func (h *TenantLifecycleHandler) SignDocument(c *gin.Context)   { h.signDocument
 func (h *TenantLifecycleHandler) SignMyDocument(c *gin.Context) { h.signDocument(c, true) }
 
 func (h *TenantLifecycleHandler) signDocument(c *gin.Context, tenantSelf bool) {
-	if h.storage == nil {
+	if h.storage == nil || !h.storage.IsTenantDocumentConfigured() {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Private document storage is not configured"})
 		return
 	}
@@ -333,10 +347,15 @@ func (h *TenantLifecycleHandler) signDocument(c *gin.Context, tenantSelf bool) {
 	}
 	objectKey, err := h.repo.DocumentObjectKey(c.Request.Context(), propertyID, profileID, documentID, actorID, tenantSelf, c.GetHeader("X-Request-ID"))
 	if err != nil {
+		if errors.Is(err, repository.ErrDocumentAuditFailed) {
+			log.Printf("audit tenant document access: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to audit document access"})
+			return
+		}
 		c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
 		return
 	}
-	url, err := h.storage.CreateSignedURL(objectKey, 5*time.Minute)
+	url, err := h.storage.CreateTenantDocumentSignedURL(objectKey, 5*time.Minute)
 	if err != nil {
 		log.Printf("sign tenant document: %v", err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to create document access URL"})

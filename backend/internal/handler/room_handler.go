@@ -191,6 +191,9 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form"})
 		return
 	}
+	if rejectLegacyIdentityDocuments(c) {
+		return
+	}
 
 	name := c.PostForm("name")
 	phone := c.PostForm("phone")
@@ -211,9 +214,6 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 	monthlyRentStr := c.PostForm("monthly_rent")
 	monthlyRent, _ := strconv.ParseFloat(monthlyRentStr, 64)
 
-	ktpPath, _ := h.uploadFile(c, "ktp")
-	selfiePath, _ := h.uploadFile(c, "selfie")
-
 	// Get room details for price if monthlyRent is not provided
 	if monthlyRent <= 0 {
 		room, err := h.repo.FindByID(c.Request.Context(), scope.PropertyID, roomID)
@@ -225,11 +225,9 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 	}
 
 	user := &model.User{
-		Name:      name,
-		Phone:     phone,
-		Email:     email,
-		KtpURL:    &ktpPath,
-		SelfieURL: &selfiePath,
+		Name:  name,
+		Phone: phone,
+		Email: email,
 	}
 
 	electricityBillStr := c.PostForm("electricity_bill")
@@ -271,6 +269,10 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 	}
 
 	if err := h.repo.AssignTenant(c.Request.Context(), scope.PropertyID, scope.ActorID, roomID, user, contract); err != nil {
+		if errors.Is(err, repository.ErrTenantInvitationRequired) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Tenant must activate their account through an invitation before being assigned to a room", "next_action": "create_invitation"})
+			return
+		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
 			return
@@ -290,6 +292,9 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	}
 	if err := c.Request.ParseMultipartForm(10 << 20); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse form"})
+		return
+	}
+	if rejectLegacyIdentityDocuments(c) {
 		return
 	}
 
@@ -383,23 +388,16 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 		}
 	}
 
-	ktpPath, _ := h.uploadFile(c, "ktp")
-	selfiePath, _ := h.uploadFile(c, "selfie")
-	additionalDocPath, _ := h.uploadFile(c, "additional_doc")
-
 	user := &model.User{
 		Name:                     name,
 		Phone:                    phone,
 		Email:                    email,
-		KtpURL:                   &ktpPath,
-		SelfieURL:                &selfiePath,
 		DateOfBirth:              dateOfBirth,
 		Gender:                   gender,
 		Job:                      job,
 		EmergencyContactPhone:    emergencyContactPhone,
 		EmergencyContactRelation: emergencyContactRelation,
 		EmergencyContactName:     emergencyContactName,
-		AdditionalDocURL:         &additionalDocPath,
 		IsActive:                 true,
 	}
 
@@ -454,6 +452,10 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 
 	if room.ID != uuid.Nil {
 		if err := h.repo.UpdateWithTenant(c.Request.Context(), scope.PropertyID, scope.ActorID, room, user, contract, payment); err != nil {
+			if errors.Is(err, repository.ErrTenantInvitationRequired) {
+				c.JSON(http.StatusConflict, gin.H{"error": "Tenant must activate their account through an invitation before being assigned to a room", "next_action": "create_invitation"})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update draft room and tenant: " + err.Error()})
 			return
 		}
@@ -466,6 +468,10 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 		})
 	} else {
 		if err := h.repo.CreateWithTenant(c.Request.Context(), scope.PropertyID, scope.ActorID, room, user, contract, payment); err != nil {
+			if errors.Is(err, repository.ErrTenantInvitationRequired) {
+				c.JSON(http.StatusConflict, gin.H{"error": "Tenant must activate their account through an invitation before being assigned to a room", "next_action": "create_invitation"})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create room and tenant: " + err.Error()})
 			return
 		}
@@ -477,6 +483,19 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 			"payment":  payment,
 		})
 	}
+}
+
+// Legacy room endpoints may attach an existing verified tenant to a contract,
+// but they must never accept KTP/selfie uploads. Identity documents belong to
+// the private tenant-profile document flow where each signed access is audited.
+func rejectLegacyIdentityDocuments(c *gin.Context) bool {
+	for _, fieldName := range []string{"ktp", "selfie", "additional_doc"} {
+		if _, err := c.FormFile(fieldName); err == nil {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Identity documents must be uploaded through the secure tenant profile document flow after account activation"})
+			return true
+		}
+	}
+	return false
 }
 
 // uploadFile uploads a file from the multipart form to Supabase Storage and returns its public URL.

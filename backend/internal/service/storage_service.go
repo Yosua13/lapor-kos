@@ -34,25 +34,38 @@ var allowedUploadExtensions = map[string]string{
 
 // StorageService handles file uploads to Supabase Storage.
 type StorageService struct {
-	supabaseURL string
-	serviceKey  string
-	bucket      string
-	httpClient  *http.Client
+	supabaseURL          string
+	serviceKey           string
+	bucket               string
+	tenantDocumentBucket string
+	httpClient           *http.Client
 }
 
 // NewStorageService creates a new StorageService using environment variables.
 func NewStorageService() *StorageService {
 	return &StorageService{
-		supabaseURL: os.Getenv("SUPABASE_URL"),
-		serviceKey:  os.Getenv("SUPABASE_SERVICE_KEY"),
-		bucket:      os.Getenv("SUPABASE_BUCKET"),
-		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		supabaseURL:          os.Getenv("SUPABASE_URL"),
+		serviceKey:           os.Getenv("SUPABASE_SERVICE_KEY"),
+		bucket:               os.Getenv("SUPABASE_BUCKET"),
+		tenantDocumentBucket: os.Getenv("SUPABASE_TENANT_DOCUMENT_BUCKET"),
+		httpClient:           &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
 // IsConfigured returns true if the Supabase Storage environment variables are set.
 func (s *StorageService) IsConfigured() bool {
-	return s.supabaseURL != "" && s.serviceKey != "" && s.bucket != ""
+	return s.isBaseConfigured() && s.bucket != ""
+}
+
+// IsTenantDocumentConfigured is deliberately separate from IsConfigured.
+// Tenant identity documents must never silently fall back to the general
+// application bucket, which may use different visibility policies.
+func (s *StorageService) IsTenantDocumentConfigured() bool {
+	return s.isBaseConfigured() && s.tenantDocumentBucket != ""
+}
+
+func (s *StorageService) isBaseConfigured() bool {
+	return s.supabaseURL != "" && s.serviceKey != ""
 }
 
 // UploadFile is retained for tenant compatibility. New staff-managed uploads
@@ -79,7 +92,10 @@ func (s *StorageService) UploadTenantDocument(fileHeader *multipart.FileHeader, 
 	if propertyID == uuid.Nil || tenantProfileID == uuid.Nil {
 		return nil, fmt.Errorf("property and tenant profile IDs are required")
 	}
-	return s.uploadPrivateFileMetadata(fileHeader, "properties/"+propertyID.String()+"/tenant-profiles/"+tenantProfileID.String(), prefix)
+	if !s.IsTenantDocumentConfigured() {
+		return nil, fmt.Errorf("private tenant document storage is not configured")
+	}
+	return s.uploadPrivateFileMetadataToBucket(fileHeader, "properties/"+propertyID.String()+"/tenant-profiles/"+tenantProfileID.String(), prefix, s.tenantDocumentBucket)
 }
 
 func (s *StorageService) uploadPrivateFile(fileHeader *multipart.FileHeader, namespace, prefix string) (string, error) {
@@ -91,8 +107,15 @@ func (s *StorageService) uploadPrivateFile(fileHeader *multipart.FileHeader, nam
 }
 
 func (s *StorageService) uploadPrivateFileMetadata(fileHeader *multipart.FileHeader, namespace, prefix string) (*UploadedPrivateFile, error) {
-	if !s.IsConfigured() {
+	return s.uploadPrivateFileMetadataToBucket(fileHeader, namespace, prefix, s.bucket)
+}
+
+func (s *StorageService) uploadPrivateFileMetadataToBucket(fileHeader *multipart.FileHeader, namespace, prefix, bucket string) (*UploadedPrivateFile, error) {
+	if !s.isBaseConfigured() {
 		return nil, fmt.Errorf("supabase storage is not configured")
+	}
+	if strings.TrimSpace(bucket) == "" {
+		return nil, fmt.Errorf("storage bucket is not configured")
 	}
 	if fileHeader.Size > MaxUploadSizeBytes {
 		return nil, fmt.Errorf("file is too large, maximum size is 5MB")
@@ -125,7 +148,7 @@ func (s *StorageService) uploadPrivateFileMetadata(fileHeader *multipart.FileHea
 	objectKey := strings.Trim(namespace, "/") + "/" + filename
 
 	// Build the Supabase Storage upload URL
-	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", strings.TrimRight(s.supabaseURL, "/"), url.PathEscape(s.bucket), escapeObjectKey(objectKey))
+	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", strings.TrimRight(s.supabaseURL, "/"), url.PathEscape(bucket), escapeObjectKey(objectKey))
 
 	// Create and send the HTTP PUT request
 	req, err := http.NewRequest(http.MethodPost, uploadURL, bytes.NewReader(fileBytes))
@@ -154,8 +177,24 @@ func (s *StorageService) uploadPrivateFileMetadata(fileHeader *multipart.FileHea
 // CreateSignedURL exchanges a private object key for a short-lived URL. The
 // caller must authorize property/resource access before invoking this method.
 func (s *StorageService) CreateSignedURL(objectKey string, expiresIn time.Duration) (string, error) {
-	if !s.IsConfigured() {
+	return s.createSignedURLForBucket(objectKey, expiresIn, s.bucket)
+}
+
+// CreateTenantDocumentSignedURL may only use the dedicated private tenant
+// document bucket. Callers must authorize and audit access before calling it.
+func (s *StorageService) CreateTenantDocumentSignedURL(objectKey string, expiresIn time.Duration) (string, error) {
+	if !s.IsTenantDocumentConfigured() {
+		return "", fmt.Errorf("private tenant document storage is not configured")
+	}
+	return s.createSignedURLForBucket(objectKey, expiresIn, s.tenantDocumentBucket)
+}
+
+func (s *StorageService) createSignedURLForBucket(objectKey string, expiresIn time.Duration, bucket string) (string, error) {
+	if !s.isBaseConfigured() {
 		return "", fmt.Errorf("supabase storage is not configured")
+	}
+	if strings.TrimSpace(bucket) == "" {
+		return "", fmt.Errorf("storage bucket is not configured")
 	}
 	objectKey = strings.TrimSpace(strings.TrimLeft(objectKey, "/"))
 	if objectKey == "" || strings.Contains(objectKey, "..") {
@@ -166,7 +205,7 @@ func (s *StorageService) CreateSignedURL(objectKey string, expiresIn time.Durati
 		seconds = 5 * 60
 	}
 	body := []byte(fmt.Sprintf(`{"expiresIn":%d}`, seconds))
-	signURL := fmt.Sprintf("%s/storage/v1/object/sign/%s/%s", strings.TrimRight(s.supabaseURL, "/"), url.PathEscape(s.bucket), escapeObjectKey(objectKey))
+	signURL := fmt.Sprintf("%s/storage/v1/object/sign/%s/%s", strings.TrimRight(s.supabaseURL, "/"), url.PathEscape(bucket), escapeObjectKey(objectKey))
 	req, err := http.NewRequest(http.MethodPost, signURL, bytes.NewReader(body))
 	if err != nil {
 		return "", err

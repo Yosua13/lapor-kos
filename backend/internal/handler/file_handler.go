@@ -32,6 +32,14 @@ func (h *FileHandler) SignPropertyFile(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
 		return
 	}
+	// Identity documents have a stricter boundary than general property files:
+	// their signed URLs must pass through TenantLifecycleHandler so ownership is
+	// checked at the document-record level and the access is audited. Do not let
+	// the generic key-based endpoint become an authorization bypass.
+	if strings.HasPrefix(objectKey, requiredPrefix+"tenant-profiles/") {
+		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
 	signedURL, err := h.storage.CreateSignedURL(objectKey, 5*time.Minute)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to create file access URL"})
