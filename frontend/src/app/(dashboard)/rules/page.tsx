@@ -345,7 +345,7 @@ export default function HouseRulesPage() {
           {isOwner && (
             <button
               onClick={handleOpenAdd}
-              className="flex items-center gap-2 px-5 py-3 bg-brand-teal text-white font-bold rounded-2xl text-sm shadow-lg shadow-brand-teal/20 hover:bg-teal-light active:scale-[0.98] transition-all"
+              className="flex items-center gap-2 px-5 py-3 bg-[#0e8a7a] text-white font-bold rounded-2xl text-sm shadow-lg shadow-brand-teal/20 hover:bg-[#0c7567] active:scale-[0.98] transition-all"
             >
               <Plus className="w-4.5 h-4.5" />
               <span>Tambah Aturan</span>

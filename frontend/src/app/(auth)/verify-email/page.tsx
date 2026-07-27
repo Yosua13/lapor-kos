@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api';
 function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isInvitationFlow = searchParams.get('flow') === 'invitation';
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Sedang memverifikasi email Anda...');
 
@@ -25,10 +26,16 @@ function VerifyEmailContent() {
           method: 'GET',
         });
         setStatus('success');
-        setMessage('Email berhasil diverifikasi! Mengalihkan ke halaman login...');
+        setMessage(isInvitationFlow
+          ? 'Email berhasil diverifikasi. Kembali ke tab aktivasi; tab tersebut akan melanjutkan ke halaman login secara otomatis.'
+          : 'Email berhasil diverifikasi! Mengalihkan ke halaman login...');
         setTimeout(() => {
-          router.push('/login?verified=success');
-        }, 3000);
+          if (isInvitationFlow) {
+            window.close();
+            return;
+          }
+          router.replace('/login?verified=success');
+        }, 1500);
       } catch (err: any) {
         setStatus('error');
         setMessage(err.message || 'Verifikasi gagal. Token mungkin sudah kadaluarsa.');
@@ -36,7 +43,7 @@ function VerifyEmailContent() {
     };
 
     verify();
-  }, [searchParams, router]);
+  }, [isInvitationFlow, searchParams, router]);
 
   return (
     <div className="min-h-screen bg-cream flex flex-col items-center justify-center p-6 text-center">
@@ -55,9 +62,18 @@ function VerifyEmailContent() {
           {message}
         </p>
 
+        {status === 'success' && isInvitationFlow && (
+          <button
+            onClick={() => window.close()}
+            className="w-full bg-teal text-white font-semibold py-3.5 rounded-xl hover:bg-teal-light transition-all"
+          >
+            Tutup tab ini
+          </button>
+        )}
+
         {status === 'error' && (
           <button
-            onClick={() => router.push('/login')}
+            onClick={() => router.replace('/login')}
             className="w-full bg-teal text-white font-semibold py-3.5 rounded-xl hover:bg-teal-light transition-all"
           >
             Kembali ke Login

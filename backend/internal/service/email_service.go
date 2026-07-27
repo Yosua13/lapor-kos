@@ -6,13 +6,16 @@ import (
 	"html/template"
 	"os"
 	"strconv"
+	"time"
 
 	"gopkg.in/gomail.v2"
 )
 
 type EmailServiceInterface interface {
 	SendVerificationEmail(email string, token string) error
+	SendTenantAccountVerificationEmail(email string, token string) error
 	SendOTPEmail(email string, otp string) error
+	SendTenantInvitationEmail(email string, invitationURL string, expiresAt time.Time) error
 }
 
 type EmailService struct {
@@ -40,6 +43,10 @@ func NewEmailService() *EmailService {
 	}
 }
 
+func (s *EmailService) IsConfigured() bool {
+	return s.host != "" && s.user != "" && s.pass != "" && s.sender != "" && s.frontendURL != ""
+}
+
 func (s *EmailService) sendEmail(to string, subject string, body string) error {
 	m := gomail.NewMessage()
 	m.SetHeader("From", s.sender)
@@ -53,7 +60,17 @@ func (s *EmailService) sendEmail(to string, subject string, body string) error {
 }
 
 func (s *EmailService) SendVerificationEmail(email string, token string) error {
-	verificationURL := fmt.Sprintf("%s/verify-email?token=%s", s.frontendURL, token)
+	return s.sendVerificationEmail(email, fmt.Sprintf("%s/verify-email?token=%s", s.frontendURL, token))
+}
+
+// SendTenantAccountVerificationEmail marks the page as an invitation flow so
+// the original activation tab, rather than the email-client tab, can continue
+// the user to login after verification.
+func (s *EmailService) SendTenantAccountVerificationEmail(email string, token string) error {
+	return s.sendVerificationEmail(email, fmt.Sprintf("%s/verify-email?token=%s&flow=invitation", s.frontendURL, token))
+}
+
+func (s *EmailService) sendVerificationEmail(email string, verificationURL string) error {
 
 	data := struct {
 		URL string
@@ -92,6 +109,25 @@ func (s *EmailService) SendOTPEmail(email string, otp string) error {
 	}
 
 	return s.sendEmail(email, "Kode OTP Reset Password - Lapor Kos", body.String())
+}
+
+func (s *EmailService) SendTenantInvitationEmail(email string, invitationURL string, expiresAt time.Time) error {
+	data := struct {
+		URL       string
+		ExpiresAt string
+	}{
+		URL:       invitationURL,
+		ExpiresAt: expiresAt.In(time.Local).Format("02 Jan 2006, 15:04 MST"),
+	}
+	tmpl, err := template.New("tenant-invitation").Parse(tenantInvitationTemplate)
+	if err != nil {
+		return err
+	}
+	var body bytes.Buffer
+	if err := tmpl.Execute(&body, data); err != nil {
+		return err
+	}
+	return s.sendEmail(email, "Undangan Aktivasi Akun - Lapor Kos", body.String())
 }
 
 const verificationTemplate = `
@@ -169,3 +205,14 @@ const otpTemplate = `
 </body>
 </html>
 `
+
+const tenantInvitationTemplate = `
+<!DOCTYPE html><html><body style="margin:0;background:#f8fafc;font-family:Segoe UI,Arial,sans-serif;color:#0f172a">
+  <div style="max-width:600px;margin:24px auto;background:white;border-radius:18px;overflow:hidden;border:1px solid #e2e8f0">
+    <div style="padding:30px;background:#0f766e;color:#fff"><h1 style="margin:0;font-size:24px">Undangan Lapor Kos</h1></div>
+    <div style="padding:32px"><p>Anda diundang untuk mengaktifkan akun penghuni.</p><p>Klik tombol berikut untuk membuat kata sandi Anda sendiri dan menyetujui kebijakan kos.</p>
+      <p style="margin:28px 0"><a href="{{.URL}}" style="background:#0f766e;color:#fff;padding:13px 22px;border-radius:10px;text-decoration:none;font-weight:700">Aktifkan akun</a></p>
+      <p style="font-size:13px;color:#64748b">Undangan berlaku hingga {{.ExpiresAt}}. Jangan teruskan tautan ini kepada orang lain.</p>
+    </div>
+  </div>
+</body></html>`

@@ -9,6 +9,8 @@ import {
   LayoutGrid, List as ListIcon
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuthorization } from '@/features/authorization/useAuthorization';
+import { CAPABILITIES } from '@/features/authorization/permissions';
 
 interface Tenant {
   id: string;
@@ -39,6 +41,7 @@ interface Tenant {
 
 export default function TenantsPage() {
   const router = useRouter();
+  const { can } = useAuthorization();
   const [mounted, setMounted] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -228,6 +231,69 @@ export default function TenantsPage() {
     return result;
   }, [enhancedTenants, activeTab, searchQuery, sortBy]);
 
+  const handleExportTenants = () => {
+    if (!filteredAndSortedTenants || filteredAndSortedTenants.length === 0) return;
+
+    const escapeCsvCell = (val: any) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const headers = [
+      'No.',
+      'Nama Penghuni',
+      'Email',
+      'No HP',
+      'Nomor Kamar',
+      'Durasi Kontrak',
+      'Harga Sewa per Bulan',
+      'Tanggal Mulai',
+      'Tanggal Selesai',
+      'Status Kontrak',
+      'Status Pembayaran',
+    ];
+
+    const rows = filteredAndSortedTenants.map((t: any, index: number) => {
+      const rentFormatted = t.room?.price_per_month
+        ? `Rp ${t.room.price_per_month.toLocaleString('id-ID')}`
+        : 'Rp 0';
+      const durationFormatted = t.contract?.rental_duration
+        ? `${t.contract.rental_duration} Bulan`
+        : '-';
+
+      return [
+        index + 1,
+        t.name || '-',
+        t.email || '-',
+        t.phone || '-',
+        t.room?.room_number || '-',
+        durationFormatted,
+        rentFormatted,
+        t.contract?.start_date ? formatDate(t.contract.start_date) : '-',
+        t.contract?.end_date ? formatDate(t.contract.end_date) : '-',
+        t.contractStatus || '-',
+        t.paymentStatus || '-',
+      ];
+    });
+
+    const csvLines = [
+      headers.map(escapeCsvCell).join(';'),
+      ...rows.map(row => row.map(escapeCsvCell).join(';'))
+    ];
+
+    const csvContent = '\uFEFFsep=;\r\n' + csvLines.join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    const dateStr = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `data-penghuni-kontrak-${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Reset pagination when filter changes
   useEffect(() => {
     setCurrentPage(1);
@@ -242,9 +308,10 @@ export default function TenantsPage() {
     <div className="flex flex-col min-h-[calc(100vh-80px)] lg:min-h-[calc(100vh-120px)] w-full animate-slide-up -mt-4 lg:-mt-8">
 
       {/* HEADER */}
-      <div className="shrink-0 mb-3">
-        <h1 className="text-[28px] font-display font-extrabold text-brand-navy">Penghuni & Kontrak</h1>
-        <p className="text-[15px] text-gray-500 mt-1">Kelola data penghuni dan kontrak kamar kos Anda.</p>
+      <div className="shrink-0 mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div><h1 className="text-[28px] font-display font-extrabold text-brand-navy">Penghuni & Kontrak</h1>
+        <p className="text-[15px] text-gray-500 mt-1">Kelola data penghuni dan kontrak kamar kos Anda.</p></div>
+        {can(CAPABILITIES.TENANT_WRITE) && <button onClick={() => router.push('/tenants/invitations')} className="rounded-lg bg-[#0e8a7a] hover:bg-[#0c7567] px-4 py-2 text-sm font-bold text-white">Undang calon penghuni</button>}
       </div>
 
       {/* TABS (Pills) */}
@@ -363,7 +430,11 @@ export default function TenantsPage() {
               </button>
             </div>
 
-            <button className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-brand-navy font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm bg-white">
+            <button
+              type="button"
+              onClick={handleExportTenants}
+              className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-brand-navy font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm bg-white"
+            >
               <Download className="w-4 h-4" /> Export Data
             </button>
           </div>

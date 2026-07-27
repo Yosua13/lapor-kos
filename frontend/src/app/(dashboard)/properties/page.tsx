@@ -40,6 +40,7 @@ export default function PropertiesPage() {
   const [memberRole, setMemberRole] = useState<Exclude<MembershipRole, 'property_owner'>>('manager');
   const [isSavingMember, setIsSavingMember] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const canCreate = activeProperty ? can(CAPABILITIES.PROPERTY_CREATE) : user?.role === 'owner';
   const canManageProperty = can(CAPABILITIES.PROPERTY_MANAGE);
@@ -82,6 +83,11 @@ export default function PropertiesPage() {
   }, [activeProperty?.id, canManageMembers]);
 
   const resetMessage = () => setMessage(null);
+
+  const showToast = (text: string) => {
+    setToast(text);
+    window.setTimeout(() => setToast(null), 4500);
+  };
 
   const handleSelectProperty = (propertyId: string) => {
     resetMessage();
@@ -132,7 +138,12 @@ export default function PropertiesPage() {
       await loadMembers();
       setMessage({ type: 'success', text: 'Anggota berhasil ditambahkan.' });
     } catch (caught) {
-      setMessage({ type: 'error', text: caught instanceof Error ? caught.message : 'Gagal menambahkan anggota' });
+      const errorText = caught instanceof Error ? caught.message : 'Gagal menambahkan anggota';
+      if (errorText === 'User is not available for membership') {
+        showToast('Akun dengan email tersebut belum terdaftar. Minta calon anggota membuat akun terlebih dahulu, lalu tambahkan kembali.');
+      } else {
+        setMessage({ type: 'error', text: errorText });
+      }
     } finally {
       setIsSavingMember(false);
     }
@@ -173,7 +184,7 @@ export default function PropertiesPage() {
           <p className="mt-1 text-sm text-brand-navy/50">Kelola identitas properti dan akses staf dari satu tempat.</p>
         </div>
         {canCreate && (
-          <button type="button" onClick={handleStartCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-teal px-5 py-3 text-sm font-bold text-white shadow-lg shadow-brand-teal/15">
+          <button type="button" onClick={handleStartCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0e8a7a] hover:bg-[#0c7567] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-brand-teal/15">
             <Plus className="h-4 w-4" /> Tambah properti
           </button>
         )}
@@ -182,6 +193,12 @@ export default function PropertiesPage() {
       {message && (
         <div className={`rounded-xl border px-4 py-3 text-sm ${message.type === 'success' ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-red-100 bg-red-50 text-red-700'}`}>
           {message.text}
+        </div>
+      )}
+
+      {toast && (
+        <div role="status" className="fixed right-5 top-5 z-50 max-w-sm rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-xl">
+          {toast}
         </div>
       )}
 

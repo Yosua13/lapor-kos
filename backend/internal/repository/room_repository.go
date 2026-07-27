@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,12 +11,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type RoomRepository struct {
 	db *pgxpool.Pool
 }
+
+// ErrTenantInvitationRequired is returned when an owner tries to attach a
+// contact that has not activated a verified tenant account yet.
+var ErrTenantInvitationRequired = errors.New("tenant account must be activated through an invitation first")
 
 func NewRoomRepository(db *pgxpool.Pool) *RoomRepository {
 	return &RoomRepository{db: db}
@@ -63,7 +67,7 @@ func (r *RoomRepository) CreateWithTenant(
 	}
 
 	if room.Status == "occupied" && hasTenantData(user) {
-		userID, err := findOrCreateTenant(ctx, tx, user)
+		userID, err := findOrCreateTenant(ctx, tx, propertyID, user)
 		if err != nil {
 			return err
 		}
@@ -112,7 +116,7 @@ func (r *RoomRepository) UpdateWithTenant(
 	room.PropertyID = propertyID
 
 	if room.Status == "occupied" && hasTenantData(user) {
-		userID, err := findOrCreateTenant(ctx, tx, user)
+		userID, err := findOrCreateTenant(ctx, tx, propertyID, user)
 		if err != nil {
 			return err
 		}
@@ -192,7 +196,7 @@ func (r *RoomRepository) AssignTenant(
 	if status == "occupied" {
 		return fmt.Errorf("kamar tidak tersedia")
 	}
-	userID, err := findOrCreateTenant(ctx, tx, user)
+	userID, err := findOrCreateTenant(ctx, tx, propertyID, user)
 	if err != nil {
 		return err
 	}
@@ -290,13 +294,35 @@ func (r *RoomRepository) DeleteWithTenant(
 	).Scan(&lockedID); err != nil {
 		return err
 	}
-	var activeContracts int
-	if err := tx.QueryRow(ctx, `
-		SELECT COUNT(*) FROM contracts
-		WHERE property_id=$1 AND room_id=$2 AND status='active'`,
-		propertyID, id,
-	).Scan(&activeContracts); err != nil {
+	rows, err := tx.Query(ctx, `
+		SELECT user_id FROM contracts
+		WHERE property_id=$1 AND room_id=$2 AND status='active' FOR UPDATE`, propertyID, id)
+	if err != nil {
 		return err
+	}
+	activeUserIDs := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var userID *uuid.UUID
+		if err := rows.Scan(&userID); err != nil {
+			rows.Close()
+			return err
+		}
+		if userID != nil {
+			activeUserIDs = append(activeUserIDs, *userID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	activeContracts := len(activeUserIDs)
+	// A legacy/incomplete contract may not yet have an identity, but it still
+	// blocks destructive room deletion until the caller explicitly ends it.
+	if activeContracts == 0 {
+		if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM contracts WHERE property_id=$1 AND room_id=$2 AND status='active'`, propertyID, id).Scan(&activeContracts); err != nil {
+			return err
+		}
 	}
 	if activeContracts > 0 && !endActiveTenancy {
 		return fmt.Errorf("room has an active tenancy")
@@ -309,6 +335,11 @@ func (r *RoomRepository) DeleteWithTenant(
 			propertyID, id,
 		); err != nil {
 			return err
+		}
+		for _, userID := range activeUserIDs {
+			if err := revokeTenantSessionForProperty(ctx, tx, propertyID, userID, "room_tenancy_cancelled"); err != nil {
+				return err
+			}
 		}
 	}
 	command, err := tx.Exec(ctx,
@@ -327,40 +358,43 @@ func hasTenantData(user *model.User) bool {
 	return user != nil && (strings.TrimSpace(user.Name) != "" || strings.TrimSpace(user.Email) != "")
 }
 
-func findOrCreateTenant(ctx context.Context, tx pgx.Tx, user *model.User) (uuid.UUID, error) {
+func findOrCreateTenant(ctx context.Context, tx pgx.Tx, propertyID uuid.UUID, user *model.User) (uuid.UUID, error) {
 	if user == nil || strings.TrimSpace(user.Email) == "" {
 		return uuid.Nil, fmt.Errorf("tenant email is required")
 	}
 	email := strings.ToLower(strings.TrimSpace(user.Email))
 	var userID uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT id FROM users WHERE LOWER(email)=$1`, email).Scan(&userID)
+	var isActive, isVerified bool
+	var role string
+	err := tx.QueryRow(ctx, `SELECT id,is_active,is_verified,role FROM users WHERE LOWER(email)=$1`, email).Scan(&userID, &isActive, &isVerified, &role)
 	if err == nil {
 		// Existing identities may belong to other properties. Do not mutate their
-		// global PII here; only attach a scoped contract.
+		// global PII here; only attach a scoped contract after they have verified
+		// an actual tenant account.
+		if !isActive || !isVerified || role != "tenant" {
+			return uuid.Nil, ErrTenantInvitationRequired
+		}
+		var profileActive bool
+		if err := tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM tenant_profiles
+				WHERE property_id=$1 AND user_id=$2 AND status='active'
+			)`, propertyID, userID,
+		).Scan(&profileActive); err != nil {
+			return uuid.Nil, err
+		}
+		if !profileActive {
+			return uuid.Nil, ErrTenantInvitationRequired
+		}
 		return userID, nil
 	}
 	if err != pgx.ErrNoRows {
 		return uuid.Nil, err
 	}
-	randomPassword := uuid.NewString() + uuid.NewString()
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(randomPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	userID = uuid.New()
-	err = tx.QueryRow(ctx, `
-		INSERT INTO users (
-			id,name,email,password_hash,role,is_verified,phone,ktp_url,selfie_url,
-			is_active,date_of_birth,gender,job,emergency_contact_phone,
-			emergency_contact_relation,emergency_contact_name,additional_doc_url
-		) VALUES ($1,$2,$3,$4,'tenant',TRUE,$5,$6,$7,TRUE,$8,$9,$10,$11,$12,$13,$14)
-		RETURNING id`,
-		userID, user.Name, email, string(hashedPassword), user.Phone,
-		user.KtpURL, user.SelfieURL, user.DateOfBirth, user.Gender, user.Job,
-		user.EmergencyContactPhone, user.EmergencyContactRelation,
-		user.EmergencyContactName, user.AdditionalDocURL,
-	).Scan(&userID)
-	return userID, err
+	// New tenant identities must be created through the invitation activation
+	// flow. It lets the tenant choose their password and verify contact details;
+	// this legacy room flow may only attach an already activated account.
+	return uuid.Nil, ErrTenantInvitationRequired
 }
 
 func prepareContract(contract *model.Contract) {

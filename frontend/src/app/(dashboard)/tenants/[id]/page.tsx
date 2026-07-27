@@ -122,11 +122,6 @@ export default function TenantProfilePage() {
     entry_date: '',
     rental_duration: 1
   });
-  const [files, setFiles] = useState<{ ktp: File | null, selfie: File | null }>({
-    ktp: null,
-    selfie: null
-  });
-
   const [showChangeRoomModal, setShowChangeRoomModal] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [isChangingRoom, setIsChangingRoom] = useState(false);
@@ -163,12 +158,6 @@ export default function TenantProfilePage() {
     emergency_contact_relation: '',
     emergency_contact_phone: ''
   });
-  const [editFiles, setEditFiles] = useState<{ ktp: File | null, selfie: File | null, additional_doc: File | null }>({
-    ktp: null,
-    selfie: null,
-    additional_doc: null
-  });
-
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [activeMenu, setActiveMenu] = useState<'ringkasan' | 'kontrak' | 'data-pribadi' | 'dokumen' | 'pembayaran' | 'aktivitas'>('ringkasan');
 
@@ -267,12 +256,6 @@ export default function TenantProfilePage() {
     return formatted;
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'ktp' | 'selfie') => {
-    if (e.target.files && e.target.files[0]) {
-      setFiles({ ...files, [type]: e.target.files[0] });
-    }
-  };
-
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
@@ -298,16 +281,12 @@ export default function TenantProfilePage() {
       data.append('room_id', formData.room_id);
       data.append('entry_date', formData.entry_date);
       data.append('rental_duration', String(formData.rental_duration));
-      if (files.ktp) data.append('ktp', files.ktp);
-      if (files.selfie) data.append('selfie', files.selfie);
-
       await apiFetch(`/api/tenants/${id}`, {
         method: 'PUT',
         body: data
       });
 
       setIsEditing(false);
-      setFiles({ ktp: null, selfie: null });
       fetchData();
       showToast('Profil berhasil diperbarui!');
     } catch (err: any) {
@@ -340,17 +319,12 @@ export default function TenantProfilePage() {
       data.append('emergency_contact_relation', editFormData.emergency_contact_relation);
       data.append('emergency_contact_phone', editFormData.emergency_contact_phone);
 
-      if (editFiles.ktp) data.append('ktp', editFiles.ktp);
-      if (editFiles.selfie) data.append('selfie', editFiles.selfie);
-      if (editFiles.additional_doc) data.append('additional_doc', editFiles.additional_doc);
-
       await apiFetch(`/api/tenants/${id}`, {
         method: 'PUT',
         body: data
       });
 
       setIsEditing(false);
-      setEditFiles({ ktp: null, selfie: null, additional_doc: null });
       fetchData();
       showToast('Profil berhasil diperbarui!');
     } catch (err: any) {
@@ -715,9 +689,8 @@ export default function TenantProfilePage() {
               {activeMenu === 'pembayaran' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#0e8a7a] rounded-r-full"></div>}
               <Wallet className={`w-5 h-5 ${activeMenu === 'pembayaran' ? '' : 'text-gray-400'}`} /> Pembayaran
             </button>
-            <button onClick={() => setActiveMenu('dokumen')} className={`flex items-center gap-3 px-4 py-3 font-bold text-[14px] rounded-lg relative overflow-hidden group transition-colors w-full text-left ${activeMenu === 'dokumen' ? 'bg-[#0e8a7a]/5 text-[#0e8a7a]' : 'text-gray-500 hover:bg-gray-50 font-medium'}`}>
-              {activeMenu === 'dokumen' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#0e8a7a] rounded-r-full"></div>}
-              <Folder className={`w-5 h-5 ${activeMenu === 'dokumen' ? '' : 'text-gray-400'}`} /> Dokumen
+            <button onClick={() => router.push(`/tenants/${id}/documents`)} className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-[14px] font-medium text-gray-500 transition-colors hover:bg-gray-50">
+              <Folder className="w-5 h-5 text-gray-400" /> Dokumen
             </button>
             <button onClick={() => setActiveMenu('aktivitas')} className={`flex items-center gap-3 px-4 py-3 font-bold text-[14px] rounded-lg relative overflow-hidden group transition-colors w-full text-left ${activeMenu === 'aktivitas' ? 'bg-[#0e8a7a]/5 text-[#0e8a7a]' : 'text-gray-500 hover:bg-gray-50 font-medium'}`}>
               {activeMenu === 'aktivitas' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#0e8a7a] rounded-r-full"></div>}
@@ -914,7 +887,7 @@ export default function TenantProfilePage() {
                     </div>
                   </div>
 
-                  <button className="w-full py-2 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[12px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
+                  <button onClick={() => router.push(`/tenants/${id}/documents`)} className="w-full py-2 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[12px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
                     Lihat Semua Dokumen <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1396,7 +1369,7 @@ export default function TenantProfilePage() {
                      <p className="text-[13px] text-gray-400">{tenant.notes || 'Belum ada catatan dari owner.'}</p>
                    </div>
 
-                   <button className="w-full py-2.5 border border-[#0e8a7a] text-[#0e8a7a] hover:bg-[#0e8a7a]/5 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
+                    <button onClick={() => router.push(`/tenants/${id}/documents`)} className="w-full py-2.5 border border-[#0e8a7a] text-[#0e8a7a] hover:bg-[#0e8a7a]/5 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
                      <FileText className="w-4 h-4" /> Lihat Dokumen
                    </button>
                  </div>
@@ -2088,52 +2061,16 @@ export default function TenantProfilePage() {
                 </div>
               </div>
 
-              {/* Files Upload Group */}
               <div className="border-t border-gray-100 pt-4">
-                <h4 className="font-bold text-[14px] text-brand-navy mb-3">Unggah Dokumen Identitas</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Ganti Foto KTP</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={e => e.target.files && setEditFiles({ ...editFiles, ktp: e.target.files[0] })}
-                      className="text-[11px] w-full"
-                    />
-                    {editFiles.ktp && editFiles.ktp.type.startsWith('image/') && (
-                      <img src={URL.createObjectURL(editFiles.ktp)} alt="Preview" className="mt-2 w-full max-h-24 object-cover rounded-xl border border-gray-200" />
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Ganti Foto Selfie</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={e => e.target.files && setEditFiles({ ...editFiles, selfie: e.target.files[0] })}
-                      className="text-[11px] w-full"
-                    />
-                    {editFiles.selfie && editFiles.selfie.type.startsWith('image/') && (
-                      <img src={URL.createObjectURL(editFiles.selfie)} alt="Preview" className="mt-2 w-full max-h-24 object-cover rounded-xl border border-gray-200" />
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Ganti Dokumen Tambahan</label>
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      onChange={e => e.target.files && setEditFiles({ ...editFiles, additional_doc: e.target.files[0] })}
-                      className="text-[11px] w-full"
-                    />
-                    {editFiles.additional_doc && editFiles.additional_doc.type.startsWith('image/') && (
-                      <img src={URL.createObjectURL(editFiles.additional_doc)} alt="Preview" className="mt-2 w-full max-h-24 object-cover rounded-xl border border-gray-200" />
-                    )}
-                    {editFiles.additional_doc && editFiles.additional_doc.type === 'application/pdf' && (
-                      <div className="mt-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-[10px] text-gray-600 flex items-center gap-2">
-                        <FileText className="w-3.5 h-3.5" /> File PDF terpilih
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <h4 className="font-bold text-[14px] text-brand-navy mb-2">Dokumen identitas</h4>
+                <p className="text-[12px] leading-relaxed text-gray-500">KTP, selfie, dan dokumen pendukung dikelola melalui halaman dokumen privat agar URL akses hanya dibuat sementara dan setiap akses tercatat.</p>
+                <button
+                  type="button"
+                  onClick={() => router.push(`/tenants/${id}/documents`)}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#0e8a7a] px-3 py-2 text-[12px] font-bold text-[#0e8a7a] transition-colors hover:bg-[#0e8a7a]/5"
+                >
+                  <ShieldCheck className="h-4 w-4" /> Kelola dokumen privat
+                </button>
               </div>
 
               <div>

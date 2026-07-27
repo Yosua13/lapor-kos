@@ -30,8 +30,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${dmSerif.variable} ${outfit.variable} font-outfit antialiased`}>
+    <html lang="en" suppressHydrationWarning>
+      <body suppressHydrationWarning className={`${dmSerif.variable} ${outfit.variable} font-outfit antialiased`}>
         {children}
       </body>
     </html>

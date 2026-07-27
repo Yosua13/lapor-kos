@@ -591,7 +591,7 @@ export default function DashboardPage() {
              <Users className="w-4 h-4 text-brand-teal" />
              Data Penghuni
           </Link>
-          <Link href="/rooms" className="px-5 py-2 bg-brand-teal hover:bg-brand-teal-light text-white text-[13px] font-bold rounded-full shadow-sm transition-all flex items-center gap-2 group">
+          <Link href="/rooms" className="px-5 py-2 bg-[#0e8a7a] hover:bg-[#0c7567] text-white text-[13px] font-bold rounded-full shadow-sm transition-all flex items-center gap-2 group">
              <Plus className="w-4 h-4" />
              Manajemen Kamar
           </Link>

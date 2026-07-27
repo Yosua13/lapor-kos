@@ -28,7 +28,7 @@ import {
   Armchair,
   ExternalLink,
   Wallet,
-  UploadCloud,
+  Download,
   ChevronDown,
   CheckSquare
 } from 'lucide-react';
@@ -138,6 +138,8 @@ export default function RoomsPage() {
     fetchRooms();
   }, []);
 
+
+
   useEffect(() => {
     setCurrentPage(1);
   }, [activeTab, filterFloor, filterType, searchQuery, sortBy, itemsPerPage]);
@@ -198,6 +200,71 @@ export default function RoomsPage() {
 
     return result;
   }, [rooms, activeTab, filterFloor, filterType, searchQuery, sortBy]);
+
+  const handleExportRooms = () => {
+    if (!filteredAndSortedRooms || filteredAndSortedRooms.length === 0) return;
+
+    const escapeCsvCell = (val: any) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const headers = [
+      'No.',
+      'Nomor Kamar',
+      'Tipe Kamar',
+      'Lantai',
+      'Harga per Bulan',
+      'Status Kamar',
+      'Nama Penghuni',
+      'Email Penghuni',
+      'No. Telepon'
+    ];
+
+    const rows = filteredAndSortedRooms.map((room: Room, index: number) => {
+      const tenant = getTenantForRoom(room.id);
+      const tenantName = tenant ? tenant.name || '-' : '-';
+      const tenantEmail = tenant ? tenant.email || '-' : '-';
+      const tenantPhone = tenant ? tenant.phone || '-' : '-';
+      const statusLabel = room.status === 'occupied' ? 'Terisi' 
+                        : room.status === 'available' ? 'Tersedia' 
+                        : room.status === 'maintenance' ? 'Perbaikan' 
+                        : room.status;
+      const priceFormatted = room.price_per_month 
+        ? `Rp ${room.price_per_month.toLocaleString('id-ID')}` 
+        : 'Rp 0';
+      const floorLabel = room.floor ? `Lantai ${room.floor}` : `Lantai ${getRoomFloor(room.room_number)}`;
+
+      return [
+        index + 1,
+        room.room_number || '-',
+        room.type || 'Standard',
+        floorLabel,
+        priceFormatted,
+        statusLabel,
+        tenantName,
+        tenantEmail,
+        tenantPhone
+      ];
+    });
+
+    const csvLines = [
+      headers.map(escapeCsvCell).join(';'),
+      ...rows.map(row => row.map(escapeCsvCell).join(';'))
+    ];
+
+    const csvContent = '\uFEFFsep=;\r\n' + csvLines.join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    const dateStr = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `data-kamar-${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const totalPages = Math.ceil(filteredAndSortedRooms.length / itemsPerPage);
   const paginatedRooms = useMemo(() => {
@@ -557,8 +624,12 @@ export default function RoomsPage() {
               </button>
             </div>
 
-            <button className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-[#1f2937] font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2">
-              <UploadCloud className="w-4 h-4" /> Export
+            <button
+              type="button"
+              onClick={handleExportRooms}
+              className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-[#1f2937] font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm bg-white"
+            >
+              <Download className="w-4 h-4" /> Export Data
             </button>
             {canWriteRooms && (
               <button
