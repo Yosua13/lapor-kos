@@ -34,11 +34,11 @@ Mengganti pembuatan akun tenant dengan password bawaan menjadi proses invitation
 
 ## Kriteria Penerimaan
 
-- [ ] Tidak ada password default di source code maupun database.
-- [ ] Invitation yang sudah dipakai, kedaluwarsa, atau dicabut tidak dapat digunakan kembali.
-- [ ] Existing user dapat ditautkan tanpa datanya ditimpa oleh owner.
-- [ ] Dokumen identitas hanya tersedia melalui akses berizin dan signed URL singkat yang diaudit.
-- [ ] Sesi tenant dapat dicabut sesuai kebijakan saat checkout atau penonaktifan.
+- [x] Tidak ada password default di source code maupun database.
+- [x] Invitation yang sudah dipakai, kedaluwarsa, atau dicabut tidak dapat digunakan kembali.
+- [x] Existing user dapat ditautkan tanpa datanya ditimpa oleh owner.
+- [x] Dokumen identitas hanya tersedia melalui akses berizin dan signed URL singkat yang diaudit.
+- [x] Sesi tenant dapat dicabut sesuai kebijakan saat checkout atau penonaktifan.
 
 ## Ketergantungan
 
