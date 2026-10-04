@@ -379,6 +379,9 @@ export default function DashboardPage() {
                   <p className="text-[10px] text-brand-navy/40 font-medium">
                     *Masa kontrak berjalan selama {contract.rental_duration} bulan. Hubungi pemilik kos jika ingin memperpanjang kontrak.
                   </p>
+                  <Link href={`/contracts/${contract.id}`} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-navy px-4 py-2.5 text-xs font-bold text-white transition hover:opacity-90">
+                    Tinjau kontrak &amp; histori <ArrowRight className="h-4 w-4" />
+                  </Link>
                 </div>
               )}
             </div>

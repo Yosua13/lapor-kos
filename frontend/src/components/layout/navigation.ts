@@ -92,6 +92,7 @@ export const getNavigation = (
 const staffPathCapabilities: Array<[string, Capability]> = [
   ['/rooms', CAPABILITIES.ROOM_READ],
   ['/tenants', CAPABILITIES.TENANT_READ],
+	['/contracts', CAPABILITIES.CONTRACT_READ],
   ['/payments', CAPABILITIES.PAYMENT_READ],
   ['/reports', CAPABILITIES.REPORT_READ],
   ['/rules', CAPABILITIES.RULE_READ],
