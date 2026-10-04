@@ -16,6 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { useAuthorization } from '@/features/authorization/useAuthorization';
+import { CAPABILITIES } from '@/features/authorization/permissions';
 
 type TenantProfile = {
   id: string;
@@ -56,6 +58,8 @@ const formatFileSize = (value: number) => value < 1024 * 1024
 export default function TenantDocumentsPage() {
   const params = useParams();
   const router = useRouter();
+  const { can } = useAuthorization();
+  const canManageDocuments = can(CAPABILITIES.TENANT_WRITE);
   const tenantID = params?.id as string;
   const [profile, setProfile] = useState<TenantProfile | null>(null);
   const [documents, setDocuments] = useState<TenantDocument[]>([]);
@@ -97,6 +101,8 @@ export default function TenantDocumentsPage() {
   }, [loadDocuments, tenantID]);
 
   useEffect(() => {
+    // The request synchronizes this route parameter with server-backed state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
 
@@ -106,7 +112,7 @@ export default function TenantDocumentsPage() {
   }, {}), [documents]);
 
   const uploadDocument = async (type: TenantDocument['document_type'], file: File) => {
-    if (!profile) return;
+    if (!profile || !canManageDocuments) return;
     if (file.size > 5 * 1024 * 1024) {
       setError('Ukuran dokumen maksimal 5 MB.');
       return;
@@ -188,9 +194,9 @@ export default function TenantDocumentsPage() {
                     {isImage ? <ImageIcon className="mb-3 h-9 w-9 text-brand-teal" /> : <FileText className="mb-3 h-9 w-9 text-slate-400" />}
                     {document ? <><p className="max-w-full truncate text-sm font-semibold text-slate-800">{document.file_name}</p><p className="mt-1 text-xs text-slate-500">{formatFileSize(document.size_bytes)} · {formatDate(document.created_at)}</p></> : <p className="text-sm text-slate-500">Belum ada dokumen.</p>}
                   </div>
-                  <div className="mt-4 grid grid-cols-2 gap-2">
+                  <div className={`mt-4 grid gap-2 ${canManageDocuments ? 'grid-cols-2' : 'grid-cols-1'}`}>
                     <button type="button" disabled={!document || openingID === document.id} onClick={() => document && void openDocument(document)} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45">{openingID === document?.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />} Lihat</button>
-                    <label className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-brand-teal px-3 py-2 text-xs font-bold text-white transition hover:bg-[#0c7668]">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}{document ? 'Ganti' : 'Unggah'}<input className="sr-only" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={handleFileChange(definition.type)} disabled={isBusy} /></label>
+                    {canManageDocuments && <label className="inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-brand-teal px-3 py-2 text-xs font-bold text-white transition hover:bg-[#0c7668]">{isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}{document ? 'Ganti' : 'Unggah'}<input className="sr-only" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={handleFileChange(definition.type)} disabled={isBusy} /></label>}
                   </div>
                 </section>
               );
@@ -199,7 +205,7 @@ export default function TenantDocumentsPage() {
           <div className="rounded-2xl border border-teal-100 bg-teal-50/70 p-4 text-sm text-teal-900"><div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-teal" /><div><p className="font-bold">Akses dokumen terkontrol</p><p className="mt-1 leading-relaxed text-teal-800">Tombol Lihat meminta URL bertanda tangan dengan masa berlaku singkat. Permintaan akses hanya dilayani setelah otorisasi properti dan direkam pada audit log.</p></div></div></div>
         </>
       ) : (
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"><FileText className="mx-auto h-10 w-10 text-slate-300" /><h2 className="mt-3 font-bold text-slate-900">Profil tenant belum tersedia</h2><p className="mx-auto mt-2 max-w-lg text-sm text-slate-500">Dokumen dapat dikelola setelah tenant menerima undangan dan profilnya aktif pada properti ini.</p><button type="button" onClick={() => router.push('/tenants/invitations')} className="mt-5 rounded-lg bg-brand-teal px-4 py-2 text-sm font-bold text-white hover:bg-[#0c7668]">Buka undangan tenant</button></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"><FileText className="mx-auto h-10 w-10 text-slate-300" /><h2 className="mt-3 font-bold text-slate-900">Profil tenant belum tersedia</h2><p className="mx-auto mt-2 max-w-lg text-sm text-slate-500">Dokumen dapat dikelola setelah tenant menerima undangan dan profilnya aktif pada properti ini.</p>{canManageDocuments && <button type="button" onClick={() => router.push('/tenants/invitations')} className="mt-5 rounded-lg bg-brand-teal px-4 py-2 text-sm font-bold text-white hover:bg-[#0c7668]">Buka undangan tenant</button>}</div>
       )}
 
       {preview && <div role="dialog" aria-modal="true" aria-label={`Pratinjau ${preview.name}`} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"><div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"><div className="flex items-center justify-between gap-4 border-b border-slate-200 px-5 py-4"><div className="min-w-0"><p className="truncate font-bold text-slate-900">{preview.name}</p><p className="text-xs text-slate-500">URL akses sementara</p></div><button type="button" onClick={() => setPreview(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label="Tutup pratinjau"><X className="h-5 w-5" /></button></div><div className="min-h-0 flex-1 bg-slate-100 p-3">{preview.mimeType.startsWith('image/') ? <img src={preview.url} alt={preview.name} className="mx-auto max-h-[72vh] max-w-full rounded-lg object-contain" /> : <iframe title={preview.name} src={preview.url} className="h-[72vh] w-full rounded-lg border-0 bg-white" />}</div></div></div>}
