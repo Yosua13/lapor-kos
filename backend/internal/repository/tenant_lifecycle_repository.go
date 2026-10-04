@@ -11,15 +11,15 @@ import (
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var (
-	ErrInvitationUnavailable = errors.New("invitation is invalid, expired, or no longer available")
-	ErrProfileAlreadyActive  = errors.New("tenant profile is already active")
-	ErrDocumentNotFound      = errors.New("tenant document not found")
-	ErrDocumentAuditFailed   = errors.New("tenant document access audit failed")
+	ErrInvitationUnavailable     = errors.New("invitation is invalid, expired, or no longer available")
+	ErrProfileAlreadyActive      = errors.New("tenant profile is already active")
+	ErrInvitationContactConflict = errors.New("email and phone belong to different tenant profiles")
+	ErrDocumentNotFound          = errors.New("tenant document not found")
+	ErrDocumentAuditFailed       = errors.New("tenant document access audit failed")
 )
 
 type TenantLifecycleRepository struct{ db *pgxpool.Pool }
@@ -56,12 +56,36 @@ func (r *TenantLifecycleRepository) CreateInvitation(ctx context.Context, proper
 
 	var profileID uuid.UUID
 	var status string
-	lookupQuery, lookupValue := `SELECT id,status FROM tenant_profiles WHERE property_id=$1 AND LOWER(email)=LOWER($2) FOR UPDATE`, email
-	if deliveryMethod == "whatsapp" {
-		lookupQuery, lookupValue = `SELECT id,status FROM tenant_profiles WHERE property_id=$1 AND phone=$2 FOR UPDATE`, phone
+	rows, err := tx.Query(ctx, `
+		SELECT id,status
+		FROM tenant_profiles
+		WHERE property_id=$1 AND (LOWER(email)=LOWER($2) OR phone=$3)
+		ORDER BY created_at
+		FOR UPDATE`, propertyID, email, phone)
+	if err != nil {
+		return nil, err
 	}
-	err = tx.QueryRow(ctx, lookupQuery, propertyID, lookupValue).Scan(&profileID, &status)
-	if err == pgx.ErrNoRows {
+	matchedProfiles := 0
+	for rows.Next() {
+		var matchedID uuid.UUID
+		var matchedStatus string
+		if scanErr := rows.Scan(&matchedID, &matchedStatus); scanErr != nil {
+			rows.Close()
+			return nil, scanErr
+		}
+		if matchedProfiles > 0 && matchedID != profileID {
+			rows.Close()
+			return nil, ErrInvitationContactConflict
+		}
+		profileID, status = matchedID, matchedStatus
+		matchedProfiles++
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if matchedProfiles == 0 {
 		var profileEmail any
 		if email != "" {
 			profileEmail = email
@@ -69,7 +93,7 @@ func (r *TenantLifecycleRepository) CreateInvitation(ctx context.Context, proper
 		err = tx.QueryRow(ctx, `
 			INSERT INTO tenant_profiles (property_id,full_name,email,phone,status,created_by)
 			VALUES ($1,$2,$3,$4,'invited',$5) RETURNING id`, propertyID, name, profileEmail, phone, actorID).Scan(&profileID)
-	} else if err == nil {
+	} else {
 		if status == "active" {
 			return nil, ErrProfileAlreadyActive
 		}
@@ -86,11 +110,18 @@ func (r *TenantLifecycleRepository) CreateInvitation(ctx context.Context, proper
 		return nil, err
 	}
 
-	invitation := &model.TenantInvitation{PropertyID: propertyID, TenantProfileID: profileID, FullName: name, Email: email, Phone: phone, DeliveryMethod: deliveryMethod, Status: "pending", ExpiresAt: expiresAt}
+	invitation := &model.TenantInvitation{PropertyID: propertyID, TenantProfileID: profileID, FullName: name, Email: email, Phone: phone, DeliveryMethod: deliveryMethod, DeliveryStatus: "pending", Status: "pending", ExpiresAt: expiresAt}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO tenant_invitations (property_id,tenant_profile_id,token_digest,status,expires_at,created_by,delivery_method)
-		VALUES ($1,$2,$3,'pending',$4,$5,$6) RETURNING id,created_at`, propertyID, profileID, tokenDigest, expiresAt, actorID, deliveryMethod).Scan(&invitation.ID, &invitation.CreatedAt)
+		INSERT INTO tenant_invitations (property_id,tenant_profile_id,token_digest,status,expires_at,created_by,delivery_method,delivery_status)
+		VALUES ($1,$2,$3,'pending',$4,$5,$6,'pending') RETURNING id,created_at`, propertyID, profileID, tokenDigest, expiresAt, actorID, deliveryMethod).Scan(&invitation.ID, &invitation.CreatedAt)
 	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO tenant_lifecycle_audit_logs
+			(property_id,tenant_profile_id,invitation_id,actor_id,action,details)
+		VALUES ($1,$2,$3,$4,'invitation_created',jsonb_build_object('delivery_method',$5::text,'expires_at',$6::timestamptz))`,
+		propertyID, profileID, invitation.ID, actorID, deliveryMethod, expiresAt); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -101,9 +132,9 @@ func (r *TenantLifecycleRepository) CreateInvitation(ctx context.Context, proper
 
 func (r *TenantLifecycleRepository) ListInvitations(ctx context.Context, propertyID uuid.UUID) ([]model.TenantInvitation, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT i.id,i.property_id,i.tenant_profile_id,p.full_name,COALESCE(p.email,''),p.phone,i.delivery_method,
+		SELECT i.id,i.property_id,i.tenant_profile_id,p.full_name,COALESCE(p.email,''),p.phone,i.delivery_method,i.delivery_status,
 			CASE WHEN i.status='pending' AND i.expires_at <= NOW() THEN 'expired' ELSE i.status END,
-			i.expires_at,i.used_at,i.created_at
+			i.expires_at,i.used_at,i.delivery_attempted_at,i.created_at
 		FROM tenant_invitations i JOIN tenant_profiles p ON p.id=i.tenant_profile_id
 		WHERE i.property_id=$1 ORDER BY i.created_at DESC`, propertyID)
 	if err != nil {
@@ -113,7 +144,7 @@ func (r *TenantLifecycleRepository) ListInvitations(ctx context.Context, propert
 	result := make([]model.TenantInvitation, 0)
 	for rows.Next() {
 		var invitation model.TenantInvitation
-		if err := rows.Scan(&invitation.ID, &invitation.PropertyID, &invitation.TenantProfileID, &invitation.FullName, &invitation.Email, &invitation.Phone, &invitation.DeliveryMethod, &invitation.Status, &invitation.ExpiresAt, &invitation.UsedAt, &invitation.CreatedAt); err != nil {
+		if err := scanTenantInvitation(rows, &invitation); err != nil {
 			return nil, err
 		}
 		result = append(result, invitation)
@@ -121,21 +152,168 @@ func (r *TenantLifecycleRepository) ListInvitations(ctx context.Context, propert
 	return result, rows.Err()
 }
 
-func (r *TenantLifecycleRepository) RevokeInvitation(ctx context.Context, propertyID, invitationID uuid.UUID) error {
-	command, err := r.db.Exec(ctx, `UPDATE tenant_invitations SET status='revoked',revoked_at=NOW() WHERE id=$1 AND property_id=$2 AND status='pending'`, invitationID, propertyID)
-	return requireOne(command, err)
+func (r *TenantLifecycleRepository) ListInvitationPage(ctx context.Context, propertyID uuid.UUID, page, pageSize int, status, search string) (*model.TenantInvitationPage, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	status = strings.ToLower(strings.TrimSpace(status))
+	search = strings.TrimSpace(search)
+	if status != "" && status != "pending" && status != "accepted" && status != "expired" && status != "revoked" {
+		return nil, fmt.Errorf("unsupported invitation status")
+	}
+
+	effectiveStatus := `CASE WHEN i.status='pending' AND i.expires_at <= NOW() THEN 'expired' ELSE i.status END`
+	filter := `i.property_id=$1
+		AND ($2='' OR ` + effectiveStatus + `=$2)
+		AND ($3='' OR p.full_name ILIKE '%' || $3 || '%' OR COALESCE(p.email,'') ILIKE '%' || $3 || '%' OR p.phone ILIKE '%' || $3 || '%')`
+
+	result := &model.TenantInvitationPage{Items: make([]model.TenantInvitation, 0), Page: page, PageSize: pageSize}
+	if err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM tenant_invitations i
+		JOIN tenant_profiles p ON p.id=i.tenant_profile_id
+		WHERE `+filter, propertyID, status, search).Scan(&result.Total); err != nil {
+		return nil, err
+	}
+	result.TotalPages = (result.Total + pageSize - 1) / pageSize
+	if result.TotalPages == 0 {
+		result.TotalPages = 1
+	}
+	if page > result.TotalPages {
+		page = result.TotalPages
+		result.Page = page
+	}
+
+	if err := r.db.QueryRow(ctx, `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE `+effectiveStatus+`='pending'),
+			COUNT(*) FILTER (WHERE `+effectiveStatus+`='accepted'),
+			COUNT(*) FILTER (WHERE `+effectiveStatus+`='expired'),
+			COUNT(*) FILTER (WHERE `+effectiveStatus+`='revoked')
+		FROM tenant_invitations i
+		WHERE i.property_id=$1`, propertyID).Scan(
+		&result.Counts.All,
+		&result.Counts.Pending,
+		&result.Counts.Accepted,
+		&result.Counts.Expired,
+		&result.Counts.Revoked,
+	); err != nil {
+		return nil, err
+	}
+
+	rows, err := r.db.Query(ctx, `
+		SELECT i.id,i.property_id,i.tenant_profile_id,p.full_name,COALESCE(p.email,''),p.phone,i.delivery_method,i.delivery_status,
+			`+effectiveStatus+`,i.expires_at,i.used_at,i.delivery_attempted_at,i.created_at
+		FROM tenant_invitations i
+		JOIN tenant_profiles p ON p.id=i.tenant_profile_id
+		WHERE `+filter+`
+		ORDER BY i.created_at DESC
+		LIMIT $4 OFFSET $5`, propertyID, status, search, pageSize, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var invitation model.TenantInvitation
+		if err := scanTenantInvitation(rows, &invitation); err != nil {
+			return nil, err
+		}
+		result.Items = append(result.Items, invitation)
+	}
+	return result, rows.Err()
+}
+
+type tenantInvitationScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanTenantInvitation(row tenantInvitationScanner, invitation *model.TenantInvitation) error {
+	return row.Scan(
+		&invitation.ID,
+		&invitation.PropertyID,
+		&invitation.TenantProfileID,
+		&invitation.FullName,
+		&invitation.Email,
+		&invitation.Phone,
+		&invitation.DeliveryMethod,
+		&invitation.DeliveryStatus,
+		&invitation.Status,
+		&invitation.ExpiresAt,
+		&invitation.UsedAt,
+		&invitation.DeliveryAttemptedAt,
+		&invitation.CreatedAt,
+	)
+}
+
+func (r *TenantLifecycleRepository) RecordInvitationDelivery(ctx context.Context, propertyID, profileID, invitationID, actorID uuid.UUID, status, requestID string) error {
+	if status != "sent" && status != "failed" {
+		return fmt.Errorf("unsupported invitation delivery status")
+	}
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	command, err := tx.Exec(ctx, `
+		UPDATE tenant_invitations
+		SET delivery_status=$1,delivery_attempted_at=NOW()
+		WHERE id=$2 AND property_id=$3 AND tenant_profile_id=$4`, status, invitationID, propertyID, profileID)
+	if err := requireOne(command, err); err != nil {
+		return err
+	}
+	action := "invitation_delivery_" + status
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO tenant_lifecycle_audit_logs
+			(property_id,tenant_profile_id,invitation_id,actor_id,action,details,request_id)
+		VALUES ($1,$2,$3,$4,$5,jsonb_build_object('delivery_status',$6::text),NULLIF($7,''))`,
+		propertyID, profileID, invitationID, actorID, action, status, requestID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *TenantLifecycleRepository) RevokeInvitation(ctx context.Context, propertyID, invitationID, actorID uuid.UUID, requestID string) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	var profileID uuid.UUID
+	if err = tx.QueryRow(ctx, `
+		UPDATE tenant_invitations
+		SET status='revoked',revoked_at=NOW()
+		WHERE id=$1 AND property_id=$2 AND status='pending'
+		RETURNING tenant_profile_id`, invitationID, propertyID).Scan(&profileID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO tenant_lifecycle_audit_logs
+			(property_id,tenant_profile_id,invitation_id,actor_id,action,request_id)
+		VALUES ($1,$2,$3,$4,'invitation_revoked',NULLIF($5,''))`,
+		propertyID, profileID, invitationID, actorID, requestID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // PreviewInvitation returns only the data required for an activation screen;
 // private profile documents and global identity data are deliberately omitted.
 func (r *TenantLifecycleRepository) PreviewInvitation(ctx context.Context, digest string) (*model.TenantInvitation, error) {
 	invitation := &model.TenantInvitation{}
-	err := r.db.QueryRow(ctx, `
-		SELECT i.id,i.property_id,i.tenant_profile_id,p.full_name,COALESCE(p.email,''),p.phone,i.delivery_method,
+	row := r.db.QueryRow(ctx, `
+		SELECT i.id,i.property_id,i.tenant_profile_id,p.full_name,COALESCE(p.email,''),p.phone,i.delivery_method,i.delivery_status,
 			CASE WHEN i.status='pending' AND i.expires_at > NOW() THEN 'pending' ELSE 'unavailable' END,
-			i.expires_at,i.used_at,i.created_at
+			i.expires_at,i.used_at,i.delivery_attempted_at,i.created_at
 		FROM tenant_invitations i JOIN tenant_profiles p ON p.id=i.tenant_profile_id
-		WHERE i.token_digest=$1`, digest).Scan(&invitation.ID, &invitation.PropertyID, &invitation.TenantProfileID, &invitation.FullName, &invitation.Email, &invitation.Phone, &invitation.DeliveryMethod, &invitation.Status, &invitation.ExpiresAt, &invitation.UsedAt, &invitation.CreatedAt)
+		WHERE i.token_digest=$1`, digest)
+	err := scanTenantInvitation(row, invitation)
 	if err != nil {
 		return nil, ErrInvitationUnavailable
 	}
@@ -189,9 +367,9 @@ func (r *TenantLifecycleRepository) ActivateInvitation(ctx context.Context, inpu
 	defer tx.Rollback(ctx) //nolint:errcheck
 
 	var invitationID, propertyID, profileID uuid.UUID
-	var status string
+	var status, deliveryMethod string
 	var expiresAt time.Time
-	err = tx.QueryRow(ctx, `SELECT id,property_id,tenant_profile_id,status,expires_at FROM tenant_invitations WHERE token_digest=$1 FOR UPDATE`, input.TokenDigest).Scan(&invitationID, &propertyID, &profileID, &status, &expiresAt)
+	err = tx.QueryRow(ctx, `SELECT id,property_id,tenant_profile_id,status,expires_at,delivery_method FROM tenant_invitations WHERE token_digest=$1 FOR UPDATE`, input.TokenDigest).Scan(&invitationID, &propertyID, &profileID, &status, &expiresAt, &deliveryMethod)
 	if err != nil || status != "pending" || !expiresAt.After(time.Now()) {
 		return nil, ErrInvitationUnavailable
 	}
@@ -236,7 +414,10 @@ func (r *TenantLifecycleRepository) ActivateInvitation(ctx context.Context, inpu
 		result.NewAccount, result.RequiresVerification = true, true
 	}
 
-	if _, err = tx.Exec(ctx, `UPDATE tenant_profiles SET user_id=$1,status='active',activated_at=NOW(),updated_at=NOW() WHERE id=$2`, result.UserID, profileID); err != nil {
+	if _, err = tx.Exec(ctx, `
+		UPDATE tenant_profiles
+		SET user_id=$1,status='active',activated_at=NOW(),verified_contact_method=$2,contact_verified_at=NOW(),updated_at=NOW()
+		WHERE id=$3 AND property_id=$4`, result.UserID, deliveryMethod, profileID, propertyID); err != nil {
 		return nil, err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE tenant_invitations SET status='accepted',used_at=NOW() WHERE id=$1`, invitationID); err != nil {
@@ -245,6 +426,13 @@ func (r *TenantLifecycleRepository) ActivateInvitation(ctx context.Context, inpu
 	if _, err = tx.Exec(ctx, `
 		INSERT INTO tenant_consent_records (property_id,tenant_profile_id,user_id,policy_type,policy_version,source_ip,user_agent)
 		VALUES ($1,$2,$3,'tenant_activation',$4,NULLIF($5,'')::inet,$6)`, propertyID, profileID, result.UserID, strings.TrimSpace(input.PolicyVersion), input.SourceIP, input.UserAgent); err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO tenant_lifecycle_audit_logs
+			(property_id,tenant_profile_id,invitation_id,actor_id,action,details)
+		VALUES ($1,$2,$3,$4,'invitation_accepted',jsonb_build_object('contact_method',$5::text,'new_account',$6::boolean))`,
+		propertyID, profileID, invitationID, result.UserID, deliveryMethod, result.NewAccount); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -270,6 +458,12 @@ func (r *TenantLifecycleRepository) ListProfiles(ctx context.Context, propertyID
 	return profiles, rows.Err()
 }
 
+func (r *TenantLifecycleRepository) ProfileExists(ctx context.Context, propertyID, profileID uuid.UUID) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM tenant_profiles WHERE id=$1 AND property_id=$2)`, profileID, propertyID).Scan(&exists)
+	return exists, err
+}
+
 func (r *TenantLifecycleRepository) CreateDocument(ctx context.Context, propertyID, profileID, uploadedBy uuid.UUID, documentType, objectKey, mimeType, checksum string, size int64) (*model.TenantDocument, error) {
 	if documentType != "ktp" && documentType != "selfie" && documentType != "supporting" {
 		return nil, fmt.Errorf("unsupported tenant document type")
@@ -289,6 +483,13 @@ func (r *TenantLifecycleRepository) CreateDocument(ctx context.Context, property
 	}
 	document := &model.TenantDocument{FileID: fileID, DocumentType: documentType, FileName: objectKey, MimeType: mimeType, SizeBytes: size}
 	if err = tx.QueryRow(ctx, `INSERT INTO tenant_documents (property_id,tenant_profile_id,file_id,document_type,uploaded_by) VALUES ($1,$2,$3,$4,$5) RETURNING id,created_at`, propertyID, profileID, fileID, documentType, uploadedBy).Scan(&document.ID, &document.CreatedAt); err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `
+		INSERT INTO tenant_lifecycle_audit_logs
+			(property_id,tenant_profile_id,actor_id,action,details)
+		VALUES ($1,$2,$3,'tenant_document_uploaded',jsonb_build_object('document_id',$4::uuid,'document_type',$5::text,'file_id',$6::uuid))`,
+		propertyID, profileID, uploadedBy, document.ID, documentType, fileID); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -314,7 +515,7 @@ func (r *TenantLifecycleRepository) ListDocuments(ctx context.Context, propertyI
 	return result, rows.Err()
 }
 
-func (r *TenantLifecycleRepository) DocumentObjectKey(ctx context.Context, propertyID, profileID, documentID, actorID uuid.UUID, tenantSelf bool, requestID string) (string, error) {
+func (r *TenantLifecycleRepository) DocumentObjectKey(ctx context.Context, propertyID, profileID, documentID, actorID uuid.UUID, tenantSelf bool) (string, error) {
 	query := `SELECT f.object_key FROM tenant_documents d JOIN files f ON f.id=d.file_id AND f.deleted_at IS NULL JOIN tenant_profiles p ON p.id=d.tenant_profile_id WHERE d.id=$1 AND d.property_id=$2 AND d.tenant_profile_id=$3`
 	args := []any{documentID, propertyID, profileID}
 	if tenantSelf {
@@ -325,10 +526,16 @@ func (r *TenantLifecycleRepository) DocumentObjectKey(ctx context.Context, prope
 	if err := r.db.QueryRow(ctx, query, args...).Scan(&objectKey); err != nil {
 		return "", ErrDocumentNotFound
 	}
-	if _, err := r.db.Exec(ctx, `INSERT INTO tenant_document_access_logs (tenant_document_id,accessed_by,action,request_id) VALUES ($1,$2,'signed_url',$3)`, documentID, actorID, requestID); err != nil {
-		return "", fmt.Errorf("%w: %v", ErrDocumentAuditFailed, err)
-	}
 	return objectKey, nil
+}
+
+func (r *TenantLifecycleRepository) RecordDocumentAccess(ctx context.Context, documentID, actorID uuid.UUID, requestID string) error {
+	if _, err := r.db.Exec(ctx, `
+		INSERT INTO tenant_document_access_logs (tenant_document_id,accessed_by,action,request_id)
+		VALUES ($1,$2,'signed_url',NULLIF($3,''))`, documentID, actorID, requestID); err != nil {
+		return fmt.Errorf("%w: %v", ErrDocumentAuditFailed, err)
+	}
+	return nil
 }
 
 func (r *TenantLifecycleRepository) MyDocumentContext(ctx context.Context, userID, documentID uuid.UUID) (propertyID, profileID uuid.UUID, err error) {

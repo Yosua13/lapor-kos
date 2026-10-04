@@ -16,6 +16,14 @@ func revokeTenantSessionForProperty(ctx context.Context, tx pgx.Tx, propertyID, 
 		return nil
 	}
 	if _, err := tx.Exec(ctx, `
+		INSERT INTO tenant_lifecycle_audit_logs
+			(property_id,tenant_profile_id,actor_id,action,details)
+		SELECT property_id,id,NULL,'tenant_session_revoked',jsonb_build_object('reason',$3::text,'user_id',$2::uuid)
+		FROM tenant_profiles
+		WHERE property_id=$1 AND user_id=$2 AND status='active'`, propertyID, userID, reason); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
 		UPDATE tenant_profiles
 		SET status='inactive',deactivated_at=NOW(),updated_at=NOW()
 		WHERE property_id=$1 AND user_id=$2 AND status='active'`, propertyID, userID); err != nil {
