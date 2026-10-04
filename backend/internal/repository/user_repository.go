@@ -166,8 +166,8 @@ func (r *UserRepository) GetMyTenantProfile(ctx context.Context, userID uuid.UUI
 	var propertyID uuid.UUID
 	if err := r.db.QueryRow(ctx, `
 		SELECT property_id FROM contracts
-		WHERE user_id=$1 AND status='active'
-		ORDER BY created_at DESC LIMIT 1`, userID,
+		WHERE user_id=$1 AND status IN ('active','scheduled','pending_tenant','draft')
+		ORDER BY CASE status WHEN 'active' THEN 1 WHEN 'pending_tenant' THEN 2 WHEN 'scheduled' THEN 3 ELSE 4 END,created_at DESC LIMIT 1`, userID,
 	).Scan(&propertyID); err != nil {
 		return nil, err
 	}
@@ -284,35 +284,41 @@ func (r *UserRepository) UpdateTenantProfile(
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
-	var contractID uuid.UUID
 	var oldRoomID *uuid.UUID
+	var currentStartDate time.Time
+	var currentRentalDuration int
 	if err := tx.QueryRow(ctx, `
-		SELECT id,room_id FROM contracts
+		SELECT room_id,start_date,rental_duration FROM contracts
 		WHERE property_id=$1 AND user_id=$2 AND status='active'
 		ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, propertyID, userID,
-	).Scan(&contractID, &oldRoomID); err != nil {
+	).Scan(&oldRoomID, &currentStartDate, &currentRentalDuration); err != nil {
 		return err
 	}
 
-	var newRoomID *uuid.UUID
+	newRoomID := oldRoomID
 	if strings.TrimSpace(roomIDText) != "" {
 		parsed, err := uuid.Parse(roomIDText)
 		if err != nil {
 			return fmt.Errorf("invalid room ID")
 		}
 		newRoomID = &parsed
-		if oldRoomID == nil || *oldRoomID != parsed {
-			var status string
-			if err := tx.QueryRow(ctx, `
-				SELECT status FROM rooms
-				WHERE property_id=$1 AND id=$2 FOR UPDATE`, propertyID, parsed,
-			).Scan(&status); err != nil {
-				return err
-			}
-			if status != "available" {
-				return fmt.Errorf("target room is not available")
-			}
+	}
+	entryDate := currentStartDate
+	if strings.TrimSpace(entryDateText) != "" {
+		entryDate, err = time.Parse("2006-01-02", entryDateText)
+		if err != nil {
+			return fmt.Errorf("invalid entry date")
 		}
+	}
+	if rentalDuration <= 0 {
+		rentalDuration = currentRentalDuration
+	}
+	roomChanged := (oldRoomID == nil) != (newRoomID == nil)
+	if oldRoomID != nil && newRoomID != nil && *oldRoomID != *newRoomID {
+		roomChanged = true
+	}
+	if roomChanged || entryDate.Format("2006-01-02") != currentStartDate.Format("2006-01-02") || rentalDuration != currentRentalDuration {
+		return fmt.Errorf("%w: ubah kamar atau periode melalui alur lifecycle kontrak", ErrContractHistoryImmutable)
 	}
 
 	// A property owner may update property-scoped tenant details, but must never
@@ -347,48 +353,16 @@ func (r *UserRepository) UpdateTenantProfile(
 		return pgx.ErrNoRows
 	}
 
-	entryDate, _ := time.Parse("2006-01-02", entryDateText)
-	if entryDate.IsZero() {
-		entryDate = time.Now()
-	}
-	if rentalDuration <= 0 {
-		rentalDuration = 1
-	}
-	endDate := entryDate.AddDate(0, rentalDuration, 0)
-	dueDay := entryDate.AddDate(0, 1, -3).Day()
-	_, err = tx.Exec(ctx, `
-		UPDATE contracts SET room_id=$1,start_date=$2,end_date=$3,
-			rental_duration=$4,payment_due_day=$5
-		WHERE id=$6 AND property_id=$7`,
-		newRoomID, entryDate, endDate, rentalDuration, dueDay,
-		contractID, propertyID,
-	)
-	if err != nil {
-		return err
-	}
-	if oldRoomID != nil && (newRoomID == nil || *oldRoomID != *newRoomID) {
-		if _, err := tx.Exec(ctx, `
-			UPDATE rooms SET status='available' WHERE property_id=$1 AND id=$2`,
-			propertyID, *oldRoomID,
-		); err != nil {
-			return err
-		}
-	}
-	if newRoomID != nil && (oldRoomID == nil || *oldRoomID != *newRoomID) {
-		if err := updateRoomStatus(ctx, tx, propertyID, *newRoomID, "occupied"); err != nil {
-			return err
-		}
-	}
 	return tx.Commit(ctx)
 }
 
 // DeleteTenant removes the tenancy from one property, never the global user.
 func (r *UserRepository) DeleteTenant(ctx context.Context, propertyID, userID uuid.UUID) error {
-	return r.endTenantContracts(ctx, propertyID, userID, "cancelled")
+	return r.endTenantContracts(ctx, propertyID, userID, model.ContractTerminated)
 }
 
 func (r *UserRepository) CheckoutTenant(ctx context.Context, propertyID, userID uuid.UUID) error {
-	return r.endTenantContracts(ctx, propertyID, userID, "inactive")
+	return r.endTenantContracts(ctx, propertyID, userID, model.ContractEnded)
 }
 
 func (r *UserRepository) endTenantContracts(ctx context.Context, propertyID, userID uuid.UUID, status string) error {
@@ -427,6 +401,19 @@ func (r *UserRepository) endTenantContracts(ctx context.Context, propertyID, use
 	); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE occupancy_periods SET end_date=LEAST(end_date,CURRENT_DATE),closed_at=NOW()
+		WHERE property_id=$1 AND contract_id IN (
+			SELECT id FROM contracts WHERE property_id=$1 AND user_id=$2 AND status=$3
+		) AND closed_at IS NULL`, propertyID, userID, status); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO contract_events(property_id,contract_id,version_id,event_type,from_status,to_status,reason,actor_id)
+		SELECT property_id,id,current_version_id,'status_changed','active',$3,'Tenant lifecycle action',NULL
+		FROM contracts WHERE property_id=$1 AND user_id=$2 AND status=$3`, propertyID, userID, status); err != nil {
+		return err
+	}
 	for _, roomID := range roomIDs {
 		if err := updateRoomStatus(ctx, tx, propertyID, roomID, "available"); err != nil {
 			return err
@@ -435,7 +422,7 @@ func (r *UserRepository) endTenantContracts(ctx context.Context, propertyID, use
 	// A checkout/deactivation terminates the tenant's active access. This is
 	// intentionally global to the identity because JWTs are not property-bound.
 	reason := "checkout"
-	if status != "inactive" {
+	if status != model.ContractEnded {
 		reason = "tenant_deleted"
 	}
 	if err := revokeTenantSessionForProperty(ctx, tx, propertyID, userID, reason); err != nil {
@@ -445,49 +432,10 @@ func (r *UserRepository) endTenantContracts(ctx context.Context, propertyID, use
 }
 
 func (r *UserRepository) ChangeRoom(ctx context.Context, propertyID, userID uuid.UUID, roomIDText string) error {
-	newRoomID, err := uuid.Parse(roomIDText)
-	if err != nil {
+	if _, err := uuid.Parse(roomIDText); err != nil {
 		return fmt.Errorf("invalid room ID")
 	}
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-	var targetStatus string
-	if err := tx.QueryRow(ctx, `
-		SELECT status FROM rooms WHERE property_id=$1 AND id=$2 FOR UPDATE`,
-		propertyID, newRoomID,
-	).Scan(&targetStatus); err != nil {
-		return err
-	}
-	if targetStatus != "available" {
-		return fmt.Errorf("target room is not available")
-	}
-	var contractID uuid.UUID
-	var oldRoomID *uuid.UUID
-	if err := tx.QueryRow(ctx, `
-		SELECT id,room_id FROM contracts
-		WHERE property_id=$1 AND user_id=$2 AND status='active'
-		ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, propertyID, userID,
-	).Scan(&contractID, &oldRoomID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE contracts SET room_id=$1 WHERE property_id=$2 AND id=$3`,
-		newRoomID, propertyID, contractID,
-	); err != nil {
-		return err
-	}
-	if oldRoomID != nil {
-		if err := updateRoomStatus(ctx, tx, propertyID, *oldRoomID, "available"); err != nil {
-			return err
-		}
-	}
-	if err := updateRoomStatus(ctx, tx, propertyID, newRoomID, "occupied"); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return fmt.Errorf("%w: perpindahan kamar wajib dibuat sebagai event lifecycle kontrak", ErrContractHistoryImmutable)
 }
 
 func (r *UserRepository) ExtendContract(
@@ -506,25 +454,24 @@ func (r *UserRepository) ExtendContract(
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 	var oldContractID, roomID uuid.UUID
+	var oldEndDate time.Time
 	if err := tx.QueryRow(ctx, `
-		SELECT id,room_id FROM contracts
+		SELECT id,room_id,end_date FROM contracts
 		WHERE property_id=$1 AND user_id=$2 AND status='active'
 		ORDER BY created_at DESC LIMIT 1 FOR UPDATE`, propertyID, userID,
-	).Scan(&oldContractID, &roomID); err != nil {
+	).Scan(&oldContractID, &roomID, &oldEndDate); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `
-		UPDATE contracts SET status='inactive' WHERE property_id=$1 AND id=$2`,
-		propertyID, oldContractID,
-	); err != nil {
-		return err
+	if !startDate.Equal(oldEndDate.AddDate(0, 0, 1)) {
+		return fmt.Errorf("renewal must start one day after active contract ends")
 	}
 	contract := &model.Contract{
 		PropertyID: propertyID, RoomID: &roomID, UserID: &userID, OwnerID: actorID,
 		StartDate: startDate, RentalDuration: rentalDuration, MonthlyRent: monthlyRent,
 		ElectricityBill: electricity, WaterBill: water, OtherBills: other,
 		Deposit: deposit, PaymentInterval: paymentInterval,
-		PaymentDueDay: paymentDueDay, Notes: notes, Status: "active",
+		PaymentDueDay: paymentDueDay, Notes: notes, Status: model.ContractDraft,
+		RenewedFromContractID: &oldContractID,
 	}
 	prepareContract(contract)
 	if paymentInterval == "per_contract" {
@@ -543,33 +490,29 @@ func createExtendedContract(ctx context.Context, tx pgx.Tx, contract *model.Cont
 		INSERT INTO contracts (
 			property_id,room_id,user_id,owner_id,start_date,end_date,rental_duration,
 			monthly_rent,total_price,deposit,payment_due_day,status,notes,
-			electricity_bill,water_bill,other_bills,payment_interval
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+			electricity_bill,water_bill,other_bills,payment_interval,renewed_from_contract_id
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 		RETURNING id,created_at`,
 		contract.PropertyID, contract.RoomID, contract.UserID, actorID,
 		contract.StartDate, contract.EndDate, contract.RentalDuration,
 		contract.MonthlyRent, contract.TotalPrice, contract.Deposit,
 		contract.PaymentDueDay, contract.Status, contract.Notes,
 		contract.ElectricityBill, contract.WaterBill, contract.OtherBills,
-		contract.PaymentInterval,
+		contract.PaymentInterval, contract.RenewedFromContractID,
 	).Scan(&contract.ID, &contract.CreatedAt)
 	if err != nil {
 		return err
 	}
-	rent, electricity, water, other := initialBillAmounts(contract)
-	_, err = tx.Exec(ctx, `
-		INSERT INTO payments (
-			id,property_id,contract_id,owner_id,period_month,period_year,
-			amount_rent,amount_electricity,amount_water,amount_other,total_paid,
-			payment_method,status,due_date,notes
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,'','unpaid',$11,$12)
-		ON CONFLICT (contract_id,period_month,period_year) DO NOTHING`,
-		uuid.New(), contract.PropertyID, contract.ID, actorID,
-		int(contract.StartDate.Month()), contract.StartDate.Year(), rent,
-		electricity, water, other, contract.StartDate.AddDate(0, 1, -3),
-		contract.Notes,
-	)
+	var versionID uuid.UUID
+	err = tx.QueryRow(ctx, `INSERT INTO contract_versions(property_id,contract_id,version_number,snapshot,reason,created_by)
+		SELECT property_id,id,1,jsonb_build_object('contract_id',id,'property_id',property_id,'room_id',room_id,'user_id',user_id,'start_date',start_date,'end_date',end_date,'rental_duration',rental_duration,'monthly_rent',monthly_rent,'total_price',total_price,'deposit',deposit,'electricity_bill',electricity_bill,'water_bill',water_bill,'other_bills',other_bills,'payment_interval',payment_interval,'payment_due_day',payment_due_day,'notes',notes),'Draft renewal dibuat', $1 FROM contracts WHERE property_id=$2 AND id=$3 RETURNING id`, actorID, contract.PropertyID, contract.ID).Scan(&versionID)
 	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE contracts SET current_version_id=$1 WHERE property_id=$2 AND id=$3`, versionID, contract.PropertyID, contract.ID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO contract_events(property_id,contract_id,version_id,event_type,to_status,reason,actor_id,metadata) VALUES($1,$2,$3,'renewal_draft_created','draft','Draft renewal dibuat',$4,jsonb_build_object('renewed_from_contract_id',$5))`, contract.PropertyID, contract.ID, versionID, actorID, contract.RenewedFromContractID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

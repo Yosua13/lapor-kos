@@ -40,11 +40,13 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	whatsAppService := service.NewWhatsAppService()
 	storageService := service.NewStorageService()
 	reportPDFService := service.NewReportPDFService()
+	contractDocumentService := service.NewContractDocumentService()
 
 	userRepo := repository.NewUserRepository(db)
 	propertyRepo := repository.NewPropertyRepository(db)
 	roomRepo := repository.NewRoomRepository(db)
 	contractRepo := repository.NewContractRepository(db)
+	contractLifecycleRepo := repository.NewContractLifecycleRepository(db, contractRepo)
 	paymentRepo := repository.NewPaymentRepository(db)
 	calendarRepo := repository.NewCalendarRepository(db)
 	complaintRepo := repository.NewComplaintRepository(db)
@@ -55,7 +57,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		auth:            handler.NewAuthHandler(userRepo, emailService, storageService),
 		property:        handler.NewPropertyHandler(propertyRepo),
 		room:            handler.NewRoomHandler(roomRepo, storageService),
-		contract:        handler.NewContractHandler(contractRepo),
+		contract:        handler.NewContractHandler(contractRepo, contractLifecycleRepo, contractDocumentService),
 		payment:         handler.NewPaymentHandler(paymentRepo, storageService, userRepo),
 		calendar:        handler.NewCalendarHandler(calendarRepo),
 		complaint:       handler.NewComplaintHandler(complaintRepo, aiService, whatsAppService, storageService),
@@ -173,6 +175,9 @@ func registerLegacyTenantRoutes(api *gin.RouterGroup, h handlers, repos reposito
 
 	tenants := api.Group("/tenants", authn)
 	tenants.GET("/me", tenantRole, h.auth.GetMyTenantProfile)
+	api.GET("/contracts/:id/review", authn, tenantRole, h.contract.ReviewContract)
+	api.POST("/contracts/:id/accept", authn, tenantRole, h.contract.AcceptContract)
+	api.GET("/contracts/:id/review/documents/:document_id", authn, tenantRole, h.contract.DownloadTenantContractDocument)
 
 	payments := api.Group("/payments", authn)
 	payments.GET("/my", tenantRole, h.payment.GetTenantPayments)
@@ -211,6 +216,11 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 	contracts.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractRead), h.contract.GetContracts)
 	contracts.GET("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractRead), h.contract.GetContract)
 	contracts.POST("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractWrite), h.contract.CreateContract)
+	contracts.POST("/:id/transitions", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractWrite), h.contract.TransitionContract)
+	contracts.POST("/:id/amendments", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractWrite), h.contract.AmendContract)
+	contracts.POST("/:id/renewals", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractWrite), h.contract.RenewContract)
+	contracts.POST("/:id/documents", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractWrite), h.contract.PublishContractDocument)
+	contracts.GET("/:id/documents/:document_id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractRead), h.contract.DownloadContractDocument)
 	contracts.PUT("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractWrite), h.contract.UpdateContract)
 	contracts.DELETE("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractDelete), h.contract.DeleteContract)
 

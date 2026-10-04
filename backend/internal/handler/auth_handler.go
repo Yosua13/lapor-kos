@@ -2,6 +2,7 @@ package handler
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -455,6 +456,10 @@ func (h *AuthHandler) UpdateTenantProfileByID(c *gin.Context) {
 	err = h.repo.UpdateTenantProfile(c.Request.Context(), scope.PropertyID, id, name, phone, roomIDStr, entryDateStr, rentalDuration, dateOfBirth, gender, job, emergencyContactPhone, emergencyContactRelation, emergencyContactName)
 	if err != nil {
 		log.Printf("Error updating tenant profile: %v\n", err)
+		if errors.Is(err, repository.ErrContractHistoryImmutable) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update tenant profile: " + err.Error()})
 		return
 	}
@@ -507,6 +512,10 @@ func (h *AuthHandler) ChangeRoom(c *gin.Context) {
 	err = h.repo.ChangeRoom(c.Request.Context(), scope.PropertyID, id, req.RoomID)
 	if err != nil {
 		log.Printf("Error changing room: %v\n", err)
+		if errors.Is(err, repository.ErrContractHistoryImmutable) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to change room: " + err.Error()})
 		return
 	}
@@ -561,7 +570,7 @@ func (h *AuthHandler) ExtendContract(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Contract extended successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "Renewal draft created; tenant acceptance and activation are still required"})
 }
 
 func (h *AuthHandler) DeleteTenantByID(c *gin.Context) {

@@ -18,9 +18,9 @@ func NewContractRepository(db *pgxpool.Pool) *ContractRepository {
 	return &ContractRepository{db: db}
 }
 
-// Create validates every relation in the selected property in the same
-// transaction. A client supplied room ID is never accepted as proof that the
-// room belongs to the current property.
+// Create persists a draft and its first immutable snapshot. Availability is
+// checked again under lock during activation, so creating a draft never
+// reserves a room or creates a financial transaction.
 func (r *ContractRepository) Create(ctx context.Context, propertyID, actorID uuid.UUID, contract *model.Contract) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -32,21 +32,23 @@ func (r *ContractRepository) Create(ctx context.Context, propertyID, actorID uui
 		return fmt.Errorf("room and tenant are required")
 	}
 
-	var roomStatus string
+	var roomExists bool
 	if err := tx.QueryRow(ctx,
-		`SELECT status FROM rooms WHERE id = $1 AND property_id = $2 FOR UPDATE`,
+		`SELECT EXISTS(SELECT 1 FROM rooms WHERE id = $1 AND property_id = $2)`,
 		*contract.RoomID, propertyID,
-	).Scan(&roomStatus); err != nil {
+	).Scan(&roomExists); err != nil {
 		return err
 	}
-	if roomStatus != "available" {
-		return fmt.Errorf("kamar tidak tersedia (status: %s)", roomStatus)
+	if !roomExists {
+		return pgx.ErrNoRows
 	}
 
 	var tenantExists bool
 	if err := tx.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM users WHERE id = $1 AND is_active = TRUE)`,
-		*contract.UserID,
+		`SELECT EXISTS (
+			SELECT 1 FROM tenant_profiles
+			WHERE property_id=$1 AND user_id=$2 AND status='active'
+		)`, propertyID, *contract.UserID,
 	).Scan(&tenantExists); err != nil {
 		return err
 	}
@@ -57,9 +59,7 @@ func (r *ContractRepository) Create(ctx context.Context, propertyID, actorID uui
 	if contract.PaymentInterval == "" {
 		contract.PaymentInterval = "monthly"
 	}
-	if contract.Status == "" {
-		contract.Status = "active"
-	}
+	contract.Status = model.ContractDraft
 	contract.PropertyID = propertyID
 	contract.OwnerID = actorID // legacy compatibility only; never authorization.
 
@@ -73,49 +73,42 @@ func (r *ContractRepository) Create(ctx context.Context, propertyID, actorID uui
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
 			$13, $14, $15, $16, $17
 		)
-		RETURNING id, created_at`,
+		RETURNING id, created_at, updated_at`,
 		propertyID, contract.RoomID, contract.UserID, actorID,
 		contract.StartDate, contract.EndDate, contract.RentalDuration,
 		contract.MonthlyRent, contract.TotalPrice, contract.Deposit,
 		contract.PaymentDueDay, contract.Status, contract.Notes,
 		contract.ElectricityBill, contract.WaterBill, contract.OtherBills,
 		contract.PaymentInterval,
-	).Scan(&contract.ID, &contract.CreatedAt)
+	).Scan(&contract.ID, &contract.CreatedAt, &contract.UpdatedAt)
 	if err != nil {
 		return err
 	}
 
-	dueDate := contract.StartDate.AddDate(0, 1, -3)
-	notes := contract.Notes
-	if notes == "" {
-		notes = fmt.Sprintf("Perpanjangan kontrak dilakukan paling lambat pada tanggal %d", contract.PaymentDueDay)
-	}
-	pRent, pElectricity, pWater, pOther := initialBillAmounts(contract)
-	_, err = tx.Exec(ctx, `
-		INSERT INTO payments (
-			id, property_id, contract_id, owner_id, period_month, period_year,
-			amount_rent, amount_electricity, amount_water, amount_other,
-			total_paid, payment_method, status, due_date, notes
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,'','unpaid',$11,$12)
-		ON CONFLICT (contract_id, period_month, period_year) DO NOTHING`,
-		uuid.New(), propertyID, contract.ID, actorID,
-		int(contract.StartDate.Month()), contract.StartDate.Year(), pRent,
-		pElectricity, pWater, pOther, dueDate, notes,
-	)
+	var versionID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		INSERT INTO contract_versions (property_id,contract_id,version_number,snapshot,reason,created_by)
+		SELECT property_id,id,1,jsonb_build_object(
+			'contract_id',id,'property_id',property_id,'room_id',room_id,'user_id',user_id,
+			'start_date',start_date,'end_date',end_date,'rental_duration',rental_duration,
+			'monthly_rent',monthly_rent,'total_price',total_price,'deposit',deposit,
+			'electricity_bill',electricity_bill,'water_bill',water_bill,'other_bills',other_bills,
+			'payment_interval',payment_interval,'payment_due_day',payment_due_day,'notes',notes
+		),'Draft kontrak dibuat',$3 FROM contracts WHERE property_id=$1 AND id=$2 RETURNING id`,
+		propertyID, contract.ID, actorID,
+	).Scan(&versionID)
 	if err != nil {
 		return err
 	}
-
-	command, err := tx.Exec(ctx,
-		`UPDATE rooms SET status = 'occupied' WHERE id = $1 AND property_id = $2`,
-		*contract.RoomID, propertyID,
-	)
-	if err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE contracts SET current_version_id=$1 WHERE property_id=$2 AND id=$3`, versionID, propertyID, contract.ID); err != nil {
 		return err
 	}
-	if command.RowsAffected() != 1 {
-		return pgx.ErrNoRows
+	if _, err = tx.Exec(ctx, `INSERT INTO contract_events
+		(property_id,contract_id,version_id,event_type,to_status,reason,actor_id)
+		VALUES ($1,$2,$3,'created','draft','Draft kontrak dibuat',$4)`, propertyID, contract.ID, versionID, actorID); err != nil {
+		return err
 	}
+	contract.CurrentVersionID = &versionID
 
 	return tx.Commit(ctx)
 }
@@ -164,80 +157,11 @@ func (r *ContractRepository) FindByID(ctx context.Context, propertyID, id uuid.U
 }
 
 func (r *ContractRepository) Update(ctx context.Context, propertyID uuid.UUID, contract *model.Contract) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	var userID *uuid.UUID
-	var currentStatus string
-	if err = tx.QueryRow(ctx, `
-		SELECT user_id,status FROM contracts
-		WHERE id=$1 AND property_id=$2 FOR UPDATE`, contract.ID, propertyID,
-	).Scan(&userID, &currentStatus); err != nil {
-		return err
-	}
-
-	command, err := tx.Exec(ctx, `
-		UPDATE contracts SET
-			start_date=$1, end_date=$2, rental_duration=$3, monthly_rent=$4,
-			deposit=$5, payment_due_day=$6, status=$7, notes=$8,
-			payment_interval=$9
-		WHERE id=$10 AND property_id=$11`,
-		contract.StartDate, contract.EndDate, contract.RentalDuration,
-		contract.MonthlyRent, contract.Deposit, contract.PaymentDueDay,
-		contract.Status, contract.Notes, contract.PaymentInterval,
-		contract.ID, propertyID,
-	)
-	if err != nil {
-		return err
-	}
-	if command.RowsAffected() != 1 {
-		return pgx.ErrNoRows
-	}
-	if currentStatus == "active" && contract.Status != "active" && userID != nil {
-		if err = revokeTenantSessionForProperty(ctx, tx, propertyID, *userID, "contract_deactivated"); err != nil {
-			return err
-		}
-	}
-	return tx.Commit(ctx)
+	return fmt.Errorf("%w: gunakan amendment atau transition lifecycle", ErrContractHistoryImmutable)
 }
 
 func (r *ContractRepository) Delete(ctx context.Context, propertyID, id uuid.UUID) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-
-	var roomID, userID *uuid.UUID
-	var status string
-	if err := tx.QueryRow(ctx, `
-		SELECT room_id,user_id,status FROM contracts
-		WHERE id = $1 AND property_id = $2 FOR UPDATE`, id, propertyID,
-	).Scan(&roomID, &userID, &status); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx,
-		`DELETE FROM contracts WHERE id = $1 AND property_id = $2`, id, propertyID,
-	); err != nil {
-		return err
-	}
-	if roomID != nil {
-		if _, err := tx.Exec(ctx,
-			`UPDATE rooms SET status='available' WHERE id=$1 AND property_id=$2`,
-			*roomID, propertyID,
-		); err != nil {
-			return err
-		}
-	}
-	if status == "active" && userID != nil {
-		if err := revokeTenantSessionForProperty(ctx, tx, propertyID, *userID, "contract_deleted"); err != nil {
-			return err
-		}
-	}
-	return tx.Commit(ctx)
+	return fmt.Errorf("%w: histori kontrak tidak boleh dihapus", ErrContractHistoryImmutable)
 }
 
 const contractSelect = `
@@ -248,6 +172,7 @@ const contractSelect = `
 		COALESCE(c.water_bill,0), COALESCE(c.other_bills,0),
 		COALESCE(c.payment_interval,'monthly'), COALESCE(c.payment_due_day,1),
 		c.status, COALESCE(c.notes,''), c.created_at,
+		c.updated_at,c.current_version_id,c.renewed_from_contract_id,
 		r.room_number, r.price_per_month, r.status,
 		COALESCE(NULLIF(tp.full_name,''),u.name),COALESCE(NULLIF(tp.phone,''),u.phone),NULL::text,NULL::text,
 		(SELECT p.status FROM payments p
@@ -276,6 +201,7 @@ func scanContract(row contractRow) (*model.Contract, error) {
 		&contract.Deposit, &contract.ElectricityBill, &contract.WaterBill,
 		&contract.OtherBills, &contract.PaymentInterval, &contract.PaymentDueDay,
 		&contract.Status, &contract.Notes, &contract.CreatedAt,
+		&contract.UpdatedAt, &contract.CurrentVersionID, &contract.RenewedFromContractID,
 		&roomNumber, &roomPrice, &roomStatus, &userName, &userPhone, &ktpURL,
 		&selfieURL, &contract.LatestPaymentStatus, &contract.LatestPaymentAmount,
 	)

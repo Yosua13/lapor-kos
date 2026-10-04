@@ -25,10 +25,11 @@ func (r *CalendarRepository) FindEvents(ctx context.Context, propertyID uuid.UUI
 	// Query contract expirations
 	contractQuery := `
 		SELECT 
-			c.id, c.end_date, c.status, r.room_number, t.name
+			c.id, c.end_date, c.status, r.room_number, COALESCE(NULLIF(tp.full_name,''),t.name)
 		FROM contracts c
 		JOIN rooms r ON c.room_id = r.id AND c.property_id = r.property_id
 		JOIN users t ON c.user_id = t.id
+		LEFT JOIN tenant_profiles tp ON tp.property_id=c.property_id AND tp.user_id=c.user_id
 		WHERE c.property_id = $1
 		  AND EXTRACT(MONTH FROM c.end_date) = $2
 		  AND EXTRACT(YEAR FROM c.end_date) = $3
@@ -52,9 +53,9 @@ func (r *CalendarRepository) FindEvents(ctx context.Context, propertyID uuid.UUI
 		}
 
 		var colorStatus string
-		if status == "expired" || status == "cancelled" {
+		if status == model.ContractEnded || status == model.ContractTerminated || status == model.ContractCancelled || status == model.ContractRenewed {
 			colorStatus = "red"
-		} else if status == "active" {
+		} else if status == model.ContractActive {
 			daysUntilExpiry := endDate.Sub(now).Hours() / 24
 			if daysUntilExpiry <= 30 && daysUntilExpiry >= 0 {
 				colorStatus = "yellow"
@@ -64,7 +65,7 @@ func (r *CalendarRepository) FindEvents(ctx context.Context, propertyID uuid.UUI
 				colorStatus = "green"
 			}
 		} else {
-			colorStatus = "green"
+			colorStatus = "yellow"
 		}
 
 		events = append(events, model.CalendarEvent{
