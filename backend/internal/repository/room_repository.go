@@ -76,10 +76,11 @@ func (r *RoomRepository) CreateWithTenant(
 		); err != nil {
 			return err
 		}
-		if !room.IsDraft {
-			if err := updateRoomStatus(ctx, tx, propertyID, room.ID, "occupied"); err != nil {
-				return err
-			}
+		// A room is only occupied when the lifecycle service activates the
+		// accepted contract and creates its occupancy period.
+		room.Status = "available"
+		if err := updateRoomStatus(ctx, tx, propertyID, room.ID, room.Status); err != nil {
+			return err
 		}
 	}
 
@@ -124,7 +125,8 @@ func (r *RoomRepository) UpdateWithTenant(
 		var existingID uuid.UUID
 		err = tx.QueryRow(ctx, `
 			SELECT id FROM contracts
-			WHERE property_id=$1 AND room_id=$2 AND status='active'
+			WHERE property_id=$1 AND room_id=$2 AND status IN ('draft','pending_tenant','scheduled','active')
+			ORDER BY created_at DESC LIMIT 1
 			FOR UPDATE`, propertyID, room.ID,
 		).Scan(&existingID)
 		if err != nil && err != pgx.ErrNoRows {
@@ -137,37 +139,12 @@ func (r *RoomRepository) UpdateWithTenant(
 				return err
 			}
 		} else {
-			contract.ID = existingID
-			contract.PropertyID = propertyID
-			contract.OwnerID = actorID
-			prepareContract(contract)
-			_, err = tx.Exec(ctx, `
-				UPDATE contracts SET user_id=$1, start_date=$2, end_date=$3,
-					rental_duration=$4, monthly_rent=$5, total_price=$6,
-					payment_due_day=$7, notes=$8, electricity_bill=$9,
-					water_bill=$10, other_bills=$11, payment_interval=$12,
-					deposit=$13
-				WHERE id=$14 AND property_id=$15`,
-				userID, contract.StartDate, contract.EndDate,
-				contract.RentalDuration, contract.MonthlyRent, contract.TotalPrice,
-				contract.PaymentDueDay, contract.Notes, contract.ElectricityBill,
-				contract.WaterBill, contract.OtherBills, contract.PaymentInterval,
-				contract.Deposit, contract.ID, propertyID,
-			)
-			if err != nil {
-				return err
-			}
-			rent, electricity, water, other := initialBillAmounts(contract)
-			_, err = tx.Exec(ctx, `
-				UPDATE payments SET amount_rent=$1, amount_electricity=$2,
-					amount_water=$3, amount_other=$4, due_date=$5
-				WHERE property_id=$6 AND contract_id=$7 AND status='unpaid'`,
-				rent, electricity, water, other,
-				contract.StartDate.AddDate(0, 1, -3), propertyID, contract.ID,
-			)
-			if err != nil {
-				return err
-			}
+			_ = existingID
+			return ErrContractHistoryImmutable
+		}
+		room.Status = "available"
+		if err := updateRoomStatus(ctx, tx, propertyID, room.ID, room.Status); err != nil {
+			return err
 		}
 	}
 
@@ -203,9 +180,6 @@ func (r *RoomRepository) AssignTenant(
 	if err := createRoomContractAndBill(
 		ctx, tx, propertyID, actorID, roomID, userID, contract, &model.Payment{},
 	); err != nil {
-		return err
-	}
-	if err := updateRoomStatus(ctx, tx, propertyID, roomID, "occupied"); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -281,6 +255,7 @@ func (r *RoomRepository) Delete(ctx context.Context, propertyID, id uuid.UUID) e
 func (r *RoomRepository) DeleteWithTenant(
 	ctx context.Context, propertyID, id uuid.UUID, endActiveTenancy bool,
 ) error {
+	_ = endActiveTenancy // Contract history must be ended through the lifecycle API.
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -324,23 +299,15 @@ func (r *RoomRepository) DeleteWithTenant(
 			return err
 		}
 	}
-	if activeContracts > 0 && !endActiveTenancy {
+	if activeContracts > 0 {
 		return fmt.Errorf("room has an active tenancy")
 	}
-	if activeContracts > 0 {
-		if _, err := tx.Exec(ctx, `
-			UPDATE contracts SET status='cancelled', end_date=CURRENT_DATE,
-				room_id=NULL
-			WHERE property_id=$1 AND room_id=$2 AND status='active'`,
-			propertyID, id,
-		); err != nil {
-			return err
-		}
-		for _, userID := range activeUserIDs {
-			if err := revokeTenantSessionForProperty(ctx, tx, propertyID, userID, "room_tenancy_cancelled"); err != nil {
-				return err
-			}
-		}
+	var contractHistory int
+	if err := tx.QueryRow(ctx, `SELECT COUNT(*) FROM contracts WHERE property_id=$1 AND room_id=$2`, propertyID, id).Scan(&contractHistory); err != nil {
+		return err
+	}
+	if contractHistory > 0 {
+		return fmt.Errorf("room has contract history and cannot be deleted")
 	}
 	command, err := tx.Exec(ctx,
 		`DELETE FROM rooms WHERE property_id=$1 AND id=$2`, propertyID, id,
@@ -411,9 +378,8 @@ func prepareContract(contract *model.Contract) {
 	if contract.PaymentDueDay <= 0 {
 		contract.PaymentDueDay = contract.StartDate.AddDate(0, 1, -3).Day()
 	}
-	if contract.Status == "" {
-		contract.Status = "active"
-	}
+	contract.Status = model.ContractDraft
+	contract.TotalPrice = (contract.MonthlyRent+contract.ElectricityBill+contract.WaterBill+contract.OtherBills)*float64(contract.RentalDuration) + contract.Deposit
 	if contract.Notes == "" {
 		contract.Notes = fmt.Sprintf(
 			"Perpanjangan kontrak dilakukan paling lambat pada tanggal %d",
@@ -429,6 +395,7 @@ func createRoomContractAndBill(
 	contract *model.Contract,
 	payment *model.Payment,
 ) error {
+	_ = payment // Billing is created atomically by lifecycle activation.
 	prepareContract(contract)
 	contract.PropertyID = propertyID
 	contract.OwnerID = actorID
@@ -450,31 +417,16 @@ func createRoomContractAndBill(
 	if err != nil {
 		return err
 	}
-
-	rent, electricity, water, other := initialBillAmounts(contract)
-	payment.ID = uuid.New()
-	payment.PropertyID = propertyID
-	payment.ContractID = contract.ID
-	payment.OwnerID = &actorID
-	payment.PeriodMonth = int(contract.StartDate.Month())
-	payment.PeriodYear = contract.StartDate.Year()
-	payment.AmountRent = rent
-	payment.AmountElectricity = electricity
-	payment.AmountWater = water
-	payment.AmountOther = other
-	payment.Status = "unpaid"
-	payment.DueDate = contract.StartDate.AddDate(0, 1, -3)
-	payment.Notes = contract.Notes
-	_, err = tx.Exec(ctx, `
-		INSERT INTO payments (
-			id,property_id,contract_id,owner_id,period_month,period_year,
-			amount_rent,amount_electricity,amount_water,amount_other,
-			total_paid,payment_method,status,due_date,notes
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,'','unpaid',$11,$12)`,
-		payment.ID, propertyID, contract.ID, actorID, payment.PeriodMonth,
-		payment.PeriodYear, rent, electricity, water, other, payment.DueDate,
-		payment.Notes,
-	)
+	var versionID uuid.UUID
+	err = tx.QueryRow(ctx, `INSERT INTO contract_versions(property_id,contract_id,version_number,snapshot,reason,created_by)
+		SELECT property_id,id,1,jsonb_build_object('contract_id',id,'property_id',property_id,'room_id',room_id,'user_id',user_id,'start_date',start_date,'end_date',end_date,'rental_duration',rental_duration,'monthly_rent',monthly_rent,'total_price',total_price,'deposit',deposit,'electricity_bill',electricity_bill,'water_bill',water_bill,'other_bills',other_bills,'payment_interval',payment_interval,'payment_due_day',payment_due_day,'notes',notes),'Draft dibuat dari alur kamar',$1 FROM contracts WHERE property_id=$2 AND id=$3 RETURNING id`, actorID, propertyID, contract.ID).Scan(&versionID)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE contracts SET current_version_id=$1 WHERE property_id=$2 AND id=$3`, versionID, propertyID, contract.ID); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO contract_events(property_id,contract_id,version_id,event_type,to_status,reason,actor_id) VALUES($1,$2,$3,'created','draft','Draft dibuat dari alur kamar',$4)`, propertyID, contract.ID, versionID, actorID)
 	return err
 }
 

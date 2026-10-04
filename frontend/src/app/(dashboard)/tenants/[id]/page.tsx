@@ -948,6 +948,9 @@ export default function TenantProfilePage() {
                   <button onClick={() => setActiveMenu('kontrak')} className="w-full py-2.5 bg-[#0e8a7a]/5 text-[#0e8a7a] hover:bg-[#0e8a7a]/10 rounded-lg text-[13px] font-bold transition-colors flex items-center justify-center gap-2 mt-auto">
                     <FileText className="w-4 h-4" /> Lihat Detail Kontrak
                   </button>
+                  {tenant.contract?.id && <button onClick={() => router.push(`/contracts/${tenant.contract?.id}`)} className="mt-2 w-full rounded-lg border border-[#0e8a7a]/30 py-2.5 text-[13px] font-bold text-[#0e8a7a] transition-colors hover:bg-[#0e8a7a]/5">
+                    Kelola Lifecycle &amp; Histori
+                  </button>}
                 </div>
 
                 {/* Card: Ringkasan Pembayaran */}

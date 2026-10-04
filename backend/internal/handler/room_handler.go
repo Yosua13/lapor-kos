@@ -168,6 +168,10 @@ func (h *RoomHandler) DeleteRoom(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
+		if err.Error() == "room has contract history and cannot be deleted" {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete room: " + err.Error()})
 		return
 	}
@@ -277,11 +281,15 @@ func (h *RoomHandler) AssignTenant(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Room not found"})
 			return
 		}
+		if errors.Is(err, repository.ErrContractHistoryImmutable) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Kontrak yang sudah berjalan harus diubah melalui amendment lifecycle"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to assign tenant to room: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"message": "Tenant assigned successfully"})
+	c.JSON(http.StatusCreated, gin.H{"message": "Draft contract created; tenant acceptance and activation are required"})
 }
 
 func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
@@ -446,14 +454,18 @@ func (h *RoomHandler) CreateRoomWithTenant(c *gin.Context) {
 	updateMsg := "Room updated successfully"
 
 	if room.Status == "occupied" && hasTenantData {
-		createMsg = "Room, tenant, contract, and payment created successfully"
-		updateMsg = "Room, tenant, contract, and payment updated successfully"
+		createMsg = "Room and contract draft created; tenant acceptance and activation are required"
+		updateMsg = "Room updated and contract draft prepared; tenant acceptance and activation are required"
 	}
 
 	if room.ID != uuid.Nil {
 		if err := h.repo.UpdateWithTenant(c.Request.Context(), scope.PropertyID, scope.ActorID, room, user, contract, payment); err != nil {
 			if errors.Is(err, repository.ErrTenantInvitationRequired) {
 				c.JSON(http.StatusConflict, gin.H{"error": "Tenant must activate their account through an invitation before being assigned to a room", "next_action": "create_invitation"})
+				return
+			}
+			if errors.Is(err, repository.ErrContractHistoryImmutable) {
+				c.JSON(http.StatusConflict, gin.H{"error": "Kontrak yang sudah ada harus diubah melalui halaman lifecycle"})
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update draft room and tenant: " + err.Error()})
