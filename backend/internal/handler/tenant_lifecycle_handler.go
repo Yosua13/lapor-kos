@@ -4,11 +4,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/mail"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -79,6 +81,10 @@ func (h *TenantLifecycleHandler) CreateInvitation(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "Tenant profile is already active"})
 			return
 		}
+		if errors.Is(err, repository.ErrInvitationContactConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Email and WhatsApp number are already linked to different tenant profiles"})
+			return
+		}
 		log.Printf("create tenant invitation: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create tenant invitation"})
 		return
@@ -103,13 +109,51 @@ func (h *TenantLifecycleHandler) CreateInvitation(c *gin.Context) {
 		deliveryStatus = "failed"
 		log.Printf("tenant invitation delivery failed (%s): %v", req.DeliveryMethod, deliveryErr)
 	}
-	c.JSON(http.StatusCreated, gin.H{"invitation": invitation, "delivery": gin.H{"method": req.DeliveryMethod, "status": deliveryStatus}})
+	deliveryTracked := true
+	if trackingErr := h.repo.RecordInvitationDelivery(
+		c.Request.Context(),
+		scope.PropertyID,
+		invitation.TenantProfileID,
+		invitation.ID,
+		scope.ActorID,
+		deliveryStatus,
+		c.GetHeader("X-Request-ID"),
+	); trackingErr != nil {
+		deliveryTracked = false
+		log.Printf("record tenant invitation delivery: %v", trackingErr)
+	}
+	invitation.DeliveryStatus = deliveryStatus
+	c.JSON(http.StatusCreated, gin.H{"invitation": invitation, "delivery": gin.H{"method": req.DeliveryMethod, "status": deliveryStatus, "tracked": deliveryTracked}})
 }
 
 func (h *TenantLifecycleHandler) ListInvitations(c *gin.Context) {
 	scope, ok := middleware.GetPropertyScope(c)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Property authorization is required"})
+		return
+	}
+	if c.Query("paginated") == "true" {
+		page, pageErr := positiveQueryInt(c, "page", 1)
+		if pageErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": pageErr.Error()})
+			return
+		}
+		pageSize, pageSizeErr := positiveQueryInt(c, "page_size", 10)
+		if pageSizeErr != nil || pageSize > 100 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "page_size must be between 1 and 100"})
+			return
+		}
+		result, err := h.repo.ListInvitationPage(c.Request.Context(), scope.PropertyID, page, pageSize, c.Query("status"), c.Query("search"))
+		if err != nil {
+			if strings.Contains(err.Error(), "unsupported invitation status") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported invitation status"})
+				return
+			}
+			log.Printf("list paginated invitations: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load tenant invitations"})
+			return
+		}
+		c.JSON(http.StatusOK, result)
 		return
 	}
 	items, err := h.repo.ListInvitations(c.Request.Context(), scope.PropertyID)
@@ -132,7 +176,7 @@ func (h *TenantLifecycleHandler) RevokeInvitation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid invitation ID"})
 		return
 	}
-	if err = h.repo.RevokeInvitation(c.Request.Context(), scope.PropertyID, id); err != nil {
+	if err = h.repo.RevokeInvitation(c.Request.Context(), scope.PropertyID, id, scope.ActorID, c.GetHeader("X-Request-ID")); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pending invitation not found"})
 		return
 	}
@@ -272,6 +316,16 @@ func (h *TenantLifecycleHandler) UploadDocument(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Private document storage is not configured"})
 		return
 	}
+	profileExists, err := h.repo.ProfileExists(c.Request.Context(), scope.PropertyID, profileID)
+	if err != nil {
+		log.Printf("verify tenant profile before upload: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to validate tenant profile"})
+		return
+	}
+	if !profileExists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Tenant profile not found"})
+		return
+	}
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Document file is required"})
@@ -345,7 +399,7 @@ func (h *TenantLifecycleHandler) signDocument(c *gin.Context, tenantSelf bool) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Document not found"})
 		return
 	}
-	objectKey, err := h.repo.DocumentObjectKey(c.Request.Context(), propertyID, profileID, documentID, actorID, tenantSelf, c.GetHeader("X-Request-ID"))
+	objectKey, err := h.repo.DocumentObjectKey(c.Request.Context(), propertyID, profileID, documentID, actorID, tenantSelf)
 	if err != nil {
 		if errors.Is(err, repository.ErrDocumentAuditFailed) {
 			log.Printf("audit tenant document access: %v", err)
@@ -361,7 +415,24 @@ func (h *TenantLifecycleHandler) signDocument(c *gin.Context, tenantSelf bool) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to create document access URL"})
 		return
 	}
+	if err = h.repo.RecordDocumentAccess(c.Request.Context(), documentID, actorID, c.GetHeader("X-Request-ID")); err != nil {
+		log.Printf("audit tenant document access: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to audit document access"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"url": url, "expires_in": 300})
+}
+
+func positiveQueryInt(c *gin.Context, name string, fallback int) (int, error) {
+	raw := strings.TrimSpace(c.Query(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 1 {
+		return 0, fmt.Errorf("%s must be a positive integer", name)
+	}
+	return value, nil
 }
 
 func secureToken() (string, error) {

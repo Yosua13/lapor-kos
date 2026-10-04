@@ -38,17 +38,36 @@ type ActivateTenantInvitationRequest struct {
 }
 
 type TenantInvitation struct {
-	ID              uuid.UUID  `json:"id"`
-	PropertyID      uuid.UUID  `json:"property_id"`
-	TenantProfileID uuid.UUID  `json:"tenant_profile_id"`
-	FullName        string     `json:"full_name"`
-	Email           string     `json:"email"`
-	Phone           string     `json:"phone"`
-	DeliveryMethod  string     `json:"delivery_method"`
-	Status          string     `json:"status"`
-	ExpiresAt       time.Time  `json:"expires_at"`
-	UsedAt          *time.Time `json:"used_at,omitempty"`
-	CreatedAt       time.Time  `json:"created_at"`
+	ID                  uuid.UUID  `json:"id"`
+	PropertyID          uuid.UUID  `json:"property_id"`
+	TenantProfileID     uuid.UUID  `json:"tenant_profile_id"`
+	FullName            string     `json:"full_name"`
+	Email               string     `json:"email"`
+	Phone               string     `json:"phone"`
+	DeliveryMethod      string     `json:"delivery_method"`
+	DeliveryStatus      string     `json:"delivery_status"`
+	Status              string     `json:"status"`
+	ExpiresAt           time.Time  `json:"expires_at"`
+	UsedAt              *time.Time `json:"used_at,omitempty"`
+	DeliveryAttemptedAt *time.Time `json:"delivery_attempted_at,omitempty"`
+	CreatedAt           time.Time  `json:"created_at"`
+}
+
+type TenantInvitationStatusCounts struct {
+	All      int `json:"all"`
+	Pending  int `json:"pending"`
+	Accepted int `json:"accepted"`
+	Expired  int `json:"expired"`
+	Revoked  int `json:"revoked"`
+}
+
+type TenantInvitationPage struct {
+	Items      []TenantInvitation           `json:"items"`
+	Page       int                          `json:"page"`
+	PageSize   int                          `json:"page_size"`
+	Total      int                          `json:"total"`
+	TotalPages int                          `json:"total_pages"`
+	Counts     TenantInvitationStatusCounts `json:"counts"`
 }
 
 type TenantDocument struct {
