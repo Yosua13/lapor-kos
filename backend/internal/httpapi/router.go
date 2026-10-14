@@ -26,6 +26,7 @@ type handlers struct {
 	report          *handler.ReportHandler
 	file            *handler.FileHandler
 	tenantLifecycle *handler.TenantLifecycleHandler
+	invoice         *handler.InvoiceHandler
 }
 
 type repositories struct {
@@ -52,6 +53,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	complaintRepo := repository.NewComplaintRepository(db)
 	houseRuleRepo := repository.NewHouseRuleRepository(db)
 	tenantLifecycleRepo := repository.NewTenantLifecycleRepository(db)
+	invoiceRepo := repository.NewInvoiceRepository(db)
 
 	h := handlers{
 		auth:            handler.NewAuthHandler(userRepo, emailService, storageService),
@@ -65,6 +67,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		report:          handler.NewReportHandler(paymentRepo, userRepo, reportPDFService),
 		file:            handler.NewFileHandler(storageService),
 		tenantLifecycle: handler.NewTenantLifecycleHandler(tenantLifecycleRepo, userRepo, emailService, whatsAppService, storageService),
+		invoice:         handler.NewInvoiceHandler(invoiceRepo, billingCron),
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
@@ -89,8 +92,12 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		})
 	})
 	api.POST("/cron/trigger", middleware.CronSecretMiddleware(), func(c *gin.Context) {
-		billingCron.Trigger()
-		c.JSON(http.StatusOK, gin.H{"status": "success", "message": "Billing cron triggered"})
+		results, err := billingCron.Trigger(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Billing job failed"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "success", "runs": results})
 	})
 
 	registerAuthRoutes(api, h.auth, repos.user)
@@ -182,6 +189,9 @@ func registerLegacyTenantRoutes(api *gin.RouterGroup, h handlers, repos reposito
 	payments := api.Group("/payments", authn)
 	payments.GET("/my", tenantRole, h.payment.GetTenantPayments)
 	payments.POST("/:id/submit", tenantRole, h.payment.SubmitPaymentProof)
+	invoices := api.Group("/invoices", authn)
+	invoices.GET("/my", tenantRole, h.invoice.ListMine)
+	invoices.GET("/:id/my", tenantRole, h.invoice.GetMine)
 
 	complaints := api.Group("/complaints", authn)
 	complaints.POST("", tenantRole, h.complaint.CreateComplaint)
@@ -230,6 +240,20 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 	payments.GET("/:id/receipt", middleware.OptionalPropertyAccess(propertyRepo, authz.PermissionPaymentRead), h.payment.GetReceiptHTML)
 	payments.POST("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionPaymentWrite), h.payment.CreatePaymentBill)
 	payments.PUT("/:id/verify", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionPaymentVerify), h.payment.VerifyPayment)
+
+	invoices := api.Group("/invoices", authn)
+	invoices.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceRead), h.invoice.List)
+	invoices.GET("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceRead), h.invoice.Get)
+	invoices.POST("/:id/adjustments/preview", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceWrite), h.invoice.PreviewAdjustment)
+	invoices.POST("/:id/adjustments", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceWrite), h.invoice.CreateAdjustment)
+	invoices.POST("/generate", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceGenerate), h.invoice.Generate)
+	invoices.POST("/final-settlements/:contract_id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceWrite), h.invoice.CreateFinalSettlement)
+
+	billing := api.Group("/billing", authn)
+	billing.GET("/policy", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceRead), h.invoice.GetPolicy)
+	billing.PUT("/policy", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceWrite), h.invoice.UpdatePolicy)
+	billing.GET("/jobs", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceRead), h.invoice.ListJobs)
+	billing.POST("/meter-readings", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceWrite), h.invoice.RecordMeter)
 
 	reports := api.Group("/reports", authn)
 	reports.GET("/financial.pdf", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.report.GetFinancialReportPDF)

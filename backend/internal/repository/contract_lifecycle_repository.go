@@ -266,8 +266,7 @@ func (r *ContractLifecycleRepository) activate(ctx context.Context, tx pgx.Tx, c
 	if _, err := tx.Exec(ctx, `UPDATE rooms SET status='occupied' WHERE property_id=$1 AND id=$2`, c.propertyID, c.roomID); err != nil {
 		return err
 	}
-	rentAmount, electricityAmount, waterAmount, otherAmount := initialBillAmounts(&model.Contract{RentalDuration: c.rentalDuration, MonthlyRent: c.monthlyRent, ElectricityBill: c.electricity, WaterBill: c.water, OtherBills: c.other, Deposit: c.deposit, PaymentInterval: c.paymentInterval})
-	if _, err := tx.Exec(ctx, `INSERT INTO payments(id,property_id,contract_id,owner_id,period_month,period_year,amount_rent,amount_electricity,amount_water,amount_other,total_paid,payment_method,status,due_date,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,'','unpaid',$11,$12) ON CONFLICT(contract_id,period_month,period_year) DO NOTHING`, uuid.New(), c.propertyID, c.id, actorID, int(c.startDate.Month()), c.startDate.Year(), rentAmount, electricityAmount, waterAmount, otherAmount, c.startDate.AddDate(0, 1, -3), c.notes); err != nil {
+	if err := createActivationInvoiceTx(ctx, tx, c, actorID); err != nil {
 		return err
 	}
 	return nil

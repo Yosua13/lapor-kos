@@ -2,93 +2,99 @@ package cron
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/model"
+	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type BillingCron struct {
-	db *pgxpool.Pool
+	db   *pgxpool.Pool
+	repo *repository.InvoiceRepository
 }
 
 func NewBillingCron(db *pgxpool.Pool) *BillingCron {
-	return &BillingCron{db: db}
+	return &BillingCron{db: db, repo: repository.NewInvoiceRepository(db)}
 }
 
 func (c *BillingCron) Start() {
-	// Run immediately on start (optional, but good for testing)
-	c.processMonthlyBills()
-
-	// Then run every 24 hours (or you can use github.com/robfig/cron/v3 for exact times)
-	ticker := time.NewTicker(24 * time.Hour)
+	if c.db == nil {
+		return
+	}
+	go c.runScheduled(context.Background())
+	ticker := time.NewTicker(time.Hour)
 	go func() {
 		for range ticker.C {
-			c.processMonthlyBills()
+			c.runScheduled(context.Background())
 		}
 	}()
 }
 
-// Trigger allows manual execution of the billing cron check
-func (c *BillingCron) Trigger() {
-	c.processMonthlyBills()
-}
-
-func (c *BillingCron) processMonthlyBills() {
-	log.Println("[CRON] Starting processMonthlyBills check...")
-	ctx := context.Background()
-
-	// Get all active contracts that are paid monthly
-	query := `
-		SELECT id, property_id, owner_id, monthly_rent, electricity_bill, water_bill, other_bills, payment_due_day
-		FROM contracts 
-		WHERE status = 'active' AND payment_interval = 'monthly'
-	`
-	rows, err := c.db.Query(ctx, query)
+func (c *BillingCron) runScheduled(ctx context.Context) {
+	if c.db == nil {
+		return
+	}
+	rows, err := c.db.Query(ctx, `SELECT property_id,timezone FROM billing_policies`)
 	if err != nil {
-		log.Printf("[CRON] Failed to fetch active contracts: %v", err)
+		log.Printf("[BILLING] load policies: %v", err)
 		return
 	}
 	defer rows.Close()
-
-	now := time.Now()
-	currentMonth := int(now.Month())
-	currentYear := now.Year()
-
 	for rows.Next() {
-		var contractID, propertyID, ownerID uuid.UUID
-		var monthlyRent, electricityBill, waterBill, otherBills float64
-		var paymentDueDay int
-
-		err := rows.Scan(&contractID, &propertyID, &ownerID, &monthlyRent, &electricityBill, &waterBill, &otherBills, &paymentDueDay)
-		if err != nil {
-			log.Printf("[CRON] Row scan error: %v", err)
+		var propertyID uuid.UUID
+		var timezone string
+		if err = rows.Scan(&propertyID, &timezone); err != nil {
+			log.Printf("[BILLING] scan policy: %v", err)
 			continue
 		}
-
-		// The database uniqueness constraint is the concurrency boundary. An
-		// atomic INSERT avoids the race in the old SELECT EXISTS + INSERT flow.
-		dueDate := time.Date(currentYear, now.Month(), paymentDueDay, 23, 59, 59, 0, now.Location())
-		insertQuery := `
-			INSERT INTO payments (
-				id, property_id, contract_id, owner_id, period_month, period_year,
-				amount_rent, amount_electricity, amount_water, amount_other,
-				total_paid, status, due_date, notes
-			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-			ON CONFLICT (contract_id, period_month, period_year) DO NOTHING`
-		paymentID := uuid.New()
-		tag, err := c.db.Exec(ctx, insertQuery,
-			paymentID, propertyID, contractID, ownerID, currentMonth, currentYear,
-			monthlyRent, electricityBill, waterBill, otherBills,
-			0, "unpaid", dueDate, "Tagihan bulanan otomatis dibuat sistem.",
-		)
-		if err != nil {
-			log.Printf("[CRON] Failed to create automated bill for property %s contract %s: %v", propertyID, contractID, err)
-		} else if tag.RowsAffected() > 0 {
-			log.Printf("[CRON] Successfully created bill for property %s contract %s, Period: %d-%d", propertyID, contractID, currentMonth, currentYear)
+		loc, locationErr := time.LoadLocation(timezone)
+		if locationErr != nil {
+			log.Printf("[BILLING] invalid timezone for property %s: %v", propertyID, locationErr)
+			continue
+		}
+		now := time.Now().In(loc)
+		period := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+		runKey := fmt.Sprintf("schedule:%s", now.Format("2006-01-02"))
+		if _, err = c.repo.Generate(ctx, propertyID, period, "schedule", runKey, nil, false); err != nil {
+			log.Printf("[BILLING] property %s: %v", propertyID, err)
 		}
 	}
+}
 
-	log.Println("[CRON] Finished processMonthlyBills check.")
+func (c *BillingCron) Trigger(ctx context.Context) ([]model.BillingJobResult, error) {
+	if c.db == nil {
+		return nil, nil
+	}
+	rows, err := c.db.Query(ctx, `SELECT property_id,timezone FROM billing_policies`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := make([]model.BillingJobResult, 0)
+	for rows.Next() {
+		var propertyID uuid.UUID
+		var timezone string
+		if err = rows.Scan(&propertyID, &timezone); err != nil {
+			return nil, err
+		}
+		loc, locationErr := time.LoadLocation(timezone)
+		if locationErr != nil {
+			return nil, locationErr
+		}
+		now := time.Now().In(loc)
+		result, generateErr := c.repo.Generate(ctx, propertyID, now, "manual", "ops:"+uuid.NewString(), nil, true)
+		if generateErr != nil {
+			return nil, generateErr
+		}
+		results = append(results, *result)
+	}
+	return results, rows.Err()
+}
+
+func (c *BillingCron) TriggerProperty(ctx context.Context, propertyID, actorID uuid.UUID, period time.Time) (*model.BillingJobResult, error) {
+	return c.repo.Generate(ctx, propertyID, period, "manual", "manual:"+uuid.NewString(), &actorID, true)
 }

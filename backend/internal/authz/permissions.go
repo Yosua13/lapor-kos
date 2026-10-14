@@ -32,6 +32,9 @@ const (
 	PermissionPaymentRead   Permission = "payment.read"
 	PermissionPaymentWrite  Permission = "payment.write"
 	PermissionPaymentVerify Permission = "payment.verify"
+	PermissionInvoiceRead    Permission = "invoice.read"
+	PermissionInvoiceWrite   Permission = "invoice.write"
+	PermissionInvoiceGenerate Permission = "invoice.generate"
 
 	PermissionComplaintRead  Permission = "complaint.read"
 	PermissionComplaintWrite Permission = "complaint.write"
@@ -63,6 +66,9 @@ var knownPermissions = []Permission{
 	PermissionPaymentRead,
 	PermissionPaymentWrite,
 	PermissionPaymentVerify,
+	PermissionInvoiceRead,
+	PermissionInvoiceWrite,
+	PermissionInvoiceGenerate,
 	PermissionComplaintRead,
 	PermissionComplaintWrite,
 	PermissionHouseRuleRead,
@@ -89,6 +95,9 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionContractWrite,
 		PermissionContractDelete,
 		PermissionPaymentRead,
+		PermissionInvoiceRead,
+		PermissionInvoiceWrite,
+		PermissionInvoiceGenerate,
 		PermissionComplaintRead,
 		PermissionComplaintWrite,
 		PermissionHouseRuleRead,
@@ -106,6 +115,9 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionPaymentRead,
 		PermissionPaymentWrite,
 		PermissionPaymentVerify,
+		PermissionInvoiceRead,
+		PermissionInvoiceWrite,
+		PermissionInvoiceGenerate,
 		PermissionReportRead,
 		PermissionCalendarRead,
 		PermissionFileRead,
@@ -125,6 +137,7 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionRoomRead,
 		PermissionContractRead,
 		PermissionPaymentRead,
+		PermissionInvoiceRead,
 		PermissionComplaintRead,
 		PermissionHouseRuleRead,
 		PermissionReportRead,
