@@ -99,6 +99,8 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "success", "runs": results})
 	})
+	api.POST("/payments/webhook", h.payment.ProcessWebhook)
+	api.POST("/payments/webhook/:provider", h.payment.ProcessWebhook)
 
 	registerAuthRoutes(api, h.auth, repos.user)
 	registerPropertyRoutes(api, h.property, repos)
@@ -238,8 +240,12 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 	payments.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionPaymentRead), h.payment.GetAllPayments)
 	payments.GET("/:id", middleware.OptionalPropertyAccess(propertyRepo, authz.PermissionPaymentRead), h.payment.GetPayment)
 	payments.GET("/:id/receipt", middleware.OptionalPropertyAccess(propertyRepo, authz.PermissionPaymentRead), h.payment.GetReceiptHTML)
+	payments.GET("/:id/receipt-data", middleware.OptionalPropertyAccess(propertyRepo, authz.PermissionPaymentRead), h.payment.GetReceipt)
+	payments.GET("/reconciliation", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionPaymentRead), h.payment.GetReconciliationReport)
 	payments.POST("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionPaymentWrite), h.payment.CreatePaymentBill)
 	payments.PUT("/:id/verify", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionPaymentVerify), h.payment.VerifyPayment)
+	payments.POST("/refunds", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionPaymentWrite), h.payment.CreateRefund)
+	payments.PUT("/refunds/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionPaymentVerify), h.payment.ProcessRefund)
 
 	invoices := api.Group("/invoices", authn)
 	invoices.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionInvoiceRead), h.invoice.List)

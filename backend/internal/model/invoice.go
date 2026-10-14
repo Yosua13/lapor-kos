@@ -105,3 +105,16 @@ type AdjustmentRequest struct {
 	AmountMinor int64  `json:"amount_minor" binding:"required"`
 	Reason      string `json:"reason" binding:"required"`
 }
+
+type InvoiceAllocation struct {
+	ID          uuid.UUID  `json:"id" db:"id"`
+	PropertyID  uuid.UUID  `json:"property_id" db:"property_id"`
+	InvoiceID   uuid.UUID  `json:"invoice_id" db:"invoice_id"`
+	PaymentID   *uuid.UUID `json:"payment_id,omitempty" db:"payment_id"`
+	AmountMinor int64      `json:"amount_minor" db:"amount_minor"`
+	Status      string     `json:"status" db:"status"` // valid, void
+	Reason      string     `json:"reason" db:"reason"`
+	CreatedBy   *uuid.UUID `json:"created_by,omitempty" db:"created_by"`
+	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
+}
+
