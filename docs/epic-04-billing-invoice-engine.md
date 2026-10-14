@@ -34,11 +34,11 @@ Memisahkan tagihan dari pembayaran dan membangun invoice engine yang konsisten, 
 
 ## Kriteria Penerimaan
 
-- [ ] Job yang dijalankan ulang atau paralel hanya menghasilkan satu invoice untuk periode yang sama.
-- [ ] Kebijakan tanggal 28-31 dan Februari menghasilkan due date yang konsisten.
-- [ ] Invoice tidak dibuat setelah kontrak berakhir kecuali untuk final settlement.
-- [ ] Total invoice selalu sama dengan jumlah line item tanpa kesalahan pembulatan float.
-- [ ] Seluruh invoice dan job terikat property serta dapat diaudit.
+- [x] Job yang dijalankan ulang atau paralel hanya menghasilkan satu invoice untuk periode yang sama.
+- [x] Kebijakan tanggal 28-31 dan Februari menghasilkan due date yang konsisten.
+- [x] Invoice tidak dibuat setelah kontrak berakhir kecuali untuk final settlement.
+- [x] Total invoice selalu sama dengan jumlah line item tanpa kesalahan pembulatan float.
+- [x] Seluruh invoice dan job terikat property serta dapat diaudit.
 
 ## Ketergantungan
 
