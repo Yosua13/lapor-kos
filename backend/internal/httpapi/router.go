@@ -28,6 +28,7 @@ type handlers struct {
 	tenantLifecycle *handler.TenantLifecycleHandler
 	invoice         *handler.InvoiceHandler
 	roomTransfer    *handler.RoomTransferHandler
+	checkout        *handler.CheckoutHandler
 }
 
 type repositories struct {
@@ -56,6 +57,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	tenantLifecycleRepo := repository.NewTenantLifecycleRepository(db)
 	invoiceRepo := repository.NewInvoiceRepository(db)
 	roomTransferRepo := repository.NewRoomTransferRepository(db)
+	checkoutRepo := repository.NewCheckoutRepository(db)
 
 	h := handlers{
 		auth:            handler.NewAuthHandler(userRepo, emailService, storageService),
@@ -71,6 +73,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		tenantLifecycle: handler.NewTenantLifecycleHandler(tenantLifecycleRepo, userRepo, emailService, whatsAppService, storageService),
 		invoice:         handler.NewInvoiceHandler(invoiceRepo, billingCron),
 		roomTransfer:    handler.NewRoomTransferHandler(roomTransferRepo, db),
+		checkout:        handler.NewCheckoutHandler(checkoutRepo, db),
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
@@ -205,6 +208,11 @@ func registerLegacyTenantRoutes(api *gin.RouterGroup, h handlers, repos reposito
 	roomTransfers.POST("/my/:id/cancel", tenantRole, h.roomTransfer.CancelMyTransfer)
 	tenants.GET("/me/room-history", tenantRole, h.roomTransfer.GetMyRoomHistory)
 
+	checkouts := api.Group("/checkouts", authn)
+	checkouts.GET("/my", tenantRole, h.checkout.TenantListCheckouts)
+	checkouts.POST("/my", tenantRole, h.checkout.TenantCreateNotice)
+	checkouts.GET("/my/:id", tenantRole, h.checkout.TenantGetCheckout)
+
 	complaints := api.Group("/complaints", authn)
 	complaints.POST("", tenantRole, h.complaint.CreateComplaint)
 	complaints.POST("/upload", tenantRole, h.complaint.UploadPhoto)
@@ -301,4 +309,15 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 
 	files := api.Group("/files", authn)
 	files.GET("/sign", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionFileRead), h.file.SignPropertyFile)
+
+	checkouts := api.Group("/checkouts", authn)
+	checkouts.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutRead), h.checkout.ListCheckouts)
+	checkouts.GET("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutRead), h.checkout.GetCheckout)
+	checkouts.POST("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutWrite), h.checkout.CreateCheckout)
+	checkouts.POST("/:id/inspections", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutWrite), h.checkout.RecordInspections)
+	checkouts.GET("/:id/settlement-preview", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutRead), h.checkout.PreviewSettlement)
+	checkouts.POST("/:id/approve", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutApprove), h.checkout.ApproveSettlement)
+	checkouts.POST("/:id/execute", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutApprove), h.checkout.ExecuteCheckout)
+	checkouts.POST("/:id/cancel", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutWrite), h.checkout.CancelCheckout)
+	checkouts.POST("/:id/room-override", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutApprove), h.checkout.OverrideRoom)
 }
