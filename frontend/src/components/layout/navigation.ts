@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Settings,
   Users,
+  Bell,
 } from 'lucide-react';
 import { CAPABILITIES, type Capability } from '@/features/authorization/permissions';
 
@@ -39,6 +40,7 @@ const tenantNavigation: NavigationSection[] = [
   {
     section: 'LAINNYA',
     items: [
+      { name: 'Notifikasi', href: '/notifications', icon: Bell },
       { name: 'Komplain Fasilitas', href: '/complaints', icon: MessageSquare },
       { name: 'Pengaturan Akun', href: '/settings', icon: Settings },
     ],
@@ -73,6 +75,7 @@ const staffNavigation: NavigationSection[] = [
   {
     section: 'ADMINISTRASI',
     items: [
+      { name: 'Notifikasi & Delivery', href: '/notifications', icon: Bell },
       { name: 'Properti & Tim', href: '/properties', icon: Building2 },
       { name: 'Pengaturan Akun', href: '/settings', icon: Settings },
     ],

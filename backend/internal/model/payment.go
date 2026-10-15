@@ -103,20 +103,6 @@ type RefundRequest struct {
 	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
 }
 
-type NotificationOutboxItem struct {
-	ID            uuid.UUID              `json:"id" db:"id"`
-	PropertyID    uuid.UUID              `json:"property_id" db:"property_id"`
-	EventType     string                 `json:"event_type" db:"event_type"`
-	AggregateType string                 `json:"aggregate_type" db:"aggregate_type"`
-	AggregateID   uuid.UUID              `json:"aggregate_id" db:"aggregate_id"`
-	Payload       map[string]interface{} `json:"payload" db:"payload"`
-	Status        string                 `json:"status" db:"status"` // pending, processing, delivered, failed
-	RetryCount    int                    `json:"retry_count" db:"retry_count"`
-	LastError     *string                `json:"last_error,omitempty" db:"last_error"`
-	CreatedAt     time.Time              `json:"created_at" db:"created_at"`
-	DeliveredAt   *time.Time             `json:"delivered_at,omitempty" db:"delivered_at"`
-}
-
 type SubmitPaymentRequest struct {
 	PaymentMethod string     `form:"payment_method" json:"payment_method" binding:"required"`
 	TotalPaid     float64    `form:"total_paid" json:"total_paid" binding:"required"`

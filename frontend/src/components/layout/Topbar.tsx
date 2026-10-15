@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { Bell, Menu, Settings } from 'lucide-react';
+import { Menu, Settings } from 'lucide-react';
 import { PropertySwitcher } from '@/features/properties/components/PropertySwitcher';
+import { NotificationBell } from '@/features/notifications/components/NotificationBell';
 import type { SessionUser } from '@/features/session/types';
 
 export function Topbar({ user, isTenant, onOpenMenu }: { user: SessionUser; isTenant: boolean; onOpenMenu: () => void }) {
@@ -15,7 +16,7 @@ export function Topbar({ user, isTenant, onOpenMenu }: { user: SessionUser; isTe
         {!isTenant && <div className="hidden min-w-0 sm:block"><PropertySwitcher /></div>}
       </div>
       <div className="flex items-center gap-2 sm:gap-4">
-        <button type="button" aria-label="Notifikasi" className="rounded-xl p-2.5 text-brand-navy/40 transition-colors hover:bg-brand-teal/5 hover:text-brand-teal"><Bell className="h-5 w-5" /></button>
+        <NotificationBell />
         <Link href="/settings" aria-label="Pengaturan" className="rounded-xl p-2.5 text-brand-navy/40 transition-colors hover:bg-brand-teal/5 hover:text-brand-teal"><Settings className="h-5 w-5" /></Link>
         <div className="mx-1 h-6 w-px bg-brand-navy/10" />
         <Link href="/settings" className="flex items-center gap-3">

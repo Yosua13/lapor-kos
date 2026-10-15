@@ -34,11 +34,11 @@ Menyediakan pusat notifikasi di aplikasi dan platform delivery yang dapat diguna
 
 ## Kriteria Penerimaan
 
-- [ ] Event duplikat tidak menghasilkan spam kepada penerima yang sama.
-- [ ] Kegagalan channel eksternal tidak mengubah transaksi bisnis menjadi gagal.
-- [ ] Owner dapat melihat status, alasan gagal, dan melakukan retry pesan operasional.
-- [ ] Menandai pesan telah dibaca tidak menghapus histori notifikasi.
-- [ ] Preference, opt-out, dan quiet hours diterapkan sesuai jenis pesan.
+- [x] Event duplikat tidak menghasilkan spam kepada penerima yang sama.
+- [x] Kegagalan channel eksternal tidak mengubah transaksi bisnis menjadi gagal.
+- [x] Owner dapat melihat status, alasan gagal, dan melakukan retry pesan operasional.
+- [x] Menandai pesan telah dibaca tidak menghapus histori notifikasi.
+- [x] Preference, opt-out, dan quiet hours diterapkan sesuai jenis pesan.
 
 ## Ketergantungan
 

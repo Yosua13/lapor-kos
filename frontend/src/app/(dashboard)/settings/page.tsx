@@ -13,12 +13,14 @@ import {
   Shield,
   Palette,
   Edit2,
-  X
+  X,
+  Bell
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
+import { NotificationPreferencesForm } from '@/features/notifications/components/NotificationPreferencesForm';
 
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState<'profile' | 'security' | 'appearance'>('profile');
+  const [activeSection, setActiveSection] = useState<'profile' | 'security' | 'appearance' | 'notifications'>('profile');
   
   // Profile state
   const [profileData, setProfileData] = useState({
@@ -195,7 +197,8 @@ export default function SettingsPage() {
           {[
             { id: 'profile', label: 'Profil Saya', desc: 'Nama, Email, dan No HP', icon: User },
             { id: 'security', label: 'Kata Sandi & Keamanan', desc: 'Ubah password login', icon: Shield },
-            { id: 'appearance', label: 'Tampilan Aplikasi', desc: 'Mode gelap dan terang', icon: Palette }
+            { id: 'appearance', label: 'Tampilan Aplikasi', desc: 'Mode gelap dan terang', icon: Palette },
+            { id: 'notifications', label: 'Notifikasi & Jam Tenang', desc: 'Saluran, quiet hours, opt-out', icon: Bell }
           ].map((item) => {
             const isActive = activeSection === item.id;
             const Icon = item.icon;
@@ -470,6 +473,19 @@ export default function SettingsPage() {
                 </button>
 
               </div>
+            </div>
+          )}
+
+          {/* NOTIFICATIONS SETTINGS */}
+          {activeSection === 'notifications' && (
+            <div className="space-y-6">
+              <div className="shrink-0 mb-4">
+                <h2 className="text-xl font-display font-extrabold text-brand-navy">Preferensi Notifikasi</h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  Atur saluran pengiriman, jam tenang (quiet hours), dan kategori notifikasi yang ingin Anda terima
+                </p>
+              </div>
+              <NotificationPreferencesForm />
             </div>
           )}
 
