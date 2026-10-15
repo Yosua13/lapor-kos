@@ -31,6 +31,8 @@ export const CAPABILITIES = {
   CALENDAR_READ: 'calendar.read',
   FILE_READ: 'file.read',
   FILE_WRITE: 'file.write',
+  NOTIFICATION_READ: 'notification.read',
+  NOTIFICATION_RETRY: 'notification.retry',
 } as const;
 
 export type Capability = (typeof CAPABILITIES)[keyof typeof CAPABILITIES];
@@ -64,6 +66,8 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.CALENDAR_READ,
     CAPABILITIES.FILE_READ,
     CAPABILITIES.FILE_WRITE,
+    CAPABILITIES.NOTIFICATION_READ,
+    CAPABILITIES.NOTIFICATION_RETRY,
   ],
   finance: [
     CAPABILITIES.PROPERTY_READ,
@@ -80,6 +84,7 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.REPORT_EXPORT,
     CAPABILITIES.CALENDAR_READ,
     CAPABILITIES.FILE_READ,
+    CAPABILITIES.NOTIFICATION_READ,
   ],
   maintenance: [
     CAPABILITIES.PROPERTY_READ,
@@ -90,6 +95,7 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.CALENDAR_READ,
     CAPABILITIES.FILE_READ,
     CAPABILITIES.FILE_WRITE,
+    CAPABILITIES.NOTIFICATION_READ,
   ],
   viewer: [
     CAPABILITIES.PROPERTY_READ,
@@ -101,6 +107,7 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.COMPLAINT_READ,
     CAPABILITIES.RULE_READ,
     CAPABILITIES.CALENDAR_READ,
+    CAPABILITIES.NOTIFICATION_READ,
   ],
 };
 
