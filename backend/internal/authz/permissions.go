@@ -52,6 +52,11 @@ const (
 	PermissionNotificationRead  Permission = "notification.read"
 	PermissionNotificationWrite Permission = "notification.write"
 	PermissionNotificationRetry Permission = "notification.retry"
+
+	PermissionVisitorPermitRead       Permission = "visitor_permit.read"
+	PermissionVisitorPermitWrite      Permission = "visitor_permit.write"
+	PermissionVisitorPermitApprove    Permission = "visitor_permit.approve"
+	PermissionVisitorPermitCheckInOut Permission = "visitor_permit.check_in_out"
 )
 
 var ErrUnknownPermission = errors.New("unknown property permission")
@@ -91,6 +96,10 @@ var knownPermissions = []Permission{
 	PermissionNotificationRead,
 	PermissionNotificationWrite,
 	PermissionNotificationRetry,
+	PermissionVisitorPermitRead,
+	PermissionVisitorPermitWrite,
+	PermissionVisitorPermitApprove,
+	PermissionVisitorPermitCheckInOut,
 }
 
 var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
@@ -126,6 +135,10 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionNotificationRead,
 		PermissionNotificationWrite,
 		PermissionNotificationRetry,
+		PermissionVisitorPermitRead,
+		PermissionVisitorPermitWrite,
+		PermissionVisitorPermitApprove,
+		PermissionVisitorPermitCheckInOut,
 	),
 	model.PropertyRoleFinance: permissionSet(
 		PermissionPropertyRead,
@@ -144,6 +157,7 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionCheckoutRead,
 		PermissionCheckoutApprove,
 		PermissionNotificationRead,
+		PermissionVisitorPermitRead,
 	),
 	model.PropertyRoleMaintenance: permissionSet(
 		PermissionPropertyRead,
@@ -157,6 +171,8 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionCheckoutRead,
 		PermissionCheckoutWrite,
 		PermissionNotificationRead,
+		PermissionVisitorPermitRead,
+		PermissionVisitorPermitCheckInOut,
 	),
 	model.PropertyRoleViewer: permissionSet(
 		PermissionPropertyRead,
@@ -170,6 +186,7 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionCalendarRead,
 		PermissionCheckoutRead,
 		PermissionNotificationRead,
+		PermissionVisitorPermitRead,
 	),
 }
 

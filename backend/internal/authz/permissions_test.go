@@ -23,6 +23,12 @@ func TestRolePermissions(t *testing.T) {
 		{name: "maintenance can update complaints", role: model.PropertyRoleMaintenance, permission: PermissionComplaintWrite, want: true},
 		{name: "viewer cannot write", role: model.PropertyRoleViewer, permission: PermissionHouseRuleWrite, want: false},
 		{name: "unknown role has no defaults", role: model.PropertyRole("unknown"), permission: PermissionPropertyRead, want: false},
+		{name: "owner can approve visitor permits", role: model.PropertyRoleOwner, permission: PermissionVisitorPermitApprove, want: true},
+		{name: "manager can approve visitor permits", role: model.PropertyRoleManager, permission: PermissionVisitorPermitApprove, want: true},
+		{name: "maintenance can check in visitor", role: model.PropertyRoleMaintenance, permission: PermissionVisitorPermitCheckInOut, want: true},
+		{name: "maintenance cannot approve visitor permits", role: model.PropertyRoleMaintenance, permission: PermissionVisitorPermitApprove, want: false},
+		{name: "finance can read visitor permits", role: model.PropertyRoleFinance, permission: PermissionVisitorPermitRead, want: true},
+		{name: "finance cannot check in visitors", role: model.PropertyRoleFinance, permission: PermissionVisitorPermitCheckInOut, want: false},
 	}
 
 	for _, test := range tests {
