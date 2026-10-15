@@ -48,6 +48,10 @@ const (
 	PermissionCheckoutRead    Permission = "checkout.read"
 	PermissionCheckoutWrite   Permission = "checkout.write"
 	PermissionCheckoutApprove Permission = "checkout.approve"
+
+	PermissionNotificationRead  Permission = "notification.read"
+	PermissionNotificationWrite Permission = "notification.write"
+	PermissionNotificationRetry Permission = "notification.retry"
 )
 
 var ErrUnknownPermission = errors.New("unknown property permission")
@@ -84,6 +88,9 @@ var knownPermissions = []Permission{
 	PermissionCheckoutRead,
 	PermissionCheckoutWrite,
 	PermissionCheckoutApprove,
+	PermissionNotificationRead,
+	PermissionNotificationWrite,
+	PermissionNotificationRetry,
 }
 
 var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
@@ -116,6 +123,9 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionCheckoutRead,
 		PermissionCheckoutWrite,
 		PermissionCheckoutApprove,
+		PermissionNotificationRead,
+		PermissionNotificationWrite,
+		PermissionNotificationRetry,
 	),
 	model.PropertyRoleFinance: permissionSet(
 		PermissionPropertyRead,
@@ -133,6 +143,7 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionFileRead,
 		PermissionCheckoutRead,
 		PermissionCheckoutApprove,
+		PermissionNotificationRead,
 	),
 	model.PropertyRoleMaintenance: permissionSet(
 		PermissionPropertyRead,
@@ -145,6 +156,7 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionFileWrite,
 		PermissionCheckoutRead,
 		PermissionCheckoutWrite,
+		PermissionNotificationRead,
 	),
 	model.PropertyRoleViewer: permissionSet(
 		PermissionPropertyRead,
@@ -157,6 +169,7 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionReportRead,
 		PermissionCalendarRead,
 		PermissionCheckoutRead,
+		PermissionNotificationRead,
 	),
 }
 
