@@ -57,6 +57,11 @@ const (
 	PermissionVisitorPermitWrite      Permission = "visitor_permit.write"
 	PermissionVisitorPermitApprove    Permission = "visitor_permit.approve"
 	PermissionVisitorPermitCheckInOut Permission = "visitor_permit.check_in_out"
+
+	PermissionWorkOrderRead  Permission = "work_order.read"
+	PermissionWorkOrderWrite Permission = "work_order.write"
+	PermissionVendorRead     Permission = "vendor.read"
+	PermissionVendorWrite    Permission = "vendor.write"
 )
 
 var ErrUnknownPermission = errors.New("unknown property permission")
@@ -100,6 +105,10 @@ var knownPermissions = []Permission{
 	PermissionVisitorPermitWrite,
 	PermissionVisitorPermitApprove,
 	PermissionVisitorPermitCheckInOut,
+	PermissionWorkOrderRead,
+	PermissionWorkOrderWrite,
+	PermissionVendorRead,
+	PermissionVendorWrite,
 }
 
 var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
@@ -139,6 +148,10 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionVisitorPermitWrite,
 		PermissionVisitorPermitApprove,
 		PermissionVisitorPermitCheckInOut,
+		PermissionWorkOrderRead,
+		PermissionWorkOrderWrite,
+		PermissionVendorRead,
+		PermissionVendorWrite,
 	),
 	model.PropertyRoleFinance: permissionSet(
 		PermissionPropertyRead,
@@ -158,6 +171,8 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionCheckoutApprove,
 		PermissionNotificationRead,
 		PermissionVisitorPermitRead,
+		PermissionWorkOrderRead,
+		PermissionVendorRead,
 	),
 	model.PropertyRoleMaintenance: permissionSet(
 		PermissionPropertyRead,
@@ -173,6 +188,9 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionNotificationRead,
 		PermissionVisitorPermitRead,
 		PermissionVisitorPermitCheckInOut,
+		PermissionWorkOrderRead,
+		PermissionWorkOrderWrite,
+		PermissionVendorRead,
 	),
 	model.PropertyRoleViewer: permissionSet(
 		PermissionPropertyRead,
@@ -187,6 +205,8 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionCheckoutRead,
 		PermissionNotificationRead,
 		PermissionVisitorPermitRead,
+		PermissionWorkOrderRead,
+		PermissionVendorRead,
 	),
 }
 

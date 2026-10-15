@@ -11,11 +11,14 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Yosua13/lapor-kos/backend/internal/model"
 )
 
 type AIServiceInterface interface {
 	GenerateEmpathicResponse(ctx context.Context, category, title, description string) (string, error)
 	GenerateGroupWarning(ctx context.Context, description string) (string, error)
+	GenerateAdvisory(ctx context.Context, category, title, description string) (*model.AISuggestion, error)
 }
 
 type AIService struct {
@@ -172,3 +175,119 @@ func (s *AIService) getFallbackEmpathicResponse(category string) string {
 		return "Terima kasih atas laporan pengaduan Anda. Informasi ini telah berhasil kami catat dan langsung kami sampaikan kepada pengelola/pemilik kos untuk dievaluasi dan ditindaklanjuti sesegera mungkin demi kenyamanan bersama."
 	}
 }
+
+// GenerateAdvisory provides category, priority, impact, summary, draft response, and recommended action.
+// AC 5: Any AI failure gracefully falls back to deterministic rule-based advisory without blocking complaint workflow.
+func (s *AIService) GenerateAdvisory(ctx context.Context, category, title, description string) (*model.AISuggestion, error) {
+	prompt := fmt.Sprintf(`Anda adalah AI Advisory untuk operasional kos. Analisis tiket komplain berikut:
+Kategori input: %s
+Judul: %s
+Deskripsi: %s
+
+Tugas:
+Analisis tingkat urgensi, dampak masalah, ringkasan, dan rekomendasi penanganan.
+Format output WAJIB JSON persis seperti berikut tanpa format markdown json tambahan:
+{
+  "suggested_category": "facility|cleanliness|noisy|security|other",
+  "suggested_priority": "urgent|high|medium|low",
+  "suggested_impact": "emergency|major|minor",
+  "summary": "Ringkasan 1 kalimat jelas tentang inti masalah",
+  "draft_response": "Draft jawaban sopan dan solutif untuk penyewa",
+  "recommended_action": "Rekomendasi penanganan teknis/operasional untuk pengelola",
+  "confidence_score": 0.90
+}`, category, title, description)
+
+	res, err := s.callGemini(ctx, prompt)
+	if err == nil && res != "" {
+		cleaned := strings.TrimSpace(res)
+		cleaned = strings.TrimPrefix(cleaned, "```json")
+		cleaned = strings.TrimPrefix(cleaned, "```")
+		cleaned = strings.TrimSuffix(cleaned, "```")
+		cleaned = strings.TrimSpace(cleaned)
+
+		var parsed struct {
+			SuggestedCategory string  `json:"suggested_category"`
+			SuggestedPriority string  `json:"suggested_priority"`
+			SuggestedImpact   string  `json:"suggested_impact"`
+			Summary           string  `json:"summary"`
+			DraftResponse     string  `json:"draft_response"`
+			RecommendedAction string  `json:"recommended_action"`
+			ConfidenceScore   float64 `json:"confidence_score"`
+		}
+
+		if jsonErr := json.Unmarshal([]byte(cleaned), &parsed); jsonErr == nil {
+			if parsed.SuggestedCategory == "" {
+				parsed.SuggestedCategory = category
+			}
+			if parsed.SuggestedPriority == "" {
+				parsed.SuggestedPriority = model.ComplaintPriorityMedium
+			}
+			if parsed.SuggestedImpact == "" {
+				parsed.SuggestedImpact = model.ComplaintImpactMinor
+			}
+			if parsed.ConfidenceScore <= 0 {
+				parsed.ConfidenceScore = 0.85
+			}
+			return &model.AISuggestion{
+				SuggestedCategory: parsed.SuggestedCategory,
+				SuggestedPriority: parsed.SuggestedPriority,
+				SuggestedImpact:   parsed.SuggestedImpact,
+				Summary:           parsed.Summary,
+				DraftResponse:     parsed.DraftResponse,
+				RecommendedAction: parsed.RecommendedAction,
+				ConfidenceScore:   parsed.ConfidenceScore,
+				ModelVersion:      "gemini-2.5-flash",
+			}, nil
+		}
+	}
+
+	// Fallback rule-based advisory
+	return s.getFallbackAdvisory(category, title, description), nil
+}
+
+func (s *AIService) getFallbackAdvisory(category, title, description string) *model.AISuggestion {
+	lowerText := strings.ToLower(title + " " + description)
+
+	priority := model.ComplaintPriorityMedium
+	impact := model.ComplaintImpactMinor
+	action := "Lakukan pengecekan unit dan koordinasikan penanganan dengan tim pengelola."
+	confidence := 0.85
+
+	// Emergency / Urgent keywords
+	if strings.Contains(lowerText, "kebocoran") || strings.Contains(lowerText, "bocor parah") ||
+		strings.Contains(lowerText, "korsleting") || strings.Contains(lowerText, "listrik padam") ||
+		strings.Contains(lowerText, "kebakaran") || strings.Contains(lowerText, "maling") ||
+		strings.Contains(lowerText, "pencurian") || strings.Contains(lowerText, "gas") {
+		priority = model.ComplaintPriorityUrgent
+		impact = model.ComplaintImpactEmergency
+		action = "Segera hubungi teknisi darurat/vendor dan periksa lokasi segera demi keamanan penghuni."
+		confidence = 0.95
+	} else if strings.Contains(lowerText, "ac rusak") || strings.Contains(lowerText, "ac mati") ||
+		strings.Contains(lowerText, "toilet mampet") || strings.Contains(lowerText, "air mati") ||
+		strings.Contains(lowerText, "pompa") {
+		priority = model.ComplaintPriorityHigh
+		impact = model.ComplaintImpactMajor
+		action = "Buat work order untuk vendor/teknisi dan jadwalkan kunjungan perbaikan dalam 24 jam."
+		confidence = 0.90
+	} else if category == "noisy" {
+		priority = model.ComplaintPriorityHigh
+		impact = model.ComplaintImpactMajor
+		action = "Kirim himbauan ketenangan ke grup kos dan koordinasikan teguran dengan pengelola."
+		confidence = 0.88
+	}
+
+	summary := fmt.Sprintf("Laporan mengenai %s pada fasilitas kos: %s", category, title)
+	draftResponse := s.getFallbackEmpathicResponse(category)
+
+	return &model.AISuggestion{
+		SuggestedCategory: category,
+		SuggestedPriority: priority,
+		SuggestedImpact:   impact,
+		Summary:           summary,
+		DraftResponse:     draftResponse,
+		RecommendedAction: action,
+		ConfidenceScore:   confidence,
+		ModelVersion:      "rule-engine-fallback",
+	}
+}
+
