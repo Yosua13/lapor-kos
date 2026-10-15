@@ -29,6 +29,7 @@ type handlers struct {
 	invoice         *handler.InvoiceHandler
 	roomTransfer    *handler.RoomTransferHandler
 	checkout        *handler.CheckoutHandler
+	notification    *handler.NotificationHandler
 }
 
 type repositories struct {
@@ -58,6 +59,10 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	invoiceRepo := repository.NewInvoiceRepository(db)
 	roomTransferRepo := repository.NewRoomTransferRepository(db)
 	checkoutRepo := repository.NewCheckoutRepository(db)
+	notificationRepo := repository.NewNotificationRepository(db)
+
+	deliveryCron := cron.NewDeliveryCron(notificationRepo, whatsAppService, emailService)
+	deliveryCron.Start()
 
 	h := handlers{
 		auth:            handler.NewAuthHandler(userRepo, emailService, storageService),
@@ -74,6 +79,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		invoice:         handler.NewInvoiceHandler(invoiceRepo, billingCron),
 		roomTransfer:    handler.NewRoomTransferHandler(roomTransferRepo, db),
 		checkout:        handler.NewCheckoutHandler(checkoutRepo, db),
+		notification:    handler.NewNotificationHandler(notificationRepo, whatsAppService, emailService),
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
@@ -112,6 +118,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	registerPropertyRoutes(api, h.property, repos)
 	registerLegacyTenantRoutes(api, h, repos)
 	registerTenantLifecycleRoutes(api, h.tenantLifecycle, repos)
+	registerNotificationRoutes(api, h.notification, repos)
 	registerPropertyOperations(api, h, repos)
 	registerPropertyOperations(api.Group("/v1/properties/:property_id"), h, repos)
 
@@ -320,4 +327,21 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 	checkouts.POST("/:id/execute", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutApprove), h.checkout.ExecuteCheckout)
 	checkouts.POST("/:id/cancel", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutWrite), h.checkout.CancelCheckout)
 	checkouts.POST("/:id/room-override", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionCheckoutApprove), h.checkout.OverrideRoom)
+
+	notifications := api.Group("/notifications", authn)
+	notifications.GET("/outbox", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionNotificationRead), h.notification.ListOutbox)
+	notifications.GET("/outbox/:outboxId", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionNotificationRead), h.notification.GetOutboxItem)
+	notifications.POST("/outbox/:outboxId/retry", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionNotificationRetry), h.notification.RetryOutboxItem)
+}
+
+func registerNotificationRoutes(api *gin.RouterGroup, notifHandler *handler.NotificationHandler, repos repositories) {
+	authn := middleware.AuthMiddleware(repos.user)
+	notifs := api.Group("/notifications", authn)
+	notifs.GET("", notifHandler.ListNotifications)
+	notifs.GET("/unread-count", notifHandler.GetUnreadCount)
+	notifs.POST("/:id/read", notifHandler.MarkRead)
+	notifs.POST("/read-all", notifHandler.MarkAllRead)
+	notifs.DELETE("/:id", notifHandler.DeleteNotification)
+	notifs.GET("/preferences", notifHandler.GetPreferences)
+	notifs.PUT("/preferences", notifHandler.UpdatePreferences)
 }
