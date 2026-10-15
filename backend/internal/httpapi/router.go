@@ -30,6 +30,7 @@ type handlers struct {
 	roomTransfer    *handler.RoomTransferHandler
 	checkout        *handler.CheckoutHandler
 	notification    *handler.NotificationHandler
+	visitorPermit   *handler.VisitorPermitHandler
 }
 
 type repositories struct {
@@ -60,6 +61,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	roomTransferRepo := repository.NewRoomTransferRepository(db)
 	checkoutRepo := repository.NewCheckoutRepository(db)
 	notificationRepo := repository.NewNotificationRepository(db)
+	visitorPermitRepo := repository.NewVisitorPermitRepository(db)
 
 	deliveryCron := cron.NewDeliveryCron(notificationRepo, whatsAppService, emailService)
 	deliveryCron.Start()
@@ -80,6 +82,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		roomTransfer:    handler.NewRoomTransferHandler(roomTransferRepo, db),
 		checkout:        handler.NewCheckoutHandler(checkoutRepo, db),
 		notification:    handler.NewNotificationHandler(notificationRepo, whatsAppService, emailService),
+		visitorPermit:   handler.NewVisitorPermitHandler(visitorPermitRepo),
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
@@ -113,6 +116,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	})
 	api.POST("/payments/webhook", h.payment.ProcessWebhook)
 	api.POST("/payments/webhook/:provider", h.payment.ProcessWebhook)
+	api.GET("/visitor-passes/:token", middleware.RateLimit(30, time.Minute), h.visitorPermit.VerifyPass)
 
 	registerAuthRoutes(api, h.auth, repos.user)
 	registerPropertyRoutes(api, h.property, repos)
@@ -219,6 +223,12 @@ func registerLegacyTenantRoutes(api *gin.RouterGroup, h handlers, repos reposito
 	checkouts.GET("/my", tenantRole, h.checkout.TenantListCheckouts)
 	checkouts.POST("/my", tenantRole, h.checkout.TenantCreateNotice)
 	checkouts.GET("/my/:id", tenantRole, h.checkout.TenantGetCheckout)
+
+	visitorPermits := api.Group("/visitor-permits", authn)
+	visitorPermits.GET("/my", tenantRole, h.visitorPermit.TenantListPermits)
+	visitorPermits.POST("/my", tenantRole, h.visitorPermit.TenantCreatePermit)
+	visitorPermits.GET("/my/:id", tenantRole, h.visitorPermit.TenantGetPermit)
+	visitorPermits.POST("/my/:id/cancel", tenantRole, h.visitorPermit.TenantCancelPermit)
 
 	complaints := api.Group("/complaints", authn)
 	complaints.POST("", tenantRole, h.complaint.CreateComplaint)
@@ -332,6 +342,17 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 	notifications.GET("/outbox", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionNotificationRead), h.notification.ListOutbox)
 	notifications.GET("/outbox/:outboxId", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionNotificationRead), h.notification.GetOutboxItem)
 	notifications.POST("/outbox/:outboxId/retry", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionNotificationRetry), h.notification.RetryOutboxItem)
+
+	visitorPermits := api.Group("/visitor-permits", authn)
+	visitorPermits.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitRead), h.visitorPermit.ListPermits)
+	visitorPermits.GET("/summary", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitRead), h.visitorPermit.GetSummary)
+	visitorPermits.GET("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitRead), h.visitorPermit.GetPermit)
+	visitorPermits.POST("/:id/approve", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitApprove), h.visitorPermit.ApprovePermit)
+	visitorPermits.POST("/:id/reject", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitApprove), h.visitorPermit.RejectPermit)
+	visitorPermits.POST("/:id/request-change", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitApprove), h.visitorPermit.RequestChangePermit)
+	visitorPermits.POST("/:id/check-in", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitCheckInOut), h.visitorPermit.CheckInVisitor)
+	visitorPermits.POST("/:id/check-out", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitCheckInOut), h.visitorPermit.CheckOutVisitor)
+	visitorPermits.POST("/retention/apply", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitApprove), h.visitorPermit.ApplyRetentionPolicy)
 }
 
 func registerNotificationRoutes(api *gin.RouterGroup, notifHandler *handler.NotificationHandler, repos repositories) {

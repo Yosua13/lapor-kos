@@ -34,11 +34,11 @@ Menyediakan proses formal untuk permintaan kunjungan atau menginap agar keputusa
 
 ## Kriteria Penerimaan
 
-- [ ] Tenant hanya dapat mengajukan izin untuk active occupancy miliknya.
-- [ ] Request yang melewati akhir kontrak atau melanggar aturan wajib ditolak atau ditandai jelas.
-- [ ] Setiap keputusan menyimpan actor, waktu, status, dan alasan.
-- [ ] Data tamu hanya dapat diakses role terkait dan mengikuti masa retensi pendek.
-- [ ] Riwayat dapat difilter berdasarkan property, tanggal, dan status.
+- [x] Tenant hanya dapat mengajukan izin untuk active occupancy miliknya.
+- [x] Request yang melewati akhir kontrak atau melanggar aturan wajib ditolak atau ditandai jelas.
+- [x] Setiap keputusan menyimpan actor, waktu, status, dan alasan.
+- [x] Data tamu hanya dapat diakses role terkait dan mengikuti masa retensi pendek.
+- [x] Riwayat dapat difilter berdasarkan property, tanggal, dan status.
 
 ## Ketergantungan
 
