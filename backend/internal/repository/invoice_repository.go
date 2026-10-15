@@ -264,7 +264,7 @@ func (r *InvoiceRepository) Generate(ctx context.Context,propertyID uuid.UUID,pe
 func (r *InvoiceRepository) finishJob(ctx context.Context,job *model.BillingJobResult,status string,source error)error{
 	if source!=nil{job.ErrorSummary=source.Error()};job.Status=status;finished:=time.Now().UTC();job.FinishedAt=&finished
 	_,err:=r.db.Exec(ctx,`UPDATE billing_job_runs SET status=$1,contracts_seen=$2,invoices_created=$3,invoices_skipped=$4,error_summary=$5,finished_at=$6 WHERE id=$7`,status,job.ContractsSeen,job.InvoicesCreated,job.InvoicesSkipped,job.ErrorSummary,finished,job.ID)
-	if err==nil{_,err=r.db.Exec(ctx,`INSERT INTO billing_job_events(property_id,job_run_id,event_type,metadata) VALUES($1,$2,$3,jsonb_build_object('contracts_seen',$4,'invoices_created',$5,'invoices_skipped',$6,'error',$7::text))`,job.PropertyID,job.ID,status,job.ContractsSeen,job.InvoicesCreated,job.InvoicesSkipped,job.ErrorSummary)}
+	if err==nil{_,err=r.db.Exec(ctx,`INSERT INTO billing_job_events(property_id,job_run_id,event_type,metadata) VALUES($1,$2,$3,jsonb_build_object('contracts_seen',$4::int,'invoices_created',$5::int,'invoices_skipped',$6::int,'error',$7::text))`,job.PropertyID,job.ID,status,job.ContractsSeen,job.InvoicesCreated,job.InvoicesSkipped,job.ErrorSummary)}
 	return err
 }
 
