@@ -33,6 +33,10 @@ export const CAPABILITIES = {
   FILE_WRITE: 'file.write',
   NOTIFICATION_READ: 'notification.read',
   NOTIFICATION_RETRY: 'notification.retry',
+  VISITOR_PERMIT_READ: 'visitor_permit.read',
+  VISITOR_PERMIT_WRITE: 'visitor_permit.write',
+  VISITOR_PERMIT_APPROVE: 'visitor_permit.approve',
+  VISITOR_PERMIT_CHECK_IN_OUT: 'visitor_permit.check_in_out',
 } as const;
 
 export type Capability = (typeof CAPABILITIES)[keyof typeof CAPABILITIES];
@@ -68,6 +72,10 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.FILE_WRITE,
     CAPABILITIES.NOTIFICATION_READ,
     CAPABILITIES.NOTIFICATION_RETRY,
+    CAPABILITIES.VISITOR_PERMIT_READ,
+    CAPABILITIES.VISITOR_PERMIT_WRITE,
+    CAPABILITIES.VISITOR_PERMIT_APPROVE,
+    CAPABILITIES.VISITOR_PERMIT_CHECK_IN_OUT,
   ],
   finance: [
     CAPABILITIES.PROPERTY_READ,
@@ -85,6 +93,7 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.CALENDAR_READ,
     CAPABILITIES.FILE_READ,
     CAPABILITIES.NOTIFICATION_READ,
+    CAPABILITIES.VISITOR_PERMIT_READ,
   ],
   maintenance: [
     CAPABILITIES.PROPERTY_READ,
@@ -96,6 +105,8 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.FILE_READ,
     CAPABILITIES.FILE_WRITE,
     CAPABILITIES.NOTIFICATION_READ,
+    CAPABILITIES.VISITOR_PERMIT_READ,
+    CAPABILITIES.VISITOR_PERMIT_CHECK_IN_OUT,
   ],
   viewer: [
     CAPABILITIES.PROPERTY_READ,
@@ -108,6 +119,7 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.RULE_READ,
     CAPABILITIES.CALENDAR_READ,
     CAPABILITIES.NOTIFICATION_READ,
+    CAPABILITIES.VISITOR_PERMIT_READ,
   ],
 };
 
