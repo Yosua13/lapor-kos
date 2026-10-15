@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/authz"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
@@ -34,6 +35,17 @@ type paymentRepository interface {
 	SubmitProof(context.Context, uuid.UUID, uuid.UUID, string, string, float64, string) error
 }
 
+type advancedPaymentRepository interface {
+	paymentRepository
+	VerifyPaymentTx(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, model.VerifyPaymentRequest) (*model.Payment, error)
+	ProcessWebhook(context.Context, model.PaymentWebhookPayload) (*model.Payment, bool, error)
+	GetReceipt(context.Context, uuid.UUID, uuid.UUID) (*model.PaymentReceipt, error)
+	GetReceiptForUser(context.Context, uuid.UUID, uuid.UUID) (*model.PaymentReceipt, error)
+	GetReconciliationReport(context.Context, uuid.UUID, string, string) (*model.ReconciliationReport, error)
+	CreateRefund(context.Context, uuid.UUID, uuid.UUID, model.CreateRefundRequestPayload) (*model.RefundRequest, error)
+	ProcessRefund(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, model.ProcessRefundPayload) (*model.RefundRequest, error)
+}
+
 func NewPaymentHandler(repo paymentRepository, storageService *service.StorageService, userRepo ...repository.UserRepo) *PaymentHandler {
 	handler := &PaymentHandler{repo: repo, storageService: storageService}
 	if len(userRepo) > 0 {
@@ -49,23 +61,15 @@ func (h *PaymentHandler) GetAllPayments(c *gin.Context) {
 		return
 	}
 
-	status := c.Query("status")
-	monthStr := c.Query("month")
-	yearStr := c.Query("year")
+	filterStatus := c.Query("status")
+	filterMonth, _ := strconv.Atoi(c.Query("month"))
+	filterYear, _ := strconv.Atoi(c.Query("year"))
 	contractID := c.Query("contract_id")
 	userID := c.Query("user_id")
 
-	var month, year int
-	if monthStr != "" {
-		month, _ = strconv.Atoi(monthStr)
-	}
-	if yearStr != "" {
-		year, _ = strconv.Atoi(yearStr)
-	}
-
-	payments, err := h.repo.FindAll(c.Request.Context(), scope.PropertyID, status, month, year, contractID, userID)
+	payments, err := h.repo.FindAll(c.Request.Context(), scope.PropertyID, filterStatus, filterMonth, filterYear, contractID, userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payments"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payments: " + err.Error()})
 		return
 	}
 
@@ -81,7 +85,7 @@ func (h *PaymentHandler) GetTenantPayments(c *gin.Context) {
 
 	payments, err := h.repo.FindByUserID(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch your payments"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payments: " + err.Error()})
 		return
 	}
 
@@ -107,12 +111,12 @@ func (h *PaymentHandler) GetPayment(c *gin.Context) {
 	} else {
 		payment, err = h.repo.FindByIDForUser(c.Request.Context(), id, userID)
 	}
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
 		return
-	}
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payment"})
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch payment: " + err.Error()})
 		return
 	}
 
@@ -127,15 +131,17 @@ func (h *PaymentHandler) CreatePaymentBill(c *gin.Context) {
 	}
 
 	var req struct {
-		ContractID        string  `json:"contract_id" binding:"required"`
-		PeriodMonth       int     `json:"period_month" binding:"required"`
-		PeriodYear        int     `json:"period_year" binding:"required"`
-		AmountRent        float64 `json:"amount_rent"`
-		AmountElectricity float64 `json:"amount_electricity"`
-		AmountWater       float64 `json:"amount_water"`
-		AmountOther       float64 `json:"amount_other"`
-		DueDate           string  `json:"due_date" binding:"required"`
-		Notes             string  `json:"notes"`
+		ContractID        uuid.UUID  `json:"contract_id" binding:"required"`
+		PeriodMonth       int        `json:"period_month" binding:"required"`
+		PeriodYear        int        `json:"period_year" binding:"required"`
+		AmountRent        float64    `json:"amount_rent"`
+		AmountElectricity float64    `json:"amount_electricity"`
+		AmountWater       float64    `json:"amount_water"`
+		AmountOther       float64    `json:"amount_other"`
+		AmountMinor       int64      `json:"amount_minor"`
+		DueDate           string     `json:"due_date" binding:"required"`
+		Notes             string     `json:"notes"`
+		InvoiceID         *uuid.UUID `json:"invoice_id"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -143,21 +149,20 @@ func (h *PaymentHandler) CreatePaymentBill(c *gin.Context) {
 		return
 	}
 
-	contractUUID, err := uuid.Parse(req.ContractID)
+	parsedDueDate, err := time.Parse("2006-01-02", req.DueDate)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid contract ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid due date format, expected YYYY-MM-DD"})
 		return
 	}
 
-	dueDate, err := time.Parse("2006-01-02", req.DueDate)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid due date format, must be YYYY-MM-DD"})
-		return
+	totalMinor := req.AmountMinor
+	if totalMinor <= 0 {
+		totalMinor = int64(req.AmountRent + req.AmountElectricity + req.AmountWater + req.AmountOther)
 	}
 
 	payment := &model.Payment{
 		PropertyID:        scope.PropertyID,
-		ContractID:        contractUUID,
+		ContractID:        req.ContractID,
 		OwnerID:           &scope.ActorID,
 		PeriodMonth:       req.PeriodMonth,
 		PeriodYear:        req.PeriodYear,
@@ -165,17 +170,19 @@ func (h *PaymentHandler) CreatePaymentBill(c *gin.Context) {
 		AmountElectricity: req.AmountElectricity,
 		AmountWater:       req.AmountWater,
 		AmountOther:       req.AmountOther,
-		TotalPaid:         0,
+		AmountMinor:       totalMinor,
+		Currency:          "IDR",
 		Status:            "unpaid",
-		DueDate:           dueDate,
+		DueDate:           parsedDueDate,
 		Notes:             req.Notes,
+		InvoiceID:         req.InvoiceID,
 	}
 
 	if err := h.repo.Create(c.Request.Context(), payment); errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Contract not found"})
 		return
 	} else if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create payment bill"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create payment bill: " + err.Error()})
 		return
 	}
 
@@ -201,8 +208,6 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 		return
 	}
 
-	// Authorize before uploading so a guessed foreign payment UUID cannot be
-	// used to create orphaned storage objects.
 	payment, err := h.repo.FindByIDForUser(c.Request.Context(), id, userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
@@ -212,7 +217,6 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 		return
 	}
 
-	// Handle file upload to Supabase Storage
 	proofPath, err := h.uploadFile(c, "proof", payment.PropertyID, "payment-proof")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to upload proof photo: " + err.Error()})
@@ -227,7 +231,10 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Payment proof submitted successfully. Waiting for verification."})
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Payment proof submitted successfully. Waiting for verification.",
+		"proof_url": proofPath,
+	})
 }
 
 func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
@@ -249,6 +256,20 @@ func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
 		return
 	}
 
+	if adv, isAdv := h.repo.(advancedPaymentRepository); isAdv {
+		updated, err := adv.VerifyPaymentTx(c.Request.Context(), scope.PropertyID, scope.ActorID, id, req)
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+			return
+		} else if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify payment: " + err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, updated)
+		return
+	}
+
+	// Fallback for simple paymentRepository
 	payment, err := h.repo.FindByID(c.Request.Context(), id, scope.PropertyID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
@@ -290,6 +311,165 @@ func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, updatedPayment)
+}
+
+func (h *PaymentHandler) ProcessWebhook(c *gin.Context) {
+	var payload model.PaymentWebhookPayload
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	adv, ok := h.repo.(advancedPaymentRepository)
+	if !ok {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "Webhook processing not implemented"})
+		return
+	}
+
+	payment, isDuplicate, err := adv.ProcessWebhook(c.Request.Context(), payload)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process webhook: " + err.Error()})
+		return
+	}
+
+	if isDuplicate {
+		c.JSON(http.StatusOK, gin.H{
+			"status":       "already_processed",
+			"is_duplicate": true,
+			"payment":      payment,
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"status":       "processed",
+		"is_duplicate": false,
+		"payment":      payment,
+	})
+}
+
+func (h *PaymentHandler) GetReceipt(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payment ID"})
+		return
+	}
+
+	userID, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	adv, isAdv := h.repo.(advancedPaymentRepository)
+	if !isAdv {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "Receipt service not supported"})
+		return
+	}
+
+	var rc *model.PaymentReceipt
+	if scope, hasScope := middleware.GetPropertyScope(c); hasScope {
+		rc, err = adv.GetReceipt(c.Request.Context(), scope.PropertyID, id)
+	} else {
+		rc, err = adv.GetReceiptForUser(c.Request.Context(), userID, id)
+	}
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Receipt not found for this payment"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, rc)
+}
+
+func (h *PaymentHandler) GetReconciliationReport(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
+		return
+	}
+
+	startDate := c.Query("start_date")
+	endDate := c.Query("end_date")
+
+	adv, isAdv := h.repo.(advancedPaymentRepository)
+	if !isAdv {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "Reconciliation not supported"})
+		return
+	}
+
+	report, err := adv.GetReconciliationReport(c.Request.Context(), scope.PropertyID, startDate, endDate)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate reconciliation report: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, report)
+}
+
+func (h *PaymentHandler) CreateRefund(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
+		return
+	}
+
+	var req model.CreateRefundRequestPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	adv, isAdv := h.repo.(advancedPaymentRepository)
+	if !isAdv {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "Refunds not supported"})
+		return
+	}
+
+	ref, err := adv.CreateRefund(c.Request.Context(), scope.PropertyID, scope.ActorID, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create refund request: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, ref)
+}
+
+func (h *PaymentHandler) ProcessRefund(c *gin.Context) {
+	scope, ok := middleware.GetPropertyScope(c)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Property context is required"})
+		return
+	}
+
+	refundID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid refund ID"})
+		return
+	}
+
+	var req model.ProcessRefundPayload
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	adv, isAdv := h.repo.(advancedPaymentRepository)
+	if !isAdv {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "Refunds not supported"})
+		return
+	}
+
+	ref, err := adv.ProcessRefund(c.Request.Context(), scope.PropertyID, scope.ActorID, refundID, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process refund: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, ref)
 }
 
 func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
@@ -381,7 +561,12 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 		)
 	}
 
-	html := fmt.Sprintf(`<!DOCTYPE html>
+	receiptNumberStr := payment.ID.String()[:8]
+	if payment.Receipt != nil && payment.Receipt.ReceiptNumber != "" {
+		receiptNumberStr = payment.Receipt.ReceiptNumber
+	}
+
+	htmlOutput := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
@@ -543,8 +728,8 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 
         <div class="info-grid">
             <div>
-                <div class="info-label">No. Invoice</div>
-                <div class="info-value">#PAY-%s</div>
+                <div class="info-label">No. Kwitansi / Transaksi</div>
+                <div class="info-value">#%s</div>
             </div>
             <div>
                 <div class="info-label">Kamar Kos</div>
@@ -590,14 +775,14 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 
         <div class="info-grid" style="grid-template-columns: 1fr; margin-top: 20px;">
             <div>
-                <div class="info-label">Catatan Pemilik</div>
+                <div class="info-label">Catatan Pemilik / Catatan Transaksi</div>
                 <div class="info-value" style="font-weight: normal; font-style: italic;">%s</div>
             </div>
         </div>
 
         <div class="receipt-footer">
             <p>Terima kasih atas pembayaran Anda.</p>
-            <p>Kwitansi ini sah dan diterbitkan secara elektronik oleh Lapor Kos.</p>
+            <p>Kwitansi ini sah, memiliki checksum kriptografis, dan diterbitkan secara elektronik oleh Lapor Kos.</p>
         </div>
     </div>
 </body>
@@ -605,7 +790,7 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 		html.EscapeString(roomNumber),
 		html.EscapeString(payment.Status),
 		html.EscapeString(payment.Status),
-		payment.ID.String()[:8],
+		html.EscapeString(receiptNumberStr),
 		html.EscapeString(roomNumber),
 		html.EscapeString(tenantName),
 		html.EscapeString(tenantPhone),
@@ -620,7 +805,7 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 	)
 
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.String(http.StatusOK, html)
+	c.String(http.StatusOK, htmlOutput)
 }
 
 func formatRupiah(amount float64) string {
@@ -646,7 +831,6 @@ func formatRupiah(amount float64) string {
 	return "Rp " + res
 }
 
-// uploadFile stores a proof in the private namespace of its contract property.
 func (h *PaymentHandler) uploadFile(c *gin.Context, fieldName string, propertyID uuid.UUID, prefix string) (string, error) {
 	fileHeader, err := c.FormFile(fieldName)
 	if err != nil {
@@ -665,4 +849,8 @@ func currentUserID(c *gin.Context) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return userID, true
+}
+
+func (h *PaymentHandler) EnsurePermissions() {
+	_ = authz.PermissionPaymentRead
 }

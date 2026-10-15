@@ -34,11 +34,11 @@ Membangun proses pembayaran yang terpisah dari invoice sehingga pembayaran penuh
 
 ## Kriteria Penerimaan
 
-- [ ] Dua pembayaran parsial memperbarui outstanding tanpa menimpa bukti sebelumnya.
-- [ ] Webhook atau retry dengan provider reference yang sama tidak membuat transaksi ganda.
-- [ ] Verifikasi hanya dapat dilakukan oleh role berizin pada property terkait.
-- [ ] Receipt yang sudah diterbitkan tidak dapat diubah secara diam-diam.
-- [ ] Laporan rekonsiliasi dapat menjelaskan payment, allocation, refund, credit, dan settlement.
+- [x] Dua pembayaran parsial memperbarui outstanding tanpa menimpa bukti sebelumnya.
+- [x] Webhook atau retry dengan provider reference yang sama tidak membuat transaksi ganda.
+- [x] Verifikasi hanya dapat dilakukan oleh role berizin pada property terkait.
+- [x] Receipt yang sudah diterbitkan tidak dapat diubah secara diam-diam.
+- [x] Laporan rekonsiliasi dapat menjelaskan payment, allocation, refund, credit, dan settlement.
 
 ## Ketergantungan
 
