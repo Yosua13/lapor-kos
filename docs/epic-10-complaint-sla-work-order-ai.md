@@ -34,11 +34,11 @@ Mengembangkan komplain sederhana menjadi proses penyelesaian maintenance yang te
 
 ## Kriteria Penerimaan
 
-- [ ] Tiket prioritas tinggi mengikuti aturan triage dan menghasilkan alert terukur.
-- [ ] Tenant hanya melihat timeline yang relevan dan aman.
-- [ ] Tenant dapat mengonfirmasi penyelesaian atau membuka kembali tiket.
-- [ ] Dashboard menghitung first response time dan resolution time berdasarkan SLA.
-- [ ] Kegagalan AI atau channel eksternal tidak menghilangkan tiket maupun perubahan status.
+- [x] Tiket prioritas tinggi mengikuti aturan triage dan menghasilkan alert terukur.
+- [x] Tenant hanya melihat timeline yang relevan dan aman.
+- [x] Tenant dapat mengonfirmasi penyelesaian atau membuka kembali tiket.
+- [x] Dashboard menghitung first response time dan resolution time berdasarkan SLA.
+- [x] Kegagalan AI atau channel eksternal tidak menghilangkan tiket maupun perubahan status.
 
 ## Ketergantungan
 
