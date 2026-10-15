@@ -73,7 +73,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		contract:        handler.NewContractHandler(contractRepo, contractLifecycleRepo, contractDocumentService),
 		payment:         handler.NewPaymentHandler(paymentRepo, storageService, userRepo),
 		calendar:        handler.NewCalendarHandler(calendarRepo),
-		complaint:       handler.NewComplaintHandler(complaintRepo, aiService, whatsAppService, storageService),
+		complaint:       handler.NewComplaintHandler(complaintRepo, aiService, whatsAppService, storageService, notificationRepo),
 		houseRule:       handler.NewHouseRuleHandler(houseRuleRepo, userRepo),
 		report:          handler.NewReportHandler(paymentRepo, userRepo, reportPDFService),
 		file:            handler.NewFileHandler(storageService),
@@ -234,6 +234,11 @@ func registerLegacyTenantRoutes(api *gin.RouterGroup, h handlers, repos reposito
 	complaints.POST("", tenantRole, h.complaint.CreateComplaint)
 	complaints.POST("/upload", tenantRole, h.complaint.UploadPhoto)
 	complaints.GET("/my", tenantRole, h.complaint.GetTenantComplaints)
+	complaints.GET("/my/:id", tenantRole, h.complaint.GetTenantComplaintByID)
+	complaints.GET("/my/:id/timeline", tenantRole, h.complaint.GetComplaintTimeline)
+	complaints.POST("/my/:id/events", tenantRole, h.complaint.AddComplaintEvent)
+	complaints.POST("/my/:id/confirm", tenantRole, h.complaint.TenantConfirmResolution)
+	complaints.POST("/my/:id/reopen", tenantRole, h.complaint.TenantReopenComplaint)
 }
 
 func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos repositories) {
@@ -315,8 +320,24 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 
 	complaints := api.Group("/complaints", authn)
 	complaints.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintRead), h.complaint.GetOwnerComplaints)
+	complaints.GET("/sla-dashboard", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintRead), h.complaint.GetSLADashboard)
+	complaints.GET("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintRead), h.complaint.GetComplaintByID)
 	complaints.PUT("/:id/status", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintWrite), h.complaint.UpdateComplaintStatus)
+	complaints.POST("/:id/triage", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintWrite), h.complaint.TriageComplaint)
+	complaints.POST("/:id/assign", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintWrite), h.complaint.AssignComplaint)
+	complaints.GET("/:id/timeline", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintRead), h.complaint.GetComplaintTimeline)
+	complaints.POST("/:id/events", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintWrite), h.complaint.AddComplaintEvent)
+	complaints.GET("/:id/ai-suggestion", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintRead), h.complaint.GetAISuggestion)
+	complaints.POST("/:id/ai-suggestion/apply", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionComplaintWrite), h.complaint.ApplyAISuggestion)
+	complaints.GET("/:id/work-orders", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionWorkOrderRead), h.complaint.ListWorkOrders)
+	complaints.POST("/:id/work-orders", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionWorkOrderWrite), h.complaint.CreateWorkOrder)
+	complaints.PUT("/:id/work-orders/:wo_id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionWorkOrderWrite), h.complaint.UpdateWorkOrder)
 	complaints.PUT("/whatsapp-group", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionPropertyUpdate), h.complaint.UpdateWhatsAppGroup)
+
+	vendors := api.Group("/vendors", authn)
+	vendors.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVendorRead), h.complaint.ListVendors)
+	vendors.POST("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVendorWrite), h.complaint.CreateVendor)
+	vendors.PUT("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVendorWrite), h.complaint.UpdateVendor)
 
 	rules := api.Group("/rules", authn)
 	rules.GET("", middleware.OptionalPropertyAccess(propertyRepo, authz.PermissionHouseRuleRead), h.houseRule.GetRules)
