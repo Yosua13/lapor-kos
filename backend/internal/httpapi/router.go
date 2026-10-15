@@ -27,6 +27,7 @@ type handlers struct {
 	file            *handler.FileHandler
 	tenantLifecycle *handler.TenantLifecycleHandler
 	invoice         *handler.InvoiceHandler
+	roomTransfer    *handler.RoomTransferHandler
 }
 
 type repositories struct {
@@ -54,6 +55,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	houseRuleRepo := repository.NewHouseRuleRepository(db)
 	tenantLifecycleRepo := repository.NewTenantLifecycleRepository(db)
 	invoiceRepo := repository.NewInvoiceRepository(db)
+	roomTransferRepo := repository.NewRoomTransferRepository(db)
 
 	h := handlers{
 		auth:            handler.NewAuthHandler(userRepo, emailService, storageService),
@@ -68,6 +70,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		file:            handler.NewFileHandler(storageService),
 		tenantLifecycle: handler.NewTenantLifecycleHandler(tenantLifecycleRepo, userRepo, emailService, whatsAppService, storageService),
 		invoice:         handler.NewInvoiceHandler(invoiceRepo, billingCron),
+		roomTransfer:    handler.NewRoomTransferHandler(roomTransferRepo, db),
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
@@ -195,6 +198,13 @@ func registerLegacyTenantRoutes(api *gin.RouterGroup, h handlers, repos reposito
 	invoices.GET("/my", tenantRole, h.invoice.ListMine)
 	invoices.GET("/:id/my", tenantRole, h.invoice.GetMine)
 
+	roomTransfers := api.Group("/room-transfers", authn)
+	roomTransfers.GET("/my", tenantRole, h.roomTransfer.ListMyTransfers)
+	roomTransfers.POST("/my/preview", tenantRole, h.roomTransfer.PreviewMyTransfer)
+	roomTransfers.POST("/my", tenantRole, h.roomTransfer.CreateMyTransfer)
+	roomTransfers.POST("/my/:id/cancel", tenantRole, h.roomTransfer.CancelMyTransfer)
+	tenants.GET("/me/room-history", tenantRole, h.roomTransfer.GetMyRoomHistory)
+
 	complaints := api.Group("/complaints", authn)
 	complaints.POST("", tenantRole, h.complaint.CreateComplaint)
 	complaints.POST("/upload", tenantRole, h.complaint.UploadPhoto)
@@ -218,11 +228,22 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 
 	tenants := api.Group("/tenants", authn)
 	tenants.GET("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantRead), h.auth.GetTenantProfileByID)
+	tenants.GET("/:id/room-history", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantRead), h.roomTransfer.GetTenantRoomHistory)
 	tenants.PUT("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantWrite), h.auth.UpdateTenantProfileByID)
 	tenants.DELETE("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantDelete), h.auth.DeleteTenantByID)
 	tenants.POST("/:id/checkout", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantWrite), h.auth.CheckoutTenant)
 	tenants.POST("/:id/change-room", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionTenantWrite), h.auth.ChangeRoom)
 	tenants.POST("/:id/extend-contract", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractWrite), h.auth.ExtendContract)
+
+	transfers := api.Group("/room-transfers", authn)
+	transfers.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionRoomRead), h.roomTransfer.ListTransfers)
+	transfers.GET("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionRoomRead), h.roomTransfer.GetTransfer)
+	transfers.POST("/preview", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionRoomWrite), h.roomTransfer.PreviewTransfer)
+	transfers.POST("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionRoomWrite), h.roomTransfer.CreateTransfer)
+	transfers.PUT("/:id/approve", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionRoomWrite), h.roomTransfer.ApproveTransfer)
+	transfers.PUT("/:id/reject", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionRoomWrite), h.roomTransfer.RejectTransfer)
+	transfers.POST("/:id/execute", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionRoomWrite), h.roomTransfer.ExecuteTransfer)
+	transfers.POST("/:id/cancel", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionRoomWrite), h.roomTransfer.CancelTransfer)
 
 	contracts := api.Group("/contracts", authn)
 	contracts.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionContractRead), h.contract.GetContracts)

@@ -30,7 +30,8 @@ import {
   Wallet,
   Download,
   ChevronDown,
-  CheckSquare
+  CheckSquare,
+  ArrowRightLeft
 } from 'lucide-react';
 import { apiFetch, getImageUrl } from '@/lib/api';
 import { CAPABILITIES } from '@/features/authorization/permissions';
@@ -630,6 +631,13 @@ export default function RoomsPage() {
               className="flex-1 sm:flex-none px-4 py-2.5 border border-gray-200 text-[#1f2937] font-bold text-[13px] rounded-[10px] hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm bg-white"
             >
               <Download className="w-4 h-4" /> Export Data
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/rooms/transfers')}
+              className="flex-1 sm:flex-none px-4 py-2.5 border border-teal-200 text-[#0e8a7a] bg-teal-50/50 hover:bg-teal-50 font-bold text-[13px] rounded-[10px] transition-colors flex items-center justify-center gap-2 whitespace-nowrap shadow-sm"
+            >
+              <ArrowRightLeft className="w-4 h-4" /> Pindah Kamar
             </button>
             {canWriteRooms && (
               <button

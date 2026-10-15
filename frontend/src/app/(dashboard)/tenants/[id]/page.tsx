@@ -43,6 +43,8 @@ import {
   PhoneCall
 } from 'lucide-react';
 import { apiFetch, getImageUrl } from '@/lib/api';
+import { RoomTransferModal } from '@/features/room-transfers/components/RoomTransferModal';
+import { TenantRoomHistory } from '@/features/room-transfers/components/TenantRoomHistory';
 
 interface Tenant {
   id: string;
@@ -159,7 +161,7 @@ export default function TenantProfilePage() {
     emergency_contact_phone: ''
   });
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [activeMenu, setActiveMenu] = useState<'ringkasan' | 'kontrak' | 'data-pribadi' | 'dokumen' | 'pembayaran' | 'aktivitas'>('ringkasan');
+  const [activeMenu, setActiveMenu] = useState<'ringkasan' | 'kontrak' | 'data-pribadi' | 'dokumen' | 'pembayaran' | 'aktivitas' | 'histori-kamar'>('ringkasan');
 
   const fetchData = async () => {
     if (!id) return;
@@ -695,6 +697,10 @@ export default function TenantProfilePage() {
             <button onClick={() => setActiveMenu('aktivitas')} className={`flex items-center gap-3 px-4 py-3 font-bold text-[14px] rounded-lg relative overflow-hidden group transition-colors w-full text-left ${activeMenu === 'aktivitas' ? 'bg-[#0e8a7a]/5 text-[#0e8a7a]' : 'text-gray-500 hover:bg-gray-50 font-medium'}`}>
               {activeMenu === 'aktivitas' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#0e8a7a] rounded-r-full"></div>}
               <Activity className={`w-5 h-5 ${activeMenu === 'aktivitas' ? '' : 'text-gray-400'}`} /> Aktivitas
+            </button>
+            <button onClick={() => setActiveMenu('histori-kamar')} className={`flex items-center gap-3 px-4 py-3 font-bold text-[14px] rounded-lg relative overflow-hidden group transition-colors w-full text-left ${activeMenu === 'histori-kamar' ? 'bg-[#0e8a7a]/5 text-[#0e8a7a]' : 'text-gray-500 hover:bg-gray-50 font-medium'}`}>
+              {activeMenu === 'histori-kamar' && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#0e8a7a] rounded-r-full"></div>}
+              <DoorOpen className={`w-5 h-5 ${activeMenu === 'histori-kamar' ? '' : 'text-gray-400'}`} /> Riwayat Kamar
             </button>
           </nav>
         </div>
@@ -1961,6 +1967,26 @@ export default function TenantProfilePage() {
               </button>
             </div>
           )}
+
+          {/* Histori Kamar View */}
+          {activeMenu === 'histori-kamar' && (
+            <div className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-bold text-[20px] text-[#1f2937] mb-1">Riwayat Kamar</h2>
+                  <p className="text-[13px] text-gray-500">Histori hunian kamar dan perpindahan tenant berdasarkan rentang tanggal.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowChangeRoomModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#0e8a7a] hover:bg-[#0c7668] text-white rounded-xl text-[13px] font-bold transition-colors shadow-sm"
+                >
+                  <ArrowRightLeft className="w-4 h-4" /> Pindah Kamar
+                </button>
+              </div>
+              <TenantRoomHistory tenantId={id as string} isTenant={false} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -2109,63 +2135,21 @@ export default function TenantProfilePage() {
       )}
 
       {/* Change Room Modal */}
-      {showChangeRoomModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h3 className="font-display font-extrabold text-[18px] text-brand-navy">Pindah Kamar</h3>
-              <button onClick={() => setShowChangeRoomModal(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <form onSubmit={handleChangeRoomSubmit} className="p-6 space-y-4">
-              <div>
-                <p className="text-[13px] text-gray-500 mb-4">
-                  Pilih kamar baru untuk memindahkan <span className="font-bold text-gray-700">{tenant.name}</span>. Kamar saat ini: <span className="font-bold text-gray-700">Kamar {tenant.room?.room_number || '-'}</span>.
-                </p>
-                <label className="block text-[12px] font-bold text-gray-700 mb-1.5">Pilih Kamar Baru</label>
-                <select
-                  required
-                  value={selectedRoomId}
-                  onChange={e => setSelectedRoomId(e.target.value)}
-                  className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-[13px] text-brand-navy focus:outline-none focus:border-[#0e8a7a]"
-                >
-                  <option value="">Pilih kamar kosong...</option>
-                  {rooms
-                    .filter(r => r.status === 'available')
-                    .map(r => (
-                      <option key={r.id} value={r.id}>
-                        Kamar {r.room_number} (Rp {r.price_per_month.toLocaleString('id-ID')}/bln)
-                      </option>
-                    ))}
-                </select>
-                {rooms.filter(r => r.status === 'available').length === 0 && (
-                  <p className="text-red-500 text-[11px] mt-1.5">Tidak ada kamar kosong yang tersedia saat ini.</p>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setShowChangeRoomModal(false)}
-                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[13px] font-bold transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={isChangingRoom || rooms.filter(r => r.status === 'available').length === 0}
-                  className="px-4 py-2 bg-[#0e8a7a] hover:bg-[#0c7668] text-white rounded-lg text-[13px] font-bold transition-colors flex items-center gap-2"
-                >
-                  {isChangingRoom && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Pindahkan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <RoomTransferModal
+        isOpen={showChangeRoomModal}
+        onClose={() => setShowChangeRoomModal(false)}
+        onSuccess={() => {
+          fetchData();
+          showToast('Proses pindah kamar berhasil dijalankan!', 'success');
+        }}
+        tenantId={id as string}
+        tenantName={tenant?.name || ''}
+        currentRoomNumber={tenant?.room?.room_number || ''}
+        currentMonthlyRent={tenant?.contract?.monthly_rent || tenant?.room?.price_per_month || 0}
+        contractId={tenant?.contract?.id}
+        availableRooms={rooms}
+        isStaff={true}
+      />
 
       {/* Extend Contract Modal */}
       {showExtendModal && (
