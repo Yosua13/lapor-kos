@@ -34,11 +34,11 @@ Menyediakan proses checkout yang menutup hunian secara operasional dan finansial
 
 ## Kriteria Penerimaan
 
-- [ ] Kamar tidak menjadi available sebelum inspeksi dan handover selesai, kecuali override beralasan.
-- [ ] Deposit berakhir dengan saldo nol atau open refund/payable case yang jelas.
-- [ ] Kontrak, invoice, payment, dan bukti historis tetap tersedia.
-- [ ] Tenant nonaktif tidak dapat membuat transaksi baru, tetapi akses historis mengikuti kebijakan.
-- [ ] Kegagalan proses tidak meninggalkan settlement atau status kamar yang tidak konsisten.
+- [x] Kamar tidak menjadi available sebelum inspeksi dan handover selesai, kecuali override beralasan.
+- [x] Deposit berakhir dengan saldo nol atau open refund/payable case yang jelas.
+- [x] Kontrak, invoice, payment, dan bukti historis tetap tersedia.
+- [x] Tenant nonaktif tidak dapat membuat transaksi baru, tetapi akses historis mengikuti kebijakan.
+- [x] Kegagalan proses tidak meninggalkan settlement atau status kamar yang tidak konsisten.
 
 ## Ketergantungan
 
