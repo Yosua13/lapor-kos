@@ -512,7 +512,7 @@ func createExtendedContract(ctx context.Context, tx pgx.Tx, contract *model.Cont
 	if _, err = tx.Exec(ctx, `UPDATE contracts SET current_version_id=$1 WHERE property_id=$2 AND id=$3`, versionID, contract.PropertyID, contract.ID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO contract_events(property_id,contract_id,version_id,event_type,to_status,reason,actor_id,metadata) VALUES($1,$2,$3,'renewal_draft_created','draft','Draft renewal dibuat',$4,jsonb_build_object('renewed_from_contract_id',$5))`, contract.PropertyID, contract.ID, versionID, actorID, contract.RenewedFromContractID); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO contract_events(property_id,contract_id,version_id,event_type,to_status,reason,actor_id,metadata) VALUES($1,$2,$3,'renewal_draft_created','draft','Draft renewal dibuat',$4,jsonb_build_object('renewed_from_contract_id',$5::uuid))`, contract.PropertyID, contract.ID, versionID, actorID, contract.RenewedFromContractID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

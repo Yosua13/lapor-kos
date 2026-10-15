@@ -395,10 +395,10 @@ func (r *ContractLifecycleRepository) Renew(ctx context.Context, propertyID, act
 	if _, err = tx.Exec(ctx, `UPDATE contracts SET current_version_id=$1 WHERE property_id=$2 AND id=$3`, versionID, propertyID, child.ID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO contract_events(property_id,contract_id,version_id,event_type,to_status,reason,actor_id,metadata) VALUES($1,$2,$3,'renewal_draft_created','draft',$4,$5,jsonb_build_object('renewed_from_contract_id',$6))`, propertyID, child.ID, versionID, strings.TrimSpace(reason), actorID, contractID); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO contract_events(property_id,contract_id,version_id,event_type,to_status,reason,actor_id,metadata) VALUES($1,$2,$3,'renewal_draft_created','draft',$4,$5,jsonb_build_object('renewed_from_contract_id',$6::uuid))`, propertyID, child.ID, versionID, strings.TrimSpace(reason), actorID, contractID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO contract_events(property_id,contract_id,version_id,event_type,from_status,to_status,reason,actor_id,metadata) VALUES($1,$2,$3,'renewal_linked','active','active',$4,$5,jsonb_build_object('renewal_contract_id',$6))`, propertyID, contractID, parent.versionID, strings.TrimSpace(reason), actorID, child.ID); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO contract_events(property_id,contract_id,version_id,event_type,from_status,to_status,reason,actor_id,metadata) VALUES($1,$2,$3,'renewal_linked','active','active',$4,$5,jsonb_build_object('renewal_contract_id',$6::uuid))`, propertyID, contractID, parent.versionID, strings.TrimSpace(reason), actorID, child.ID); err != nil {
 		return err
 	}
 	child.CurrentVersionID = &versionID
