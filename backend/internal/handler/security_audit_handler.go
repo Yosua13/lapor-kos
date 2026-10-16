@@ -23,10 +23,20 @@ type SecurityAuditRepository interface {
 	GetSecurityChecklist(ctx context.Context, propertyID uuid.UUID) (*model.SecurityChecklist, error)
 }
 
+type RedisPinger interface {
+	Ping(ctx context.Context) model.DependencyHealth
+}
+
+type RabbitMQPinger interface {
+	Ping() model.DependencyHealth
+}
+
 type SecurityAuditHandler struct {
 	auditRepo SecurityAuditRepository
 	userRepo  *repository.UserRepository
 	storage   *service.StorageService
+	redis     RedisPinger
+	rabbitmq  RabbitMQPinger
 	startTime time.Time
 }
 
@@ -43,6 +53,13 @@ func NewSecurityAuditHandler(
 	}
 }
 
+// WithInfrastructure configures optional infrastructure pingers (Redis, RabbitMQ).
+func (h *SecurityAuditHandler) WithInfrastructure(r RedisPinger, q RabbitMQPinger) *SecurityAuditHandler {
+	h.redis = r
+	h.rabbitmq = q
+	return h
+}
+
 // LivenessCheck handles /healthz and /api/health probes.
 func (h *SecurityAuditHandler) LivenessCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
@@ -51,10 +68,26 @@ func (h *SecurityAuditHandler) LivenessCheck(c *gin.Context) {
 	})
 }
 
-// ReadinessCheck handles /readyz and /api/ready probes, asserting database and storage availability.
+// ReadinessCheck handles /readyz and /api/ready probes, asserting database, storage, redis, and rabbitmq.
 func (h *SecurityAuditHandler) ReadinessCheck(c *gin.Context) {
 	dbHealth, err := h.auditRepo.CheckDatabaseHealth(c.Request.Context())
 	isStorageConfigured := h.storage != nil && h.storage.IsConfigured()
+
+	redisHealth := model.DependencyHealth{
+		Status:  model.DependencyStatusDisabled,
+		Enabled: false,
+	}
+	if h.redis != nil {
+		redisHealth = h.redis.Ping(c.Request.Context())
+	}
+
+	rabbitHealth := model.DependencyHealth{
+		Status:  model.DependencyStatusDisabled,
+		Enabled: false,
+	}
+	if h.rabbitmq != nil {
+		rabbitHealth = h.rabbitmq.Ping()
+	}
 
 	overallStatus := "ready"
 	httpStatus := http.StatusOK
@@ -62,7 +95,9 @@ func (h *SecurityAuditHandler) ReadinessCheck(c *gin.Context) {
 	if err != nil || dbHealth.Status != "connected" {
 		overallStatus = "unhealthy"
 		httpStatus = http.StatusServiceUnavailable
-	} else if h.storage != nil && !h.storage.IsConfigured() {
+	} else if (h.storage != nil && !h.storage.IsConfigured()) ||
+		(redisHealth.Enabled && redisHealth.Status != model.DependencyStatusConnected) ||
+		(rabbitHealth.Enabled && rabbitHealth.Status != model.DependencyStatusConnected) {
 		overallStatus = "degraded"
 	}
 
@@ -92,6 +127,8 @@ func (h *SecurityAuditHandler) ReadinessCheck(c *gin.Context) {
 		Status:    overallStatus,
 		Timestamp: time.Now().UTC(),
 		Database:  dbHealth,
+		Redis:     redisHealth,
+		RabbitMQ:  rabbitHealth,
 		Storage:   storageHealth,
 		Runtime:   runtimeHealth,
 		Security:  securitySummary,
@@ -105,6 +142,16 @@ func (h *SecurityAuditHandler) GetMetrics(c *gin.Context) {
 
 	dbHealth, _ := h.auditRepo.CheckDatabaseHealth(c.Request.Context())
 
+	redisHealth := model.DependencyHealth{Status: model.DependencyStatusDisabled}
+	if h.redis != nil {
+		redisHealth = h.redis.Ping(c.Request.Context())
+	}
+
+	rabbitHealth := model.DependencyHealth{Status: model.DependencyStatusDisabled}
+	if h.rabbitmq != nil {
+		rabbitHealth = h.rabbitmq.Ping()
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"uptime_seconds": int64(time.Since(h.startTime).Seconds()),
 		"goroutines":     runtime.NumGoroutine(),
@@ -115,6 +162,14 @@ func (h *SecurityAuditHandler) GetMetrics(c *gin.Context) {
 			"idle_conns":     dbHealth.IdleConns,
 			"acquired_conns": dbHealth.AcquiredConns,
 			"max_conns":      dbHealth.MaxConns,
+		},
+		"redis": gin.H{
+			"status":     redisHealth.Status,
+			"latency_ms": redisHealth.LatencyMs,
+		},
+		"rabbitmq": gin.H{
+			"status":     rabbitHealth.Status,
+			"latency_ms": rabbitHealth.LatencyMs,
 		},
 	})
 }

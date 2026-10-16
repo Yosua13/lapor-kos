@@ -7,6 +7,8 @@ import (
 	"github.com/Yosua13/lapor-kos/backend/internal/authz"
 	"github.com/Yosua13/lapor-kos/backend/internal/cron"
 	"github.com/Yosua13/lapor-kos/backend/internal/handler"
+	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/rabbitmq"
+	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/redis"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/Yosua13/lapor-kos/backend/internal/service"
@@ -41,7 +43,13 @@ type repositories struct {
 	property *repository.PropertyRepository
 }
 
-func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies []string) (*gin.Engine, error) {
+// RouterOptions specifies optional infrastructure dependencies for the HTTP API.
+type RouterOptions struct {
+	RedisClient *redis.Client
+	RabbitMQ    *rabbitmq.Connection
+}
+
+func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies []string, opts ...RouterOptions) (*gin.Engine, error) {
 	emailService := service.NewEmailService()
 	aiService := service.NewAIService()
 	whatsAppService := service.NewWhatsAppService()
@@ -70,6 +78,16 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	deliveryCron := cron.NewDeliveryCron(notificationRepo, whatsAppService, emailService)
 	deliveryCron.Start()
 
+	var rOpts RouterOptions
+	if len(opts) > 0 {
+		rOpts = opts[0]
+	}
+
+	secAuditHandler := handler.NewSecurityAuditHandler(securityAuditRepo, userRepo, storageService)
+	if rOpts.RedisClient != nil || rOpts.RabbitMQ != nil {
+		secAuditHandler.WithInfrastructure(rOpts.RedisClient, rOpts.RabbitMQ)
+	}
+
 	h := handlers{
 		auth:            handler.NewAuthHandler(userRepo, emailService, storageService),
 		property:        handler.NewPropertyHandler(propertyRepo),
@@ -88,7 +106,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		notification:    handler.NewNotificationHandler(notificationRepo, whatsAppService, emailService),
 		visitorPermit:   handler.NewVisitorPermitHandler(visitorPermitRepo),
 		finance:         handler.NewFinanceHandler(financeRepo),
-		securityAudit:   handler.NewSecurityAuditHandler(securityAuditRepo, userRepo, storageService),
+		securityAudit:   secAuditHandler,
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
