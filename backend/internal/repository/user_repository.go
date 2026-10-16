@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/redis"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -36,11 +37,22 @@ type UserRepo interface {
 }
 
 type UserRepository struct {
-	db *pgxpool.Pool
+	db          *pgxpool.Pool
+	redisClient *redis.Client
 }
 
-func NewUserRepository(db *pgxpool.Pool) *UserRepository {
-	return &UserRepository{db: db}
+func NewUserRepository(db *pgxpool.Pool, redisClient ...*redis.Client) *UserRepository {
+	var rc *redis.Client
+	if len(redisClient) > 0 {
+		rc = redisClient[0]
+	}
+	return &UserRepository{db: db, redisClient: rc}
+}
+
+// WithRedis associates a Redis client with UserRepository for O(1) session checks and caching.
+func (r *UserRepository) WithRedis(c *redis.Client) *UserRepository {
+	r.redisClient = c
+	return r
 }
 
 // Create atomically provisions the owner's first property. A successful owner
@@ -100,9 +112,32 @@ func (r *UserRepository) FindByVerificationToken(ctx context.Context, token stri
 }
 
 func (r *UserRepository) IsUserActive(ctx context.Context, id uuid.UUID) (bool, error) {
+	if r.redisClient != nil && r.redisClient.IsEnabled() && r.redisClient.Raw() != nil {
+		key := "user:active:" + id.String()
+		val, err := r.redisClient.Raw().Get(ctx, key).Result()
+		if err == nil {
+			return val == "1", nil
+		}
+	}
+
 	var active bool
 	err := r.db.QueryRow(ctx, `SELECT is_active FROM users WHERE id=$1`, id).Scan(&active)
+	if err == nil && r.redisClient != nil && r.redisClient.IsEnabled() && r.redisClient.Raw() != nil {
+		val := "0"
+		if active {
+			val = "1"
+		}
+		_ = r.redisClient.Raw().Set(ctx, "user:active:"+id.String(), val, 15*time.Minute).Err()
+	}
 	return active, err
+}
+
+// IsSessionRevoked implements middleware.SessionRevocationChecker in O(1) via Redis.
+func (r *UserRepository) IsSessionRevoked(ctx context.Context, id uuid.UUID, issuedAt ...time.Time) (bool, error) {
+	if r.redisClient == nil || !r.redisClient.IsEnabled() {
+		return false, redis.ErrRedisUnavailable
+	}
+	return redis.IsSessionRevoked(ctx, r.redisClient, id, issuedAt...)
 }
 
 // IsSessionValid makes JWT revocation stateful without storing individual
@@ -157,6 +192,15 @@ func (r *UserRepository) RevokeSession(ctx context.Context, id, revokedBy uuid.U
 		    reason = EXCLUDED.reason,
 		    updated_at = NOW()
 	`, id, now, reason)
+
+	// Instantly sync revocation to Redis and bust active user cache
+	if r.redisClient != nil && r.redisClient.IsEnabled() {
+		_ = redis.SetSessionRevocation(ctx, r.redisClient, id, 30*24*time.Hour, now)
+		if r.redisClient.Raw() != nil {
+			_ = r.redisClient.Raw().Del(ctx, "user:active:"+id.String()).Err()
+		}
+	}
+
 	return nil
 }
 

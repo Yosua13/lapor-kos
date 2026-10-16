@@ -21,6 +21,10 @@ type SessionValidityReader interface {
 	IsSessionValid(context.Context, uuid.UUID, time.Time) (bool, error)
 }
 
+type SessionRevocationChecker interface {
+	IsSessionRevoked(context.Context, uuid.UUID, ...time.Time) (bool, error)
+}
+
 func AuthMiddleware(activeUserReaders ...ActiveUserReader) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -90,18 +94,39 @@ func AuthMiddleware(activeUserReaders ...ActiveUserReader) gin.HandlerFunc {
 				c.Abort()
 				return
 			}
-			if sessionReader, ok := activeUserReaders[0].(SessionValidityReader); ok {
-				issuedAt, issuedAtErr := claims.GetIssuedAt()
-				if issuedAtErr != nil || issuedAt == nil {
-					c.JSON(http.StatusUnauthorized, gin.H{"error": "Token issue time is invalid"})
-					c.Abort()
-					return
+
+			issuedAt, issuedAtErr := claims.GetIssuedAt()
+			if issuedAtErr != nil || issuedAt == nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Token issue time is invalid"})
+				c.Abort()
+				return
+			}
+
+			// 1. Fast O(1) in-memory check via Redis SessionRevocationChecker (<0.2ms)
+			checkedViaRedis := false
+			if sessionChecker, ok := activeUserReaders[0].(SessionRevocationChecker); ok {
+				revoked, checkErr := sessionChecker.IsSessionRevoked(c.Request.Context(), parsedUserID, issuedAt.Time)
+				if checkErr == nil {
+					checkedViaRedis = true
+					if revoked {
+						c.JSON(http.StatusUnauthorized, gin.H{"error": "Session has been revoked"})
+						c.Abort()
+						return
+					}
+					// Not revoked in Redis: O(1) check succeeded, skip PostgreSQL query
 				}
-				valid, sessionErr := sessionReader.IsSessionValid(c.Request.Context(), parsedUserID, issuedAt.Time)
-				if sessionErr != nil || !valid {
-					c.JSON(http.StatusUnauthorized, gin.H{"error": "Session has been revoked"})
-					c.Abort()
-					return
+				// If checkErr != nil (e.g. Redis offline): fall through to PostgreSQL
+			}
+
+			// 2. PostgreSQL fallback or primary check when Redis is unavailable
+			if !checkedViaRedis {
+				if sessionReader, ok := activeUserReaders[0].(SessionValidityReader); ok {
+					valid, sessionErr := sessionReader.IsSessionValid(c.Request.Context(), parsedUserID, issuedAt.Time)
+					if sessionErr != nil || !valid {
+						c.JSON(http.StatusUnauthorized, gin.H{"error": "Session has been revoked"})
+						c.Abort()
+						return
+					}
 				}
 			}
 		}

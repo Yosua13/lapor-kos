@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/redis"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,9 +24,18 @@ type rateLimitEntry struct {
 }
 
 var (
-	rateLimitMu    sync.Mutex
-	rateLimitStore = map[string]rateLimitEntry{}
+	rateLimitMu                sync.Mutex
+	rateLimitStore             = map[string]rateLimitEntry{}
+	globalRateLimitRedisClient *redis.Client
+	globalRateLimitRedisMu     sync.RWMutex
 )
+
+// SetGlobalRateLimitRedisClient enables distributed Redis sliding-window rate limiting.
+func SetGlobalRateLimitRedisClient(c *redis.Client) {
+	globalRateLimitRedisMu.Lock()
+	defer globalRateLimitRedisMu.Unlock()
+	globalRateLimitRedisClient = c
+}
 
 func CORSConfigFromEnv() CORSConfig {
 	origins := map[string]struct{}{
@@ -112,12 +122,36 @@ func RateLimit(maxRequests int, window time.Duration) gin.HandlerFunc {
 	}
 
 	return func(c *gin.Context) {
-		now := time.Now()
 		key := c.ClientIP() + ":" + c.FullPath()
 		if key == c.ClientIP()+":" {
 			key = c.ClientIP() + ":" + c.Request.URL.Path
 		}
 
+		// 1. Try distributed Redis sliding-window check if configured
+		globalRateLimitRedisMu.RLock()
+		rc := globalRateLimitRedisClient
+		globalRateLimitRedisMu.RUnlock()
+
+		if rc != nil && rc.IsEnabled() {
+			allowed, err := redis.CheckSlidingRateLimit(c.Request.Context(), rc, key, maxRequests, window)
+			if err == nil {
+				if !allowed {
+					retryAfter := int(window.Seconds())
+					if retryAfter < 1 {
+						retryAfter = 1
+					}
+					c.Header("Retry-After", strconv.Itoa(retryAfter))
+					c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "Too many requests, please try again later"})
+					return
+				}
+				c.Next()
+				return
+			}
+			// If Redis check returns error, proceed to fallback in-memory below
+		}
+
+		// 2. In-memory sliding rate limiting fallback
+		now := time.Now()
 		rateLimitMu.Lock()
 		cleanupExpiredRateLimits(now)
 
