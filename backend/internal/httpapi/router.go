@@ -75,13 +75,16 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	financeRepo := repository.NewFinanceRepository(db)
 	securityAuditRepo := repository.NewSecurityAuditRepository(db)
 
-	deliveryCron := cron.NewDeliveryCron(notificationRepo, whatsAppService, emailService)
-	deliveryCron.Start()
-
 	var rOpts RouterOptions
 	if len(opts) > 0 {
 		rOpts = opts[0]
 	}
+
+	deliveryCron := cron.NewDeliveryCron(notificationRepo, whatsAppService, emailService)
+	if rOpts.RabbitMQ != nil {
+		deliveryCron.WithRabbitMQ(rOpts.RabbitMQ)
+	}
+	deliveryCron.Start()
 
 	if rOpts.RedisClient != nil {
 		userRepo.WithRedis(rOpts.RedisClient)
@@ -115,6 +118,12 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		visitorPermit:   handler.NewVisitorPermitHandler(visitorPermitRepo),
 		finance:         handler.NewFinanceHandler(financeRepo),
 		securityAudit:   secAuditHandler,
+	}
+
+	if rOpts.RabbitMQ != nil {
+		h.complaint.WithRabbitMQ(rOpts.RabbitMQ)
+		h.finance.WithRabbitMQ(rOpts.RabbitMQ)
+		h.contract.WithRabbitMQ(rOpts.RabbitMQ)
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 

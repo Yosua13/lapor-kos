@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/rabbitmq"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
@@ -17,13 +18,20 @@ import (
 )
 
 type ContractHandler struct {
-	repo      *repository.ContractRepository
-	lifecycle *repository.ContractLifecycleRepository
-	documents *service.ContractDocumentService
+	repo       *repository.ContractRepository
+	lifecycle  *repository.ContractLifecycleRepository
+	documents  *service.ContractDocumentService
+	rabbitConn *rabbitmq.Connection
 }
 
 func NewContractHandler(repo *repository.ContractRepository, lifecycle *repository.ContractLifecycleRepository, documents *service.ContractDocumentService) *ContractHandler {
 	return &ContractHandler{repo: repo, lifecycle: lifecycle, documents: documents}
+}
+
+// WithRabbitMQ associates a RabbitMQ connection for asynchronous contract PDF compilation.
+func (h *ContractHandler) WithRabbitMQ(c *rabbitmq.Connection) *ContractHandler {
+	h.rabbitConn = c
+	return h
 }
 
 func (h *ContractHandler) CreateContract(c *gin.Context) {
@@ -107,6 +115,20 @@ func (h *ContractHandler) CreateContract(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create contract"})
 		return
+	}
+
+	// Dispatch asynchronous contract PDF generation job to RabbitMQ
+	if h.rabbitConn != nil && h.rabbitConn.IsConnected() {
+		_ = rabbitmq.PublishDocumentJob(c.Request.Context(), h.rabbitConn, &rabbitmq.DocumentJob{
+			JobID:         uuid.New(),
+			PropertyID:    scope.PropertyID,
+			Type:          "contract_pdf",
+			RequestedBy:   scope.ActorID,
+			CorrelationID: c.GetString("correlation_id"),
+			Payload: map[string]interface{}{
+				"contract_id": contract.ID.String(),
+			},
+		})
 	}
 
 	c.JSON(http.StatusCreated, contract)

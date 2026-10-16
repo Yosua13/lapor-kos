@@ -153,6 +153,11 @@ func (m *MockEmailService) SendTenantInvitationEmail(email string, invitationURL
 	return args.Error(0)
 }
 
+func (m *MockEmailService) SendGeneralEmail(to string, subject string, body string) error {
+	args := m.Called(to, subject, body)
+	return args.Error(0)
+}
+
 func TestRegister(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
