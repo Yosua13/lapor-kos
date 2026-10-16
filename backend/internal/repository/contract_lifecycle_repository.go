@@ -219,6 +219,27 @@ func (r *ContractLifecycleRepository) activate(ctx context.Context, tx pgx.Tx, c
 	if !accepted {
 		return fmt.Errorf("%w: tenant acceptance for the current version is required", ErrContractPrerequisite)
 	}
+	// Check active house rules acknowledgment (Epic 11 AC 3 & AC 5)
+	var activeRuleVersionID *uuid.UUID
+	ruleErr := tx.QueryRow(ctx, `SELECT id FROM rule_versions WHERE property_id=$1 AND status='published' ORDER BY version_number DESC LIMIT 1`, c.propertyID).Scan(&activeRuleVersionID)
+	if ruleErr != nil && !errors.Is(ruleErr, pgx.ErrNoRows) {
+		return ruleErr
+	}
+	if activeRuleVersionID != nil {
+		var ruleAck bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(
+			SELECT 1 FROM rule_acknowledgments 
+			WHERE property_id=$1 AND tenant_user_id=$2 AND rule_version_id=$3 AND (contract_id=$4 OR contract_id IS NULL)
+		)`, c.propertyID, c.userID, *activeRuleVersionID, c.id).Scan(&ruleAck); err != nil {
+			return err
+		}
+		if !ruleAck {
+			return fmt.Errorf("%w: tenant must acknowledge active house rules before contract activation", ErrContractPrerequisite)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE contracts SET rule_version_id=$1, rule_acknowledged_at=COALESCE(rule_acknowledged_at, NOW()) WHERE id=$2 AND rule_version_id IS NULL`, *activeRuleVersionID, c.id); err != nil {
+			return err
+		}
+	}
 	var roomStatus string
 	if err := tx.QueryRow(ctx, `SELECT status FROM rooms WHERE property_id=$1 AND id=$2 FOR UPDATE`, c.propertyID, c.roomID).Scan(&roomStatus); err != nil {
 		return err
@@ -289,6 +310,32 @@ func (r *ContractLifecycleRepository) AcceptByTenant(ctx context.Context, actorI
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO contract_policy_acceptances(property_id,contract_id,version_id,accepted_by,source_ip,user_agent) VALUES($1,$2,$3,$4,NULLIF($5,'')::inet,$6)`, propertyID, contractID, *versionID, actorID, sourceIP, userAgent); err != nil {
 		return err
+	}
+	// Record rule acknowledgment for active published rule version if present (Epic 11 AC 3 & AC 5)
+	var activeRuleVersionID *uuid.UUID
+	ruleErr := tx.QueryRow(ctx, `SELECT id FROM rule_versions WHERE property_id=$1 AND status='published' ORDER BY version_number DESC LIMIT 1`, propertyID).Scan(&activeRuleVersionID)
+	if ruleErr != nil && !errors.Is(ruleErr, pgx.ErrNoRows) {
+		return ruleErr
+	}
+	if activeRuleVersionID != nil {
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO rule_acknowledgments (
+				property_id, rule_version_id, tenant_user_id, contract_id,
+				source_ip, user_agent, consent_text, amendment_notes
+			)
+			SELECT $1, $2, $3, $4, $5, $6,
+			       'Menyetujui syarat kontrak dan peraturan tata tertib kos aktif',
+			       'Otomatis dicatat saat persetujuan kontrak tenant'
+			WHERE NOT EXISTS (
+				SELECT 1 FROM rule_acknowledgments
+				WHERE property_id = $1 AND rule_version_id = $2 AND tenant_user_id = $3 AND contract_id = $4
+			)
+		`, propertyID, *activeRuleVersionID, actorID, contractID, sourceIP, userAgent); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE contracts SET rule_version_id=$1, rule_acknowledged_at=COALESCE(rule_acknowledged_at, NOW()) WHERE id=$2`, *activeRuleVersionID, contractID); err != nil {
+			return err
+		}
 	}
 	if _, err = tx.Exec(ctx, `UPDATE contracts SET status='scheduled',updated_at=NOW() WHERE id=$1 AND property_id=$2`, contractID, propertyID); err != nil {
 		return err

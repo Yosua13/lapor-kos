@@ -34,11 +34,11 @@ Mengelola peraturan kos sebagai dokumen versioned dengan tanggal berlaku dan buk
 
 ## Kriteria Penerimaan
 
-- [ ] Membaca peraturan tidak membuat atau mengubah data di database.
-- [ ] Versi yang sudah diterbitkan tidak dapat diubah dan tetap tersedia untuk histori.
-- [ ] Tenant baru harus mengakui versi aktif sebelum kontrak dapat diaktifkan.
-- [ ] Perubahan aturan tidak berlaku retroaktif tanpa proses amendment yang sah.
-- [ ] Acknowledgment menyimpan tenant, lease, version, dan waktu secara dapat diaudit.
+- [x] Membaca peraturan tidak membuat atau mengubah data di database.
+- [x] Versi yang sudah diterbitkan tidak dapat diubah dan tetap tersedia untuk histori.
+- [x] Tenant baru harus mengakui versi aktif sebelum kontrak dapat diaktifkan.
+- [x] Perubahan aturan tidak berlaku retroaktif tanpa proses amendment yang sah.
+- [x] Acknowledgment menyimpan tenant, lease, version, dan waktu secara dapat diaudit.
 
 ## Ketergantungan
 
