@@ -7,19 +7,25 @@ describe('property membership capabilities', () => {
     expect(hasCapability('property_owner', CAPABILITIES.REPORT_EXPORT)).toBe(true);
   });
 
-  it('keeps finance access focused on payments and reports', () => {
+  it('keeps finance access focused on payments, expenses, and reports', () => {
     expect(hasCapability('finance', CAPABILITIES.PAYMENT_VERIFY)).toBe(true);
     expect(hasCapability('finance', CAPABILITIES.REPORT_EXPORT)).toBe(true);
+    expect(hasCapability('finance', CAPABILITIES.EXPENSE_APPROVE)).toBe(true);
+    expect(hasCapability('finance', CAPABILITIES.FINANCE_CLOSE)).toBe(true);
     expect(hasCapability('finance', CAPABILITIES.ROOM_WRITE)).toBe(false);
   });
 
-  it('keeps maintenance access focused on complaints', () => {
+  it('keeps maintenance access focused on complaints and recorded expenses', () => {
     expect(hasCapability('maintenance', CAPABILITIES.COMPLAINT_MANAGE)).toBe(true);
+    expect(hasCapability('maintenance', CAPABILITIES.EXPENSE_WRITE)).toBe(true);
+    expect(hasCapability('maintenance', CAPABILITIES.FINANCE_CLOSE)).toBe(false);
     expect(hasCapability('maintenance', CAPABILITIES.PAYMENT_WRITE)).toBe(false);
   });
 
   it('makes viewers read only', () => {
     expect(hasCapability('viewer', CAPABILITIES.ROOM_READ)).toBe(true);
+    expect(hasCapability('viewer', CAPABILITIES.EXPENSE_READ)).toBe(true);
+    expect(hasCapability('viewer', CAPABILITIES.EXPENSE_WRITE)).toBe(false);
     expect(hasCapability('viewer', CAPABILITIES.ROOM_WRITE)).toBe(false);
     expect(hasCapability('viewer', CAPABILITIES.COMPLAINT_MANAGE)).toBe(false);
   });

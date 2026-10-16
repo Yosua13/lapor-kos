@@ -61,9 +61,10 @@ const staffNavigation: NavigationSection[] = [
   {
     section: 'KEUANGAN',
     items: [
+      { name: 'Laporan & Keuangan', href: '/reports', icon: FileText, capability: CAPABILITIES.REPORT_READ },
+      { name: 'Biaya & Pengeluaran', href: '/expenses', icon: ReceiptText, capability: CAPABILITIES.EXPENSE_READ },
       { name: 'Invoice & Tagihan', href: '/invoices', icon: ReceiptText, capability: CAPABILITIES.INVOICE_READ },
       { name: 'Pembayaran', href: '/payments', icon: CreditCard, capability: CAPABILITIES.PAYMENT_READ },
-      { name: 'Laporan', href: '/reports', icon: FileText, capability: CAPABILITIES.REPORT_READ },
     ],
   },
   {
@@ -101,10 +102,11 @@ export const getNavigation = (
 const staffPathCapabilities: Array<[string, Capability]> = [
   ['/rooms', CAPABILITIES.ROOM_READ],
   ['/tenants', CAPABILITIES.TENANT_READ],
-	['/contracts', CAPABILITIES.CONTRACT_READ],
+  ['/contracts', CAPABILITIES.CONTRACT_READ],
   ['/invoices', CAPABILITIES.INVOICE_READ],
   ['/payments', CAPABILITIES.PAYMENT_READ],
   ['/reports', CAPABILITIES.REPORT_READ],
+  ['/expenses', CAPABILITIES.EXPENSE_READ],
   ['/rules', CAPABILITIES.RULE_READ],
   ['/calendar', CAPABILITIES.CALENDAR_READ],
   ['/complaints', CAPABILITIES.COMPLAINT_READ],
@@ -116,7 +118,7 @@ export const getRequiredCapability = (pathname: string): Capability | null => (
 );
 
 export const isStaffOnlyPath = (pathname: string): boolean => (
-  ['/rooms', '/tenants', '/reports', '/calendar', '/properties']
+  ['/rooms', '/tenants', '/reports', '/expenses', '/calendar', '/properties']
     .some((path) => pathname === path || pathname.startsWith(`${path}/`))
 );
 
