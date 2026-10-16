@@ -43,6 +43,9 @@ export const CAPABILITIES = {
   FINANCE_CLOSE: 'finance.close',
   FINANCE_ADJUST: 'finance.adjust',
   FINANCE_EXPORT: 'finance.export',
+  AUDIT_READ: 'audit.read',
+  SECURITY_MANAGE: 'security.manage',
+  SYSTEM_HEALTH_READ: 'system.health_read',
 } as const;
 
 export type Capability = (typeof CAPABILITIES)[keyof typeof CAPABILITIES];
@@ -88,6 +91,9 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.FINANCE_CLOSE,
     CAPABILITIES.FINANCE_ADJUST,
     CAPABILITIES.FINANCE_EXPORT,
+    CAPABILITIES.AUDIT_READ,
+    CAPABILITIES.SECURITY_MANAGE,
+    CAPABILITIES.SYSTEM_HEALTH_READ,
   ],
   finance: [
     CAPABILITIES.PROPERTY_READ,
@@ -112,6 +118,8 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.FINANCE_CLOSE,
     CAPABILITIES.FINANCE_ADJUST,
     CAPABILITIES.FINANCE_EXPORT,
+    CAPABILITIES.AUDIT_READ,
+    CAPABILITIES.SYSTEM_HEALTH_READ,
   ],
   maintenance: [
     CAPABILITIES.PROPERTY_READ,
@@ -127,6 +135,7 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.VISITOR_PERMIT_CHECK_IN_OUT,
     CAPABILITIES.EXPENSE_READ,
     CAPABILITIES.EXPENSE_WRITE,
+    CAPABILITIES.SYSTEM_HEALTH_READ,
   ],
   viewer: [
     CAPABILITIES.PROPERTY_READ,
@@ -141,6 +150,8 @@ export const ROLE_CAPABILITIES: Record<MembershipRole, readonly Capability[]> = 
     CAPABILITIES.NOTIFICATION_READ,
     CAPABILITIES.VISITOR_PERMIT_READ,
     CAPABILITIES.EXPENSE_READ,
+    CAPABILITIES.AUDIT_READ,
+    CAPABILITIES.SYSTEM_HEALTH_READ,
   ],
 };
 

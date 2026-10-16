@@ -38,9 +38,14 @@ describe('property membership capabilities', () => {
   it('matches the backend permissions used by navigation and property management', () => {
     expect(hasCapability('manager', CAPABILITIES.PROPERTY_MANAGE, [])).toBe(true);
     expect(hasCapability('manager', CAPABILITIES.CONTRACT_DELETE, [])).toBe(true);
+    expect(hasCapability('manager', CAPABILITIES.SECURITY_MANAGE, [])).toBe(true);
     expect(hasCapability('finance', CAPABILITIES.ROOM_READ, [])).toBe(true);
+    expect(hasCapability('finance', CAPABILITIES.AUDIT_READ, [])).toBe(true);
+    expect(hasCapability('finance', CAPABILITIES.SECURITY_MANAGE, [])).toBe(false);
     expect(hasCapability('maintenance', CAPABILITIES.CALENDAR_READ, [])).toBe(true);
+    expect(hasCapability('maintenance', CAPABILITIES.AUDIT_READ, [])).toBe(false);
     expect(hasCapability('viewer', CAPABILITIES.TENANT_READ, [])).toBe(false);
     expect(hasCapability('viewer', CAPABILITIES.CALENDAR_READ, [])).toBe(true);
+    expect(hasCapability('viewer', CAPABILITIES.AUDIT_READ, [])).toBe(true);
   });
 });

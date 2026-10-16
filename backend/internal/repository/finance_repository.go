@@ -519,6 +519,8 @@ func (r *FinanceRepository) CreateExpense(ctx context.Context, propertyID, creat
 		return nil, fmt.Errorf("insert expense: %w", err)
 	}
 
+	r.logFinancialAudit(ctx, propertyID, &creatorID, "expense_create", "expense", id, req.AmountMinor, req.Description, nil, map[string]any{"status": status, "title": req.Title})
+
 	return r.GetExpenseByID(ctx, propertyID, id)
 }
 
@@ -599,6 +601,14 @@ func (r *FinanceRepository) ApproveExpense(ctx context.Context, propertyID, expe
 	if res.RowsAffected() == 0 {
 		return nil, fmt.Errorf("expense not in approvable state")
 	}
+
+	resExp, _ := r.GetExpenseByID(ctx, propertyID, expenseID)
+	var amountMinor int64
+	if resExp != nil {
+		amountMinor = resExp.AmountMinor
+	}
+	r.logFinancialAudit(ctx, propertyID, &approverID, "expense_approve", "expense", expenseID, amountMinor, "Approved expense", map[string]any{"status": "pending_approval"}, map[string]any{"status": "approved"})
+
 	return r.GetExpenseByID(ctx, propertyID, expenseID)
 }
 
@@ -618,10 +628,19 @@ func (r *FinanceRepository) PayExpense(ctx context.Context, propertyID, expenseI
 	if res.RowsAffected() == 0 {
 		return nil, fmt.Errorf("expense cannot be marked as paid")
 	}
+
+	resExp, _ := r.GetExpenseByID(ctx, propertyID, expenseID)
+	var amountMinor int64
+	if resExp != nil {
+		amountMinor = resExp.AmountMinor
+	}
+	r.logFinancialAudit(ctx, propertyID, &actorID, "expense_pay", "expense", expenseID, amountMinor, "Expense marked as paid", map[string]any{"status": "approved"}, map[string]any{"status": "paid", "payment_method": paymentMethod})
+
 	return r.GetExpenseByID(ctx, propertyID, expenseID)
 }
 
 func (r *FinanceRepository) DeleteExpense(ctx context.Context, propertyID, expenseID uuid.UUID) error {
+	exp, _ := r.GetExpenseByID(ctx, propertyID, expenseID)
 	res, err := r.db.Exec(ctx, `
 		DELETE FROM expenses
 		WHERE property_id = $1 AND id = $2 AND status IN ('draft', 'pending_approval', 'rejected')
@@ -631,6 +650,9 @@ func (r *FinanceRepository) DeleteExpense(ctx context.Context, propertyID, expen
 	}
 	if res.RowsAffected() == 0 {
 		return errors.New("cannot delete approved or paid expenses; use period adjustment or reversal")
+	}
+	if exp != nil {
+		r.logFinancialAudit(ctx, propertyID, nil, "expense_delete", "expense", expenseID, exp.AmountMinor, "Deleted expense", exp, nil)
 	}
 	return nil
 }
@@ -767,6 +789,8 @@ func (r *FinanceRepository) ClosePeriod(ctx context.Context, propertyID, closedB
 		  AND expense_date >= $3::date AND expense_date <= $4::date
 	`, closureID, propertyID, periodStart, periodEnd)
 
+	r.logFinancialAudit(ctx, propertyID, &closedByID, "period_close", "period_close", closureID, 0, req.Notes, nil, map[string]any{"period_key": req.PeriodKey, "status": "closed"})
+
 	return r.GetPeriodClosure(ctx, propertyID, req.PeriodKey)
 }
 
@@ -789,6 +813,8 @@ func (r *FinanceRepository) ReopenPeriod(ctx context.Context, propertyID, reopen
 	if err != nil {
 		return nil, fmt.Errorf("reopen period: %w", err)
 	}
+
+	r.logFinancialAudit(ctx, propertyID, &reopenedByID, "period_reopen", "period_close", closure.ID, 0, req.Reason, map[string]any{"previous_status": closure.Status}, map[string]any{"status": "reopened"})
 
 	return r.GetPeriodClosure(ctx, propertyID, periodKey)
 }
@@ -831,6 +857,8 @@ func (r *FinanceRepository) CreateAdjustment(ctx context.Context, propertyID, re
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
+
+	r.logFinancialAudit(ctx, propertyID, &requestedByID, "adjustment_create", "adjustment", id, req.AmountMinor, req.Reason, nil, map[string]any{"status": "pending", "adjustment_number": adjNumber})
 
 	return r.GetAdjustmentByID(ctx, propertyID, id)
 }
@@ -986,6 +1014,8 @@ func (r *FinanceRepository) ApproveAdjustment(ctx context.Context, propertyID, a
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
+
+	r.logFinancialAudit(ctx, propertyID, &approverID, "adjustment_"+newStatus, "adjustment", adjustmentID, current.AmountMinor, notes, map[string]any{"previous_status": current.Status}, map[string]any{"status": newStatus})
 
 	return r.GetAdjustmentByID(ctx, propertyID, adjustmentID)
 }
@@ -1267,4 +1297,34 @@ func formatCategoryLabel(cat string) string {
 	default:
 		return "Lainnya"
 	}
+}
+
+func (r *FinanceRepository) logFinancialAudit(ctx context.Context, propertyID uuid.UUID, actorID *uuid.UUID, action, entityType string, entityID uuid.UUID, amountMinor int64, reason string, beforeState, afterState any) {
+	correlationID := ""
+	if ctx != nil {
+		if val := ctx.Value("correlation_id"); val != nil {
+			if s, ok := val.(string); ok && s != "" {
+				correlationID = s
+			}
+		}
+	}
+	if correlationID == "" {
+		correlationID = uuid.New().String()
+	}
+
+	beforeJSON, _ := json.Marshal(beforeState)
+	if len(beforeJSON) == 0 {
+		beforeJSON = []byte("{}")
+	}
+	afterJSON, _ := json.Marshal(afterState)
+	if len(afterJSON) == 0 {
+		afterJSON = []byte("{}")
+	}
+
+	_, _ = r.db.Exec(ctx, `
+		INSERT INTO financial_audit_logs (
+			property_id, actor_id, action, entity_type, entity_id,
+			amount_minor, reason, correlation_id, before_state, after_state
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, propertyID, actorID, action, entityType, entityID, amountMinor, reason, correlationID, beforeJSON, afterJSON)
 }
