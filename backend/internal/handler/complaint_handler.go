@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/rabbitmq"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
@@ -22,6 +23,7 @@ type ComplaintHandler struct {
 	waService        service.WhatsAppServiceInterface
 	storageService   *service.StorageService
 	notificationRepo *repository.NotificationRepository
+	rabbitConn       *rabbitmq.Connection
 }
 
 func NewComplaintHandler(
@@ -38,6 +40,12 @@ func NewComplaintHandler(
 		storageService:   storageService,
 		notificationRepo: notificationRepo,
 	}
+}
+
+// WithRabbitMQ associates a RabbitMQ connection for asynchronous AI triage and alerts.
+func (h *ComplaintHandler) WithRabbitMQ(c *rabbitmq.Connection) *ComplaintHandler {
+	h.rabbitConn = c
+	return h
 }
 
 // CreateComplaint handles tenant filing a complaint.
@@ -132,16 +140,27 @@ func (h *ComplaintHandler) CreateComplaint(c *gin.Context) {
 		return
 	}
 
-	// 5. Generate and store AI suggestion (asynchronous/non-blocking - AC 5)
-	go func(comp model.Complaint) {
-		bgCtx := context.Background()
-		suggestion, err := h.aiService.GenerateAdvisory(bgCtx, comp.Category, comp.Title, comp.Description)
-		if err == nil && suggestion != nil {
-			suggestion.ComplaintID = comp.ID
-			suggestion.PropertyID = comp.PropertyID
-			_ = h.complaintRepo.SaveAISuggestion(bgCtx, suggestion)
-		}
-	}(*complaint)
+	// 5. Generate and store AI suggestion (asynchronous/non-blocking via RabbitMQ - AC 5)
+	if h.rabbitConn != nil && h.rabbitConn.IsConnected() {
+		_ = rabbitmq.PublishAITriageJob(c.Request.Context(), h.rabbitConn, &rabbitmq.AITriageJob{
+			ComplaintID:   complaint.ID,
+			PropertyID:    complaint.PropertyID,
+			Title:         complaint.Title,
+			Description:   complaint.Description,
+			Category:      complaint.Category,
+			CorrelationID: c.GetString("correlation_id"),
+		})
+	} else {
+		go func(comp model.Complaint) {
+			bgCtx := context.Background()
+			suggestion, err := h.aiService.GenerateAdvisory(bgCtx, comp.Category, comp.Title, comp.Description)
+			if err == nil && suggestion != nil {
+				suggestion.ComplaintID = comp.ID
+				suggestion.PropertyID = comp.PropertyID
+				_ = h.complaintRepo.SaveAISuggestion(bgCtx, suggestion)
+			}
+		}(*complaint)
+	}
 
 	// 6. AC 1: High priority alert into notification outbox
 	if (complaint.Priority == model.ComplaintPriorityUrgent || complaint.Impact == model.ComplaintImpactEmergency) && h.notificationRepo != nil {

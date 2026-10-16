@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/rabbitmq"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
@@ -14,11 +15,18 @@ import (
 )
 
 type FinanceHandler struct {
-	repo *repository.FinanceRepository
+	repo       *repository.FinanceRepository
+	rabbitConn *rabbitmq.Connection
 }
 
 func NewFinanceHandler(repo *repository.FinanceRepository) *FinanceHandler {
 	return &FinanceHandler{repo: repo}
+}
+
+// WithRabbitMQ associates a RabbitMQ connection for asynchronous export processing.
+func (h *FinanceHandler) WithRabbitMQ(c *rabbitmq.Connection) *FinanceHandler {
+	h.rabbitConn = c
+	return h
 }
 
 func financeScope(c *gin.Context) (model.PropertyScope, bool) {
@@ -489,6 +497,23 @@ func (h *FinanceHandler) CreateExportJob(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+
+	// Dispatch export compilation job asynchronously to RabbitMQ
+	if h.rabbitConn != nil && h.rabbitConn.IsConnected() {
+		_ = rabbitmq.PublishDocumentJob(c.Request.Context(), h.rabbitConn, &rabbitmq.DocumentJob{
+			JobID:         job.ID,
+			PropertyID:    scope.PropertyID,
+			Type:          "report_csv",
+			RequestedBy:   scope.ActorID,
+			CorrelationID: c.GetString("correlation_id"),
+			Payload: map[string]interface{}{
+				"report_type":   req.ReportType,
+				"period_start":  req.PeriodStart,
+				"period_end":    req.PeriodEnd,
+				"export_format": req.ExportFormat,
+			},
+		})
 	}
 
 	c.JSON(http.StatusCreated, job)
