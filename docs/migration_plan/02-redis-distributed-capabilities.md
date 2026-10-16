@@ -55,7 +55,7 @@ backend/
 
 ## 3. Kriteria Penerimaan (Acceptance Criteria)
 
-- [ ] Pengecekan JWT pada `AuthMiddleware` berjalan instan melalui Redis dengan fallback transparan ke PostgreSQL jika Redis mengalami gangguan sementara.
-- [ ] Pencabutan sesi instan melalui `/api/security/sessions/revoke` langsung menginvaliasi token pada request berikutnya tanpa menunggu database query.
-- [ ] Rate limit teruji menolak request berlebih secara konsisten meskipun request dikirim ke port atau instance backend yang berbeda.
-- [ ] Background billing cron hanya dieksekusi tepat satu kali ketika dijalankan pada 2 atau lebih instance backend bersamaan.
+- [x] Pengecekan JWT pada `AuthMiddleware` berjalan instan melalui Redis dengan fallback transparan ke PostgreSQL jika Redis mengalami gangguan sementara.
+- [x] Pencabutan sesi instan melalui `/api/security/sessions/revoke` langsung menginvaliasi token pada request berikutnya tanpa menunggu database query.
+- [x] Rate limit teruji menolak request berlebih secara konsisten meskipun request dikirim ke port atau instance backend yang berbeda.
+- [x] Background billing cron hanya dieksekusi tepat satu kali ketika dijalankan pada 2 atau lebih instance backend bersamaan.
