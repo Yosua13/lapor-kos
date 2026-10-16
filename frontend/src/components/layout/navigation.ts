@@ -13,6 +13,7 @@ import {
   Users,
   Bell,
   UserCheck,
+  ShieldCheck,
 } from 'lucide-react';
 import { CAPABILITIES, type Capability } from '@/features/authorization/permissions';
 
@@ -80,6 +81,7 @@ const staffNavigation: NavigationSection[] = [
     section: 'ADMINISTRASI',
     items: [
       { name: 'Notifikasi & Delivery', href: '/notifications', icon: Bell },
+      { name: 'Audit & Keamanan', href: '/audit', icon: ShieldCheck, capability: CAPABILITIES.AUDIT_READ },
       { name: 'Properti & Tim', href: '/properties', icon: Building2 },
       { name: 'Pengaturan Akun', href: '/settings', icon: Settings },
     ],
@@ -107,6 +109,7 @@ const staffPathCapabilities: Array<[string, Capability]> = [
   ['/payments', CAPABILITIES.PAYMENT_READ],
   ['/reports', CAPABILITIES.REPORT_READ],
   ['/expenses', CAPABILITIES.EXPENSE_READ],
+  ['/audit', CAPABILITIES.AUDIT_READ],
   ['/rules', CAPABILITIES.RULE_READ],
   ['/calendar', CAPABILITIES.CALENDAR_READ],
   ['/complaints', CAPABILITIES.COMPLAINT_READ],
@@ -118,7 +121,7 @@ export const getRequiredCapability = (pathname: string): Capability | null => (
 );
 
 export const isStaffOnlyPath = (pathname: string): boolean => (
-  ['/rooms', '/tenants', '/reports', '/expenses', '/calendar', '/properties']
+  ['/rooms', '/tenants', '/reports', '/expenses', '/audit', '/calendar', '/properties']
     .some((path) => pathname === path || pathname.startsWith(`${path}/`))
 );
 
