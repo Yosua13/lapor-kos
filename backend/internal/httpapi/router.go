@@ -83,6 +83,14 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		rOpts = opts[0]
 	}
 
+	if rOpts.RedisClient != nil {
+		userRepo.WithRedis(rOpts.RedisClient)
+		if billingCron != nil {
+			billingCron.WithRedis(rOpts.RedisClient)
+		}
+		middleware.SetGlobalRateLimitRedisClient(rOpts.RedisClient)
+	}
+
 	secAuditHandler := handler.NewSecurityAuditHandler(securityAuditRepo, userRepo, storageService)
 	if rOpts.RedisClient != nil || rOpts.RabbitMQ != nil {
 		secAuditHandler.WithInfrastructure(rOpts.RedisClient, rOpts.RabbitMQ)

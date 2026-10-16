@@ -52,7 +52,7 @@ func main() {
 		}
 	}
 
-	billingCron := cron.NewBillingCron(db)
+	billingCron := cron.NewBillingCron(db, redisClient)
 	router, err := httpapi.NewRouter(db, billingCron, appConfig.TrustedProxies, httpapi.RouterOptions{
 		RedisClient: redisClient,
 		RabbitMQ:    rabbitConn,
