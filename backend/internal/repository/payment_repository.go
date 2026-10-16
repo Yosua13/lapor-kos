@@ -518,6 +518,25 @@ func (r *PaymentRepository) VerifyPaymentTx(ctx context.Context, propertyID, act
 			propertyID, paymentID, outboxPayload,
 		)
 
+		correlationID := ""
+		if ctx != nil {
+			if val := ctx.Value("correlation_id"); val != nil {
+				if s, ok := val.(string); ok && s != "" {
+					correlationID = s
+				}
+			}
+		}
+		if correlationID == "" {
+			correlationID = uuid.New().String()
+		}
+		_, _ = tx.Exec(ctx, `
+			INSERT INTO financial_audit_logs (
+				property_id, actor_id, action, entity_type, entity_id,
+				amount_minor, reason, correlation_id, before_state, after_state
+			) VALUES ($1, $2, 'payment_reject', 'payment', $3, $4, $5, $6, $7, $8)`,
+			propertyID, actorID, paymentID, verifiedAmount, req.RejectionReason, correlationID,
+			`{"previous_status":"`+currentStatus+`"}`, `{"status":"rejected"}`)
+
 		if err := tx.Commit(ctx); err != nil {
 			return nil, err
 		}
@@ -658,6 +677,26 @@ func (r *PaymentRepository) VerifyPaymentTx(ctx context.Context, propertyID, act
 		VALUES ($1, 'payment_verified', 'payment', $2, $3)`,
 		propertyID, paymentID, outboxPayload,
 	)
+
+	correlationID := ""
+	if ctx != nil {
+		if val := ctx.Value("correlation_id"); val != nil {
+			if s, ok := val.(string); ok && s != "" {
+				correlationID = s
+			}
+		}
+	}
+	if correlationID == "" {
+		correlationID = uuid.New().String()
+	}
+	_, _ = tx.Exec(ctx, `
+		INSERT INTO financial_audit_logs (
+			property_id, actor_id, action, entity_type, entity_id,
+			amount_minor, reason, correlation_id, before_state, after_state
+		) VALUES ($1, $2, $3, 'payment', $4, $5, $6, $7, $8, $9)`,
+		propertyID, actorID, "payment_"+paymentStatus, paymentID,
+		verifiedAmount, req.Notes, correlationID,
+		`{"previous_status":"`+currentStatus+`"}`, `{"status":"`+paymentStatus+`"}`)
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err

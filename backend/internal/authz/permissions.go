@@ -69,6 +69,10 @@ const (
 	PermissionFinanceClose   Permission = "finance.close"
 	PermissionFinanceAdjust  Permission = "finance.adjust"
 	PermissionFinanceExport  Permission = "finance.export"
+
+	PermissionAuditRead        Permission = "audit.read"
+	PermissionSecurityManage   Permission = "security.manage"
+	PermissionSystemHealthRead Permission = "system.health_read"
 )
 
 var ErrUnknownPermission = errors.New("unknown property permission")
@@ -122,6 +126,9 @@ var knownPermissions = []Permission{
 	PermissionFinanceClose,
 	PermissionFinanceAdjust,
 	PermissionFinanceExport,
+	PermissionAuditRead,
+	PermissionSecurityManage,
+	PermissionSystemHealthRead,
 }
 
 var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
@@ -171,6 +178,9 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionFinanceClose,
 		PermissionFinanceAdjust,
 		PermissionFinanceExport,
+		PermissionAuditRead,
+		PermissionSecurityManage,
+		PermissionSystemHealthRead,
 	),
 	model.PropertyRoleFinance: permissionSet(
 		PermissionPropertyRead,
@@ -198,6 +208,8 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionFinanceClose,
 		PermissionFinanceAdjust,
 		PermissionFinanceExport,
+		PermissionAuditRead,
+		PermissionSystemHealthRead,
 	),
 	model.PropertyRoleMaintenance: permissionSet(
 		PermissionPropertyRead,
@@ -218,6 +230,7 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionVendorRead,
 		PermissionExpenseRead,
 		PermissionExpenseWrite,
+		PermissionSystemHealthRead,
 	),
 	model.PropertyRoleViewer: permissionSet(
 		PermissionPropertyRead,
@@ -235,6 +248,8 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionWorkOrderRead,
 		PermissionVendorRead,
 		PermissionExpenseRead,
+		PermissionAuditRead,
+		PermissionSystemHealthRead,
 	),
 }
 

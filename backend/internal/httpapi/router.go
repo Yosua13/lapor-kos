@@ -32,6 +32,7 @@ type handlers struct {
 	notification    *handler.NotificationHandler
 	visitorPermit   *handler.VisitorPermitHandler
 	finance         *handler.FinanceHandler
+	securityAudit   *handler.SecurityAuditHandler
 }
 
 type repositories struct {
@@ -64,6 +65,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	notificationRepo := repository.NewNotificationRepository(db)
 	visitorPermitRepo := repository.NewVisitorPermitRepository(db)
 	financeRepo := repository.NewFinanceRepository(db)
+	securityAuditRepo := repository.NewSecurityAuditRepository(db)
 
 	deliveryCron := cron.NewDeliveryCron(notificationRepo, whatsAppService, emailService)
 	deliveryCron.Start()
@@ -86,11 +88,13 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		notification:    handler.NewNotificationHandler(notificationRepo, whatsAppService, emailService),
 		visitorPermit:   handler.NewVisitorPermitHandler(visitorPermitRepo),
 		finance:         handler.NewFinanceHandler(financeRepo),
+		securityAudit:   handler.NewSecurityAuditHandler(securityAuditRepo, userRepo, storageService),
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
+	router.Use(middleware.CorrelationID())
+	router.Use(middleware.SafeStructuredLogger(nil), gin.Recovery())
 	if len(trustedProxies) > 0 {
 		if err := router.SetTrustedProxies(trustedProxies); err != nil {
 			return nil, err
@@ -102,13 +106,17 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	router.Use(middleware.CORSMiddleware(middleware.CORSConfigFromEnv()))
 	router.Use(middleware.RequestSizeLimit(12 << 20))
 
+	// Top-level liveness & readiness probes
+	router.GET("/healthz", h.securityAudit.LivenessCheck)
+	router.GET("/readyz", h.securityAudit.ReadinessCheck)
+
 	api := router.Group("/api")
-	api.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "UP", "database": "Connected",
-			"message": "Lapor Kos API is running",
-		})
-	})
+	api.GET("/health", h.securityAudit.LivenessCheck)
+	api.GET("/ready", h.securityAudit.ReadinessCheck)
+	api.GET("/metrics", h.securityAudit.GetMetrics)
+	api.GET("/security/checklist", middleware.AuthMiddleware(repos.user), h.securityAudit.GetSecurityChecklist)
+	api.POST("/security/sessions/revoke", middleware.AuthMiddleware(repos.user), h.securityAudit.RevokeSession)
+	api.POST("/auth/revoke-sessions", middleware.AuthMiddleware(repos.user), h.securityAudit.RevokeMySessions)
 	api.POST("/cron/trigger", middleware.CronSecretMiddleware(), func(c *gin.Context) {
 		results, err := billingCron.Trigger(c.Request.Context())
 		if err != nil {
@@ -411,6 +419,10 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 	expenses.POST("/:id/approve", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseApprove), h.finance.ApproveExpense)
 	expenses.POST("/:id/pay", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseWrite), h.finance.PayExpense)
 	expenses.DELETE("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseWrite), h.finance.DeleteExpense)
+
+	audit := api.Group("/audit", authn)
+	audit.GET("/financial", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionAuditRead), h.securityAudit.ListFinancialAudits)
+	audit.GET("/checklist", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionAuditRead), h.securityAudit.GetSecurityChecklist)
 }
 
 func registerNotificationRoutes(api *gin.RouterGroup, notifHandler *handler.NotificationHandler, repos repositories) {

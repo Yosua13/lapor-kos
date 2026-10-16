@@ -109,7 +109,18 @@ func (r *UserRepository) IsUserActive(ctx context.Context, id uuid.UUID) (bool, 
 // tokens. Tokens issued at or before revoked_after are rejected by middleware.
 func (r *UserRepository) IsSessionValid(ctx context.Context, id uuid.UUID, issuedAt time.Time) (bool, error) {
 	var revokedAfter time.Time
-	err := r.db.QueryRow(ctx, `SELECT revoked_after FROM tenant_session_revocations WHERE user_id=$1`, id).Scan(&revokedAfter)
+	// Check user_session_revocations first
+	err := r.db.QueryRow(ctx, `SELECT revoked_after FROM user_session_revocations WHERE user_id=$1`, id).Scan(&revokedAfter)
+	if err == nil {
+		if !issuedAt.After(revokedAfter) {
+			return false, nil
+		}
+	} else if err != pgx.ErrNoRows {
+		return false, err
+	}
+
+	// Also check tenant_session_revocations for legacy compatibility
+	err = r.db.QueryRow(ctx, `SELECT revoked_after FROM tenant_session_revocations WHERE user_id=$1`, id).Scan(&revokedAfter)
 	if err == pgx.ErrNoRows {
 		return true, nil
 	}
@@ -117,6 +128,36 @@ func (r *UserRepository) IsSessionValid(ctx context.Context, id uuid.UUID, issue
 		return false, err
 	}
 	return issuedAt.After(revokedAfter), nil
+}
+
+// RevokeSession invalidates all active sessions for a user issued up to now.
+func (r *UserRepository) RevokeSession(ctx context.Context, id, revokedBy uuid.UUID, reason string) error {
+	now := time.Now()
+	var revokedByVal *uuid.UUID
+	if revokedBy != uuid.Nil {
+		revokedByVal = &revokedBy
+	}
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO user_session_revocations (user_id, revoked_after, reason, revoked_by, updated_at)
+		VALUES ($1, $2, $3, $4, NOW())
+		ON CONFLICT (user_id) DO UPDATE
+		SET revoked_after = EXCLUDED.revoked_after,
+		    reason = EXCLUDED.reason,
+		    revoked_by = EXCLUDED.revoked_by,
+		    updated_at = NOW()
+	`, id, now, reason, revokedByVal)
+	if err != nil {
+		return err
+	}
+	_, _ = r.db.Exec(ctx, `
+		INSERT INTO tenant_session_revocations (user_id, revoked_after, reason, updated_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (user_id) DO UPDATE
+		SET revoked_after = EXCLUDED.revoked_after,
+		    reason = EXCLUDED.reason,
+		    updated_at = NOW()
+	`, id, now, reason)
+	return nil
 }
 
 func (r *UserRepository) VerifyUser(ctx context.Context, id uuid.UUID) error {
