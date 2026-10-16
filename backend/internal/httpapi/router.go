@@ -31,6 +31,7 @@ type handlers struct {
 	checkout        *handler.CheckoutHandler
 	notification    *handler.NotificationHandler
 	visitorPermit   *handler.VisitorPermitHandler
+	finance         *handler.FinanceHandler
 }
 
 type repositories struct {
@@ -62,6 +63,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 	checkoutRepo := repository.NewCheckoutRepository(db)
 	notificationRepo := repository.NewNotificationRepository(db)
 	visitorPermitRepo := repository.NewVisitorPermitRepository(db)
+	financeRepo := repository.NewFinanceRepository(db)
 
 	deliveryCron := cron.NewDeliveryCron(notificationRepo, whatsAppService, emailService)
 	deliveryCron.Start()
@@ -83,6 +85,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		checkout:        handler.NewCheckoutHandler(checkoutRepo, db),
 		notification:    handler.NewNotificationHandler(notificationRepo, whatsAppService, emailService),
 		visitorPermit:   handler.NewVisitorPermitHandler(visitorPermitRepo),
+		finance:         handler.NewFinanceHandler(financeRepo),
 	}
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
@@ -382,6 +385,32 @@ func registerPropertyOperations(api *gin.RouterGroup, h handlers, repos reposito
 	visitorPermits.POST("/:id/check-in", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitCheckInOut), h.visitorPermit.CheckInVisitor)
 	visitorPermits.POST("/:id/check-out", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitCheckInOut), h.visitorPermit.CheckOutVisitor)
 	visitorPermits.POST("/retention/apply", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionVisitorPermitApprove), h.visitorPermit.ApplyRetentionPolicy)
+
+	finance := api.Group("/finance", authn)
+	finance.GET("/dashboard", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.finance.GetDashboard)
+	finance.GET("/aging", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.finance.GetReceivablesAging)
+	finance.GET("/period-closures", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.finance.ListPeriodClosures)
+	finance.GET("/period-closures/:period_key", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.finance.GetPeriodClosure)
+	finance.POST("/period-closures", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionFinanceClose), h.finance.ClosePeriod)
+	finance.POST("/period-closures/:period_key/reopen", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionFinanceClose), h.finance.ReopenPeriod)
+	finance.GET("/adjustments", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.finance.ListAdjustments)
+	finance.POST("/adjustments", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionFinanceAdjust), h.finance.CreateAdjustment)
+	finance.POST("/period-closures/:period_key/adjustments", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionFinanceAdjust), h.finance.CreateAdjustment)
+	finance.GET("/adjustments/:adjustment_id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.finance.GetAdjustment)
+	finance.POST("/adjustments/:adjustment_id/approve", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionFinanceClose), h.finance.ApproveAdjustment)
+	finance.POST("/exports", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionFinanceExport), h.finance.CreateExportJob)
+	finance.GET("/exports", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.finance.ListExportJobs)
+	finance.GET("/exports/:job_id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.finance.GetExportJob)
+	finance.GET("/exports/:job_id/download", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionReportRead), h.finance.DownloadExport)
+
+	expenses := api.Group("/expenses", authn)
+	expenses.GET("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseRead), h.finance.ListExpenses)
+	expenses.GET("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseRead), h.finance.GetExpense)
+	expenses.POST("", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseWrite), h.finance.CreateExpense)
+	expenses.PUT("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseWrite), h.finance.UpdateExpense)
+	expenses.POST("/:id/approve", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseApprove), h.finance.ApproveExpense)
+	expenses.POST("/:id/pay", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseWrite), h.finance.PayExpense)
+	expenses.DELETE("/:id", middleware.RequirePropertyAccess(propertyRepo, authz.PermissionExpenseWrite), h.finance.DeleteExpense)
 }
 
 func registerNotificationRoutes(api *gin.RouterGroup, notifHandler *handler.NotificationHandler, repos repositories) {

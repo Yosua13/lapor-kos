@@ -62,6 +62,13 @@ const (
 	PermissionWorkOrderWrite Permission = "work_order.write"
 	PermissionVendorRead     Permission = "vendor.read"
 	PermissionVendorWrite    Permission = "vendor.write"
+
+	PermissionExpenseRead    Permission = "expense.read"
+	PermissionExpenseWrite   Permission = "expense.write"
+	PermissionExpenseApprove Permission = "expense.approve"
+	PermissionFinanceClose   Permission = "finance.close"
+	PermissionFinanceAdjust  Permission = "finance.adjust"
+	PermissionFinanceExport  Permission = "finance.export"
 )
 
 var ErrUnknownPermission = errors.New("unknown property permission")
@@ -109,6 +116,12 @@ var knownPermissions = []Permission{
 	PermissionWorkOrderWrite,
 	PermissionVendorRead,
 	PermissionVendorWrite,
+	PermissionExpenseRead,
+	PermissionExpenseWrite,
+	PermissionExpenseApprove,
+	PermissionFinanceClose,
+	PermissionFinanceAdjust,
+	PermissionFinanceExport,
 }
 
 var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
@@ -152,6 +165,12 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionWorkOrderWrite,
 		PermissionVendorRead,
 		PermissionVendorWrite,
+		PermissionExpenseRead,
+		PermissionExpenseWrite,
+		PermissionExpenseApprove,
+		PermissionFinanceClose,
+		PermissionFinanceAdjust,
+		PermissionFinanceExport,
 	),
 	model.PropertyRoleFinance: permissionSet(
 		PermissionPropertyRead,
@@ -173,6 +192,12 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionVisitorPermitRead,
 		PermissionWorkOrderRead,
 		PermissionVendorRead,
+		PermissionExpenseRead,
+		PermissionExpenseWrite,
+		PermissionExpenseApprove,
+		PermissionFinanceClose,
+		PermissionFinanceAdjust,
+		PermissionFinanceExport,
 	),
 	model.PropertyRoleMaintenance: permissionSet(
 		PermissionPropertyRead,
@@ -191,6 +216,8 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionWorkOrderRead,
 		PermissionWorkOrderWrite,
 		PermissionVendorRead,
+		PermissionExpenseRead,
+		PermissionExpenseWrite,
 	),
 	model.PropertyRoleViewer: permissionSet(
 		PermissionPropertyRead,
@@ -207,6 +234,7 @@ var rolePermissions = map[model.PropertyRole]map[Permission]struct{}{
 		PermissionVisitorPermitRead,
 		PermissionWorkOrderRead,
 		PermissionVendorRead,
+		PermissionExpenseRead,
 	),
 }
 
