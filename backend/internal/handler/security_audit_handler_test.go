@@ -50,6 +50,22 @@ func (m *mockSecurityAuditRepo) GetSecurityChecklist(ctx context.Context, proper
 	return args.Get(0).(*model.SecurityChecklist), args.Error(1)
 }
 
+type mockRedisPinger struct {
+	health model.DependencyHealth
+}
+
+func (m *mockRedisPinger) Ping(ctx context.Context) model.DependencyHealth {
+	return m.health
+}
+
+type mockRabbitPinger struct {
+	health model.DependencyHealth
+}
+
+func (m *mockRabbitPinger) Ping() model.DependencyHealth {
+	return m.health
+}
+
 func TestSecurityAuditHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -86,6 +102,59 @@ func TestSecurityAuditHandler(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Body.String(), `"status":"ready"`)
 		assert.Contains(t, w.Body.String(), `"latest_migration":"030"`)
+		assert.Contains(t, w.Body.String(), `"redis":{"status":"disabled"`)
+		assert.Contains(t, w.Body.String(), `"rabbitmq":{"status":"disabled"`)
+	})
+
+	t.Run("ReadinessCheck with connected Redis and RabbitMQ returns ready", func(t *testing.T) {
+		mockRepo := new(mockSecurityAuditRepo)
+		mockRepo.On("CheckDatabaseHealth", mock.Anything).Return(model.DatabaseHealth{
+			Status:          "connected",
+			LatencyMs:       1.5,
+			TotalConns:      5,
+			LatestMigration: "030",
+		}, nil)
+
+		h := NewSecurityAuditHandler(mockRepo, nil, nil).WithInfrastructure(
+			&mockRedisPinger{health: model.DependencyHealth{Status: model.DependencyStatusConnected, Enabled: true, LatencyMs: 0.5}},
+			&mockRabbitPinger{health: model.DependencyHealth{Status: model.DependencyStatusConnected, Enabled: true, LatencyMs: 1.2}},
+		)
+		r := gin.New()
+		r.GET("/readyz", h.ReadinessCheck)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/readyz", nil)
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"status":"ready"`)
+		assert.Contains(t, w.Body.String(), `"redis":{"status":"connected"`)
+		assert.Contains(t, w.Body.String(), `"rabbitmq":{"status":"connected"`)
+	})
+
+	t.Run("ReadinessCheck with disconnected Redis degrades gracefully with 200 OK", func(t *testing.T) {
+		mockRepo := new(mockSecurityAuditRepo)
+		mockRepo.On("CheckDatabaseHealth", mock.Anything).Return(model.DatabaseHealth{
+			Status:          "connected",
+			LatencyMs:       1.5,
+			TotalConns:      5,
+			LatestMigration: "030",
+		}, nil)
+
+		h := NewSecurityAuditHandler(mockRepo, nil, nil).WithInfrastructure(
+			&mockRedisPinger{health: model.DependencyHealth{Status: model.DependencyStatusDisconnected, Enabled: true, Error: "timeout"}},
+			&mockRabbitPinger{health: model.DependencyHealth{Status: model.DependencyStatusConnected, Enabled: true}},
+		)
+		r := gin.New()
+		r.GET("/readyz", h.ReadinessCheck)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/readyz", nil)
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"status":"degraded"`)
+		assert.Contains(t, w.Body.String(), `"redis":{"status":"disconnected"`)
 	})
 
 	t.Run("ListFinancialAudits returns property scoped audits", func(t *testing.T) {
