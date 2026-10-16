@@ -54,7 +54,7 @@ backend/
 
 ## 3. Kriteria Penerimaan (Acceptance Criteria)
 
-- [ ] Polling database berkala di `delivery_cron.go` sepenuhnya digantikan oleh event streaming RabbitMQ.
-- [ ] Pengiriman WhatsApp dan Email berjalan secara asinkron; kegagalan jaringan eksternal memicu retry otomatis dan akhirnya terisolasi di Dead Letter Queue tanpa menghilangkan data.
-- [ ] Request HTTP saat komplain dibuat atau tagihan diterbitkan merespons dalam <100ms karena pekerjaan berat dipindahkan ke antrean RabbitMQ.
-- [ ] Worker proses terpisah (`cmd/worker`) dapat dimatikan (*graceful shutdown*) tanpa terjadi kehilangan pesan (*zero message loss*) yang sedang diproses.
+- [x] Polling database berkala di `delivery_cron.go` sepenuhnya digantikan oleh event streaming RabbitMQ.
+- [x] Pengiriman WhatsApp dan Email berjalan secara asinkron; kegagalan jaringan eksternal memicu retry otomatis dan akhirnya terisolasi di Dead Letter Queue tanpa menghilangkan data.
+- [x] Request HTTP saat komplain dibuat atau tagihan diterbitkan merespons dalam <100ms karena pekerjaan berat dipindahkan ke antrean RabbitMQ.
+- [x] Worker proses terpisah (`cmd/worker`) dapat dimatikan (*graceful shutdown*) tanpa terjadi kehilangan pesan (*zero message loss*) yang sedang diproses.
