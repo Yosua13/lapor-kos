@@ -50,7 +50,7 @@ PORT=8081
 # PENTING: Jika menggunakan Supabase Connection Pooler (PgBouncer) pada port 6543, 
 # Anda WAJIB menambahkan parameter di bawah agar tidak terjadi error prepared statement:
 # "?sslmode=require&default_query_exec_mode=exec&statement_cache_capacity=0"
-DATABASE_URL=postgresql://postgres.xxx:your_password@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require&default_query_exec_mode=exec&statement_cache_capacity=0
+DATABASE_URL=postgresql://postgres.your_project_ref:[YOUR-PASSWORD]@sample-project.pooler.supabase.com:6543/postgres?sslmode=require&default_query_exec_mode=exec&statement_cache_capacity=0
 
 # Keamanan JWT
 JWT_SECRET=your_jwt_secret_here
