@@ -49,7 +49,13 @@ backend/
 
 ## 3. Kriteria Penerimaan (Acceptance Criteria)
 
-- [ ] Redis dapat diakses melalui Docker Compose dan lolos ping konektivitas dari backend.
-- [ ] RabbitMQ Management UI dapat diakses pada port 15672 dengan kredensial terkonfigurasi.
-- [ ] Graceful degradation: Jika Redis atau RabbitMQ terputus, backend tidak crash seketika, melainkan mencatat error log terstruktur dan mencoba reconnect.
-- [ ] Endpoint `/readyz` dan `/api/health` melaporkan status konektivitas 3 komponen utama: PostgreSQL, Redis, dan RabbitMQ.
+- [x] Redis dapat diakses melalui Docker Compose dan lolos ping konektivitas dari backend.
+- [x] RabbitMQ Management UI dapat diakses pada port 15672 dengan kredensial terkonfigurasi.
+- [x] Graceful degradation: Jika Redis atau RabbitMQ terputus, backend tidak crash seketika, melainkan mencatat error log terstruktur dan mencoba reconnect.
+- [x] Endpoint `/readyz` dan `/api/health` melaporkan status konektivitas 3 komponen utama: PostgreSQL, Redis, dan RabbitMQ.
+
+---
+
+## 4. Dokumen Terkait
+
+- Panduan Pengujian Manual: [docs/manual_testing/arch-01-manual-test-cases.md](file:///d:/project_yosua/lapor-kos/docs/manual_testing/arch-01-manual-test-cases.md)
