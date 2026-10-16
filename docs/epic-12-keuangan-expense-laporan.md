@@ -34,11 +34,11 @@ Menyediakan laporan usaha yang dapat direkonsiliasi dengan invoice, payment, dep
 
 ## Kriteria Penerimaan
 
-- [ ] Angka dashboard dapat direkonsiliasi ke invoice, payment, allocation, deposit, dan expense.
-- [ ] Payment berstatus pending tidak dihitung sebagai cash received.
-- [ ] Deposit tidak dihitung sebagai revenue.
-- [ ] Adjustment setelah period close membutuhkan approval dan audit trail.
-- [ ] Laporan besar menggunakan pagination atau background export tanpa membebani halaman utama.
+- [x] Angka dashboard dapat direkonsiliasi ke invoice, payment, allocation, deposit, dan expense.
+- [x] Payment berstatus pending tidak dihitung sebagai cash received.
+- [x] Deposit tidak dihitung sebagai revenue.
+- [x] Adjustment setelah period close membutuhkan approval dan audit trail.
+- [x] Laporan besar menggunakan pagination atau background export tanpa membebani halaman utama.
 
 ## Ketergantungan
 
