@@ -52,12 +52,14 @@ type FinancialAuditListResult struct {
 
 // SystemHealthStatus reports end-to-end system and dependency health.
 type SystemHealthStatus struct {
-	Status    string          `json:"status"` // "ready", "degraded", "unhealthy"
-	Timestamp time.Time       `json:"timestamp"`
-	Database  DatabaseHealth  `json:"database"`
-	Storage   StorageHealth   `json:"storage"`
-	Runtime   RuntimeHealth   `json:"runtime"`
-	Security  SecuritySummary `json:"security"`
+	Status    string           `json:"status"` // "ready", "degraded", "unhealthy"
+	Timestamp time.Time        `json:"timestamp"`
+	Database  DatabaseHealth   `json:"database"`
+	Redis     DependencyHealth `json:"redis"`
+	RabbitMQ  DependencyHealth `json:"rabbitmq"`
+	Storage   StorageHealth    `json:"storage"`
+	Runtime   RuntimeHealth    `json:"runtime"`
+	Security  SecuritySummary  `json:"security"`
 }
 
 // DatabaseHealth reports PostgreSQL connection metrics.
