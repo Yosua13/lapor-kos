@@ -16,6 +16,7 @@ type EmailServiceInterface interface {
 	SendTenantAccountVerificationEmail(email string, token string) error
 	SendOTPEmail(email string, otp string) error
 	SendTenantInvitationEmail(email string, invitationURL string, expiresAt time.Time) error
+	SendGeneralEmail(to string, subject string, body string) error
 }
 
 type EmailService struct {
@@ -57,6 +58,10 @@ func (s *EmailService) sendEmail(to string, subject string, body string) error {
 	d := gomail.NewDialer(s.host, s.port, s.user, s.pass)
 
 	return d.DialAndSend(m)
+}
+
+func (s *EmailService) SendGeneralEmail(to string, subject string, body string) error {
+	return s.sendEmail(to, subject, body)
 }
 
 func (s *EmailService) SendVerificationEmail(email string, token string) error {
