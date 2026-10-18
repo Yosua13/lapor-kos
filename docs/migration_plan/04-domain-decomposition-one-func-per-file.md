@@ -85,8 +85,8 @@ backend/internal/
 
 ## 3. Kriteria Penerimaan (Acceptance Criteria)
 
-- [ ] Tidak ada file kode yang memiliki lebih dari 1 fungsi/use case utama dalam layer Use Case, HTTP Handler, dan Database Query.
-- [ ] Panjang setiap file rata-rata berkisar antara 30 hingga 120 baris, bebas dari "god-object".
-- [ ] Pengujian unit use case layer mencapai *code coverage* >85% tanpa perlu mock database yang berat.
-- [ ] Seluruh endpoint API lama tetap kompatibel 100% (*zero regression*) dengan frontend Next.js.
-- [ ] Seluruh integration test dan CI release gate script tetap lulus 100%.
+- [x] Tidak ada file kode yang memiliki lebih dari 1 fungsi/use case utama dalam layer Use Case, HTTP Handler, dan Database Query.
+- [x] Panjang setiap file rata-rata berkisar antara 30 hingga 120 baris, bebas dari "god-object".
+- [x] Pengujian unit use case layer mencapai *code coverage* >85% tanpa perlu mock database yang berat.
+- [x] Seluruh endpoint API lama tetap kompatibel 100% (*zero regression*) dengan frontend Next.js.
+- [x] Seluruh integration test dan CI release gate script tetap lulus 100%.
