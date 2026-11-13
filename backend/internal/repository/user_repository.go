@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -249,12 +250,24 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, id uuid.UUID, hash 
 
 func (r *UserRepository) GetMyTenantProfile(ctx context.Context, userID uuid.UUID) (map[string]any, error) {
 	var propertyID uuid.UUID
-	if err := r.db.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT property_id FROM contracts
 		WHERE user_id=$1 AND status IN ('active','scheduled','pending_tenant','draft')
 		ORDER BY CASE status WHEN 'active' THEN 1 WHEN 'pending_tenant' THEN 2 WHEN 'scheduled' THEN 3 ELSE 4 END,created_at DESC LIMIT 1`, userID,
-	).Scan(&propertyID); err != nil {
-		return nil, err
+	).Scan(&propertyID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Fallback: check if tenant has a profile in tenant_profiles
+			err = r.db.QueryRow(ctx, `
+				SELECT property_id FROM tenant_profiles
+				WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1`, userID,
+			).Scan(&propertyID)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 	return r.GetTenantProfile(ctx, propertyID, userID)
 }
@@ -262,18 +275,18 @@ func (r *UserRepository) GetMyTenantProfile(ctx context.Context, userID uuid.UUI
 func (r *UserRepository) GetTenantProfile(ctx context.Context, propertyID, userID uuid.UUID) (map[string]any, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT
-			u.id,COALESCE(NULLIF(tp.full_name,''),u.name),
-			COALESCE(NULLIF(tp.email,''),u.email),COALESCE(NULLIF(tp.phone,''),u.phone),
-			NULL::text,NULL::text,
-			u.is_active,tp.date_of_birth,tp.gender,tp.job,tp.emergency_contact_phone,
-			tp.emergency_contact_relation,tp.emergency_contact_name,
-			NULL::text,u.created_at,
-			c.id,c.property_id,c.start_date,c.end_date,c.rental_duration,
-			c.monthly_rent,c.total_price,COALESCE(c.deposit,0),
-			COALESCE(c.payment_interval,'monthly'),COALESCE(c.payment_due_day,1),
-			c.status,COALESCE(c.notes,''),
-			r.id,r.room_number,r.price_per_month,COALESCE(r.description,''),
-			r.status,r.type,r.floor,
+			u.id, COALESCE(NULLIF(tp.full_name,''), u.name),
+			COALESCE(NULLIF(tp.email,''), u.email), COALESCE(NULLIF(tp.phone,''), u.phone),
+			NULL::text, NULL::text,
+			u.is_active, tp.date_of_birth, tp.gender, tp.job, tp.emergency_contact_phone,
+			tp.emergency_contact_relation, tp.emergency_contact_name,
+			NULL::text, u.created_at,
+			c.id, c.property_id, c.start_date, c.end_date, c.rental_duration,
+			c.monthly_rent, c.total_price, c.deposit,
+			c.payment_interval, c.payment_due_day,
+			c.status, c.notes,
+			r.id, r.room_number, r.price_per_month, r.description,
+			r.status, r.type, r.floor,
 			(SELECT p.status FROM payments p
 			 WHERE p.property_id=c.property_id AND p.contract_id=c.id
 			 ORDER BY p.period_year DESC,p.period_month DESC,p.due_date DESC LIMIT 1),
@@ -282,38 +295,45 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, propertyID, userI
 			 ORDER BY p.period_year DESC,p.period_month DESC,p.due_date DESC LIMIT 1),
 			pr.name
 		FROM users u
-		JOIN LATERAL (
+		LEFT JOIN LATERAL (
 			SELECT * FROM contracts
-			WHERE user_id=u.id AND property_id=$1
-			ORDER BY (status='active') DESC,created_at DESC LIMIT 1
+			WHERE user_id=u.id AND (property_id = $1 OR $1 = '00000000-0000-0000-0000-000000000000'::uuid)
+			ORDER BY (status='active') DESC, created_at DESC LIMIT 1
 		) c ON TRUE
-		LEFT JOIN tenant_profiles tp ON tp.property_id=c.property_id AND tp.user_id=u.id
+		LEFT JOIN LATERAL (
+			SELECT * FROM tenant_profiles
+			WHERE user_id=u.id AND (property_id = c.property_id OR property_id = $1 OR ($1 = '00000000-0000-0000-0000-000000000000'::uuid AND c.property_id IS NULL))
+			ORDER BY created_at DESC LIMIT 1
+		) tp ON TRUE
 		LEFT JOIN rooms r ON r.id=c.room_id AND r.property_id=c.property_id
-		JOIN properties pr ON pr.id=c.property_id
+		LEFT JOIN properties pr ON pr.id=COALESCE(c.property_id, tp.property_id, NULLIF($1, '00000000-0000-0000-0000-000000000000'::uuid))
 		WHERE u.id=$2`, propertyID, userID)
 
-	var id, contractID, contractPropertyID uuid.UUID
+	var id uuid.UUID
 	var name, email, phone string
 	var ktpURL, selfieURL, gender, job *string
 	var emergencyPhone, emergencyRelation, emergencyName, additionalDocURL *string
 	var active bool
 	var dateOfBirth *time.Time
-	var createdAt, startDate, endDate time.Time
-	var duration, dueDay int
-	var monthlyRent, totalPrice, deposit float64
-	var interval, contractStatus, notes string
+	var createdAt time.Time
+	var contractID, contractPropertyID *uuid.UUID
+	var startDate, endDate *time.Time
+	var duration, dueDay *int
+	var monthlyRent, totalPrice, deposit *float64
+	var interval, contractStatus, notes *string
 	var roomID *uuid.UUID
 	var roomNumber, roomDescription, roomStatus, roomType, roomFloor *string
 	var roomPrice *float64
 	var latestPaymentStatus *string
 	var latestPaymentAmount *float64
-	var propertyName string
+	var propertyName *string
 	if err := row.Scan(
 		&id, &name, &email, &phone, &ktpURL, &selfieURL, &active,
 		&dateOfBirth, &gender, &job, &emergencyPhone, &emergencyRelation,
-		&emergencyName, &additionalDocURL, &createdAt, &contractID,
-		&contractPropertyID, &startDate, &endDate, &duration, &monthlyRent,
-		&totalPrice, &deposit, &interval, &dueDay, &contractStatus, &notes,
+		&emergencyName, &additionalDocURL, &createdAt,
+		&contractID, &contractPropertyID, &startDate, &endDate, &duration,
+		&monthlyRent, &totalPrice, &deposit, &interval, &dueDay,
+		&contractStatus, &notes,
 		&roomID, &roomNumber, &roomPrice, &roomDescription, &roomStatus,
 		&roomType, &roomFloor, &latestPaymentStatus, &latestPaymentAmount,
 		&propertyName,
@@ -329,21 +349,42 @@ func (r *UserRepository) GetTenantProfile(ctx context.Context, propertyID, userI
 		"emergency_contact_relation": emergencyRelation,
 		"emergency_contact_name":     emergencyName,
 		"additional_doc_url":         additionalDocURL, "created_at": createdAt,
-		"property": map[string]any{"id": contractPropertyID, "name": propertyName},
-		"contract": map[string]any{
-			"id": contractID, "property_id": contractPropertyID,
-			"start_date": startDate, "end_date": endDate,
-			"rental_duration": duration, "monthly_rent": monthlyRent,
-			"total_price": totalPrice, "deposit": deposit,
-			"payment_interval": interval, "payment_due_day": dueDay,
-			"status": contractStatus, "notes": notes,
+	}
+
+	if contractPropertyID != nil && propertyName != nil {
+		result["property"] = map[string]any{"id": *contractPropertyID, "name": *propertyName}
+	} else if propertyName != nil && propertyID != uuid.Nil {
+		result["property"] = map[string]any{"id": propertyID, "name": *propertyName}
+	} else {
+		result["property"] = nil
+	}
+
+	if contractID != nil {
+		propID := uuid.Nil
+		if contractPropertyID != nil {
+			propID = *contractPropertyID
+		}
+		result["contract"] = map[string]any{
+			"id": *contractID, "property_id": propID,
+			"start_date": valueOrZeroTime(startDate), "end_date": valueOrZeroTime(endDate),
+			"rental_duration": valueOrZeroInt(duration), "monthly_rent": valueOrZeroFloat(monthlyRent),
+			"total_price": valueOrZeroFloat(totalPrice), "deposit": valueOrZeroFloat(deposit),
+			"payment_interval": valueOrEmpty(interval), "payment_due_day": valueOrZeroInt(dueDay),
+			"status": valueOrEmpty(contractStatus), "notes": valueOrEmpty(notes),
 			"latest_payment_status": latestPaymentStatus,
 			"latest_payment_amount": latestPaymentAmount,
-		},
+		}
+	} else {
+		result["contract"] = nil
 	}
+
 	if roomID != nil {
+		propID := uuid.Nil
+		if contractPropertyID != nil {
+			propID = *contractPropertyID
+		}
 		result["room"] = map[string]any{
-			"id": *roomID, "property_id": contractPropertyID,
+			"id": *roomID, "property_id": propID,
 			"room_number": valueOrEmpty(roomNumber), "price_per_month": roomPrice,
 			"description": valueOrEmpty(roomDescription),
 			"status":      valueOrEmpty(roomStatus), "type": valueOrEmpty(roomType),
@@ -644,6 +685,27 @@ func requireOne(command rowsAffected, err error) error {
 func valueOrEmpty(value *string) string {
 	if value == nil {
 		return ""
+	}
+	return *value
+}
+
+func valueOrZeroTime(value *time.Time) time.Time {
+	if value == nil {
+		return time.Time{}
+	}
+	return *value
+}
+
+func valueOrZeroInt(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func valueOrZeroFloat(value *float64) float64 {
+	if value == nil {
+		return 0
 	}
 	return *value
 }
