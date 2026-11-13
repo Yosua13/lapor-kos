@@ -1,4 +1,4 @@
-﻿Write-Host "Starting Lapor Kos Services..." -ForegroundColor Cyan
+Write-Host "Starting Lapor Kos Services..." -ForegroundColor Cyan
 
 # Start Backend
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; go run ./cmd/api"
@@ -6,4 +6,5 @@ Write-Host "Backend starting on http://localhost:8081" -ForegroundColor Green
 
 # Start Frontend
 cd frontend
+$env:NODE_OPTIONS = "--disable-warning=DEP0205"
 npm run dev

@@ -50,19 +50,9 @@ Tujuan utama dari **Lapor Kos** adalah menghilangkan kompleksitas administrasi m
 ### Arsitektur Sistem
 Aplikasi ini dibangun menggunakan arsitektur monolitik terpisah (Decoupled Frontend & Backend):
 
-```mermaid
-graph TD
-    Client[Next.js Frontend] <-->|REST API + JWT| API[Go Gin Backend]
-    API <--> DB[(PostgreSQL / Supabase)]
-    API -->|Analisis Keluhan| Gemini[Google Gemini AI]
-    API -->|Notifikasi Chat| Fonnte[WhatsApp Gateway]
-    API -->|Media Uploads| Storage[Supabase Storage]
-    API -->|PDF Engine| gofpdf[Gofpdf Library]
-```
-
 ### Versi Minimum Perangkat Lunak
 * **Golang runtime**: `v1.25.x` atau lebih baru.
-* **Node.js**: `v22.x` (LTS) atau lebih baru.
+* **Node.js**: `v26.13.0` atau lebih baru.
 * **PostgreSQL Database**: `v15.x` atau lebih baru (Sangat direkomendasikan menggunakan Supabase).
 
 ---

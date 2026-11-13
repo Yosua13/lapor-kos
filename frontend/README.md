@@ -8,7 +8,7 @@ Direktori ini berisi kode frontend untuk aplikasi **Lapor Kos**, dibangun menggu
 
 Sebelum menjalankan aplikasi, pastikan komputer Anda telah terinstal perangkat lunak berikut:
 
-1. **Node.js**: Versi **`v22.x`** (LTS - Recommended) atau lebih baru.
+1. **Node.js**: Versi **`v26.13.0`** (Recommended) atau lebih baru.
    * Cek versi Node.js di terminal: `node --version`
    * Unduh di [nodejs.org](https://nodejs.org/).
 2. **NPM**: Pengelola paket bawaan Node.js (Versi 10.x atau lebih baru).
