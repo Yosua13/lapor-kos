@@ -444,7 +444,7 @@ func (r *PaymentRepository) SubmitProof(ctx context.Context, id, userID uuid.UUI
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'payment_proof_submitted', 'payment', $2, $3)`,
-		propertyID, id, outboxPayload,
+		propertyID, id, string(outboxPayload),
 	)
 
 	return tx.Commit(ctx)
@@ -515,7 +515,7 @@ func (r *PaymentRepository) VerifyPaymentTx(ctx context.Context, propertyID, act
 		_, _ = tx.Exec(ctx, `
 			INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 			VALUES ($1, 'payment_rejected', 'payment', $2, $3)`,
-			propertyID, paymentID, outboxPayload,
+			propertyID, paymentID, string(outboxPayload),
 		)
 
 		correlationID := ""
@@ -657,7 +657,7 @@ func (r *PaymentRepository) VerifyPaymentTx(ctx context.Context, propertyID, act
 				INSERT INTO payment_receipts (property_id, payment_id, receipt_number, tenant_id, total_minor, currency, snapshot, checksum, issued_by, issued_at)
 				VALUES ($1, $2, $3, $4, $5, 'IDR', $6, $7, $8, $9)
 				ON CONFLICT (receipt_number) DO NOTHING`,
-				propertyID, paymentID, receiptNum, *tenantID, verifiedAmount, snapshotBytes, checksum, actorID, now,
+				propertyID, paymentID, receiptNum, *tenantID, verifiedAmount, string(snapshotBytes), checksum, actorID, now,
 			)
 		}
 	}
@@ -675,7 +675,7 @@ func (r *PaymentRepository) VerifyPaymentTx(ctx context.Context, propertyID, act
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'payment_verified', 'payment', $2, $3)`,
-		propertyID, paymentID, outboxPayload,
+		propertyID, paymentID, string(outboxPayload),
 	)
 
 	correlationID := ""
@@ -802,7 +802,7 @@ func (r *PaymentRepository) ProcessWebhook(ctx context.Context, payload model.Pa
 			INSERT INTO payment_receipts (property_id, payment_id, receipt_number, tenant_id, total_minor, currency, snapshot, checksum, issued_at)
 			VALUES ($1, $2, $3, $4, $5, 'IDR', $6, $7, $8)
 			ON CONFLICT (receipt_number) DO NOTHING`,
-			payload.PropertyID, newPaymentID, receiptNum, *tenantID, payload.AmountMinor, snapshotBytes, checksum, now,
+			payload.PropertyID, newPaymentID, receiptNum, *tenantID, payload.AmountMinor, string(snapshotBytes), checksum, now,
 		)
 	}
 
@@ -818,7 +818,7 @@ func (r *PaymentRepository) ProcessWebhook(ctx context.Context, payload model.Pa
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'webhook_payment_received', 'payment', $2, $3)`,
-		payload.PropertyID, newPaymentID, outboxPayload,
+		payload.PropertyID, newPaymentID, string(outboxPayload),
 	)
 
 	if err := tx.Commit(ctx); err != nil {
@@ -1034,7 +1034,7 @@ func (r *PaymentRepository) CreateRefund(ctx context.Context, propertyID, actorI
 	_, _ = r.db.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'refund_requested', 'refund', $2, $3)`,
-		propertyID, ref.ID, payloadBytes,
+		propertyID, ref.ID, string(payloadBytes),
 	)
 
 	return &ref, nil
@@ -1067,7 +1067,7 @@ func (r *PaymentRepository) ProcessRefund(ctx context.Context, propertyID, actor
 	_, _ = r.db.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'refund_processed', 'refund', $2, $3)`,
-		propertyID, ref.ID, payloadBytes,
+		propertyID, ref.ID, string(payloadBytes),
 	)
 
 	return &ref, nil

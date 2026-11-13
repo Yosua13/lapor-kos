@@ -775,7 +775,7 @@ func (r *FinanceRepository) ClosePeriod(ctx context.Context, propertyID, closedB
 		SET status = 'closed', closed_by = EXCLUDED.closed_by, closed_at = NOW(),
 		    summary_snapshot = EXCLUDED.summary_snapshot, notes = EXCLUDED.notes,
 		    reopened_by = NULL, reopened_at = NULL, reopen_reason = '', updated_at = NOW()
-	`, closureID, propertyID, req.PeriodKey, periodStart, periodEnd, closedByID, snapshotBytes, req.Notes)
+	`, closureID, propertyID, req.PeriodKey, periodStart, periodEnd, closedByID, string(snapshotBytes), req.Notes)
 
 	if err != nil {
 		return nil, fmt.Errorf("insert closure: %w", err)
@@ -1066,7 +1066,7 @@ func (r *FinanceRepository) CreateExportJob(ctx context.Context, propertyID, req
 		)
 	`, jobID, propertyID, requestedByID, req.ReportType, req.PeriodStart, req.PeriodEnd,
 		exportFormat, fileName, csvContent, totalRows, checksum,
-		metaBytes, now)
+		string(metaBytes), now)
 
 	if err != nil {
 		return nil, fmt.Errorf("insert export job: %w", err)
@@ -1326,5 +1326,5 @@ func (r *FinanceRepository) logFinancialAudit(ctx context.Context, propertyID uu
 			property_id, actor_id, action, entity_type, entity_id,
 			amount_minor, reason, correlation_id, before_state, after_state
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, propertyID, actorID, action, entityType, entityID, amountMinor, reason, correlationID, beforeJSON, afterJSON)
+	`, propertyID, actorID, action, entityType, entityID, amountMinor, reason, correlationID, string(beforeJSON), string(afterJSON))
 }

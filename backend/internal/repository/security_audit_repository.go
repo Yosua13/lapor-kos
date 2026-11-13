@@ -65,7 +65,7 @@ func (r *SecurityAuditRepository) RecordFinancialAudit(ctx context.Context, entr
 	_, err = r.db.Exec(ctx, query,
 		entry.PropertyID, entry.ActorID, entry.ActorEmail, entry.ActorRole, entry.Action,
 		entry.EntityType, entry.EntityID, entry.AmountMinor, entry.Currency, entry.Reason,
-		entry.CorrelationID, entry.IPAddress, entry.UserAgent, beforeJSON, afterJSON, metaJSON,
+		entry.CorrelationID, entry.IPAddress, entry.UserAgent, string(beforeJSON), string(afterJSON), string(metaJSON),
 	)
 	return err
 }
@@ -148,7 +148,7 @@ func (r *SecurityAuditRepository) ListFinancialAudits(ctx context.Context, filte
 	}
 	defer rows.Close()
 
-	var items []model.FinancialAuditLog
+	items := make([]model.FinancialAuditLog, 0)
 	for rows.Next() {
 		var item model.FinancialAuditLog
 		var beforeRaw, afterRaw, metaRaw []byte
@@ -258,7 +258,7 @@ func (r *SecurityAuditRepository) RecordSystemHealthEvent(ctx context.Context, e
 		INSERT INTO system_health_audit_events (event_type, severity, source, details, correlation_id)
 		VALUES ($1, $2, $3, $4, $5)
 	`
-	_, err := r.db.Exec(ctx, query, eventType, severity, source, detailsJSON, correlationID)
+	_, err := r.db.Exec(ctx, query, eventType, severity, source, string(detailsJSON), correlationID)
 	return err
 }
 

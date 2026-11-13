@@ -331,7 +331,7 @@ func (r *RoomTransferRepository) CreateTransferRequest(
 			$11, NOW(), NOW()
 		)
 	`, transferID, propertyID, contractInfo.ContractID, contractInfo.TenantID, contractInfo.RoomID, req.ToRoomID,
-		actorID, effectiveDate, contractInfo.EndDate, strings.TrimSpace(req.Reason), calcJSON)
+		actorID, effectiveDate, contractInfo.EndDate, strings.TrimSpace(req.Reason), string(calcJSON))
 
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -361,7 +361,7 @@ func (r *RoomTransferRepository) CreateTransferRequest(
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'room_transfer_requested', 'room_transfer', $2, $3)
-	`, propertyID, transferID, outboxPayload)
+	`, propertyID, transferID, string(outboxPayload))
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -441,7 +441,7 @@ func (r *RoomTransferRepository) ApproveTransfer(
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'room_transfer_approved', 'room_transfer', $2, $3)
-	`, propertyID, transferID, outboxPayload)
+	`, propertyID, transferID, string(outboxPayload))
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -507,7 +507,7 @@ func (r *RoomTransferRepository) RejectTransfer(
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'room_transfer_rejected', 'room_transfer', $2, $3)
-	`, propertyID, transferID, outboxPayload)
+	`, propertyID, transferID, string(outboxPayload))
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -571,7 +571,7 @@ func (r *RoomTransferRepository) CancelTransfer(
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'room_transfer_cancelled', 'room_transfer', $2, $3)
-	`, propertyID, transferID, outboxPayload)
+	`, propertyID, transferID, string(outboxPayload))
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -745,7 +745,7 @@ func (r *RoomTransferRepository) ExecuteTransfer(
 		INSERT INTO contract_versions (property_id, contract_id, version_number, snapshot, reason, created_by, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
-	`, propertyID, contractID, nextVer, snapshotJSON, "Pindah kamar ke "+targetRoomNumber, actorID, now).Scan(&newVerID)
+	`, propertyID, contractID, nextVer, string(snapshotJSON), "Pindah kamar ke "+targetRoomNumber, actorID, now).Scan(&newVerID)
 	if err != nil {
 		return nil, fmt.Errorf("gagal membuat versi kontrak baru: %w", err)
 	}
@@ -755,7 +755,7 @@ func (r *RoomTransferRepository) ExecuteTransfer(
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO contract_events (property_id, contract_id, version_id, event_type, from_status, to_status, reason, metadata, actor_id, created_at)
 		VALUES ($1, $2, $3, 'room_transferred', 'active', 'active', $4, $5, $6, $7)
-	`, propertyID, contractID, newVerID, "Perpindahan kamar ke "+targetRoomNumber, snapshotJSON, actorID, now)
+	`, propertyID, contractID, newVerID, "Perpindahan kamar ke "+targetRoomNumber, string(snapshotJSON), actorID, now)
 
 	// 7. Update Room Statuses
 	// If from_room has no remaining open occupancies, mark it available
@@ -804,7 +804,7 @@ func (r *RoomTransferRepository) ExecuteTransfer(
 				'adjustment', 'issued', $7, $8, $9, $10,
 				$11, $12
 			)
-		`, adjID, propertyID, contractID, tenantID, number, period, currency, dueAt, invoiceSnapshotJSON, key, now, actorID)
+		`, adjID, propertyID, contractID, tenantID, number, period, currency, dueAt, string(invoiceSnapshotJSON), key, now, actorID)
 		if err != nil {
 			return nil, fmt.Errorf("gagal membuat invoice adjustment: %w", err)
 		}
@@ -819,7 +819,7 @@ func (r *RoomTransferRepository) ExecuteTransfer(
 				) VALUES (
 					$1, $2, 'adjustment', $3, $4, $4, $5, $6, $7
 				)
-			`, propertyID, adjID, rentDesc, calc.RentDifferenceMinor, "Prorata sewa pindah kamar", invoiceSnapshotJSON, actorID)
+			`, propertyID, adjID, rentDesc, calc.RentDifferenceMinor, "Prorata sewa pindah kamar", string(invoiceSnapshotJSON), actorID)
 			if err != nil {
 				return nil, fmt.Errorf("gagal membuat invoice item sewa: %w", err)
 			}
@@ -832,7 +832,7 @@ func (r *RoomTransferRepository) ExecuteTransfer(
 				) VALUES (
 					$1, $2, 'one_off', 'Biaya administrasi pindah kamar', $3, $3, 'Biaya administrasi', $4, $5
 				)
-			`, propertyID, adjID, calc.MoveFeeMinor, invoiceSnapshotJSON, actorID)
+			`, propertyID, adjID, calc.MoveFeeMinor, string(invoiceSnapshotJSON), actorID)
 			if err != nil {
 				return nil, fmt.Errorf("gagal membuat invoice item move fee: %w", err)
 			}
@@ -846,7 +846,7 @@ func (r *RoomTransferRepository) ExecuteTransfer(
 				) VALUES (
 					$1, $2, 'adjustment', $3, $4, $4, $5, $6, $7
 				)
-			`, propertyID, adjID, depDesc, calc.DepositDifferenceMinor, "Penyesuaian deposit", invoiceSnapshotJSON, actorID)
+			`, propertyID, adjID, depDesc, calc.DepositDifferenceMinor, "Penyesuaian deposit", string(invoiceSnapshotJSON), actorID)
 			if err != nil {
 				return nil, fmt.Errorf("gagal membuat invoice item deposit: %w", err)
 			}
@@ -859,7 +859,7 @@ func (r *RoomTransferRepository) ExecuteTransfer(
 				) VALUES (
 					$1, $2, 'credit', 'Penggunaan saldo kredit tenant', -$3, -$3, 'Kredit diterapkan', $4, $5
 				)
-			`, propertyID, adjID, calc.CreditAppliedMinor, invoiceSnapshotJSON, actorID)
+			`, propertyID, adjID, calc.CreditAppliedMinor, string(invoiceSnapshotJSON), actorID)
 			if err != nil {
 				return nil, fmt.Errorf("gagal membuat invoice item kredit: %w", err)
 			}
@@ -868,7 +868,7 @@ func (r *RoomTransferRepository) ExecuteTransfer(
 		_, _ = tx.Exec(ctx, `
 			INSERT INTO invoice_events (property_id, invoice_id, event_type, reason, metadata, actor_id, created_at)
 			VALUES ($1, $2, 'issued', $3, $4, $5, $6)
-		`, propertyID, adjID, itemDesc, invoiceSnapshotJSON, actorID, now)
+		`, propertyID, adjID, itemDesc, string(invoiceSnapshotJSON), actorID, now)
 
 		adjustmentInvoiceID = &adjID
 	}
@@ -902,7 +902,7 @@ func (r *RoomTransferRepository) ExecuteTransfer(
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload)
 		VALUES ($1, 'room_transfer_completed', 'room_transfer', $2, $3)
-	`, propertyID, transferID, outboxPayload)
+	`, propertyID, transferID, string(outboxPayload))
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("transaksi gagal: %w", err)

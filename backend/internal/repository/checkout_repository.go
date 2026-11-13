@@ -145,7 +145,7 @@ func (r *CheckoutRepository) CreateCheckoutNotice(ctx context.Context, propertyI
 			$1, $2, $3, 'IDR', $4,
 			$4, 'refund', 'pending', $5
 		)`,
-		settlementID, propertyID, caseID, depositHeld, initialSnapshot,
+		settlementID, propertyID, caseID, depositHeld, string(initialSnapshot),
 	)
 	if err != nil {
 		return nil, err
@@ -163,7 +163,7 @@ func (r *CheckoutRepository) CreateCheckoutNotice(ctx context.Context, propertyI
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload, status)
 		VALUES ($1, 'checkout_notice_submitted', 'checkout', $2, $3, 'pending')`,
-		propertyID, caseID, outboxPayload)
+		propertyID, caseID, string(outboxPayload))
 
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
@@ -481,7 +481,7 @@ func (r *CheckoutRepository) RecordInspections(ctx context.Context, propertyID, 
 		uuid.New(), propertyID, checkoutID, preview.Currency, preview.DepositHeldMinor,
 		preview.UnpaidInvoicesMinor, preview.ProrataRentMinor, preview.DamageChargesMinor,
 		preview.UtilityChargesMinor, preview.CreditBalanceMinor, preview.OtherChargesMinor,
-		preview.NetSettlementMinor, preview.SettlementType, preview.DepositStatus, rawSnapshot,
+		preview.NetSettlementMinor, preview.SettlementType, preview.DepositStatus, string(rawSnapshot),
 	)
 	if err != nil {
 		return nil, err
@@ -716,7 +716,7 @@ func (r *CheckoutRepository) ExecuteCheckout(ctx context.Context, propertyID, ch
 				$7, $8, NOW(), $9
 			)`,
 			invID, propertyID, caseObj.ContractID, caseObj.TenantID, invNumber,
-			invDue, invSnapshot, idempKey, actorID,
+			invDue, string(invSnapshot), idempKey, actorID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("create settlement invoice: %w", err)
@@ -729,7 +729,7 @@ func (r *CheckoutRepository) ExecuteCheckout(ctx context.Context, propertyID, ch
 			) VALUES (
 				$1, $2, 'damage_deduction', 'Kekurangan biaya settlement checkout', $3, $3, 'Kekurangan deposit untuk pelunasan tagihan checkout', $4, $5
 			)`,
-			propertyID, invID, calc.InvoiceAmountMinor, invSnapshot, actorID,
+			propertyID, invID, calc.InvoiceAmountMinor, string(invSnapshot), actorID,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("create settlement invoice item: %w", err)
@@ -749,7 +749,7 @@ func (r *CheckoutRepository) ExecuteCheckout(ctx context.Context, propertyID, ch
 		calc.UnpaidInvoicesMinor, calc.DamageChargesMinor, calc.UtilityChargesMinor,
 		calc.CreditBalanceMinor, calc.NetSettlementMinor, calc.SettlementType,
 		calc.DepositStatus, refundRequestID, finalInvoiceID,
-		calcSnapshot, checkoutID,
+		string(calcSnapshot), checkoutID,
 	)
 	if err != nil {
 		return nil, err
@@ -794,7 +794,7 @@ func (r *CheckoutRepository) ExecuteCheckout(ctx context.Context, propertyID, ch
 		) VALUES (
 			$1, $2, 'checkout_completed', $3, 'Penyelesaian checkout dan settlement hunian', $4, $5
 		)`,
-		propertyID, caseObj.ContractID, newContractStatus, actorID, contractEventMetadata,
+		propertyID, caseObj.ContractID, newContractStatus, actorID, string(contractEventMetadata),
 	)
 
 	// 4. Cancel future recurring invoices that have not fallen due
@@ -854,7 +854,7 @@ func (r *CheckoutRepository) ExecuteCheckout(ctx context.Context, propertyID, ch
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload, status)
 		VALUES ($1, 'checkout_completed', 'checkout', $2, $3, 'pending')`,
-		propertyID, checkoutID, notifPayload)
+		propertyID, checkoutID, string(notifPayload))
 
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err

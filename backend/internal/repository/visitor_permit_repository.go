@@ -138,7 +138,7 @@ func (r *VisitorPermitRepository) Create(ctx context.Context, permit *model.Visi
 			gen_random_uuid(), $1, $2, $3, 'tenant', 'submitted', 'Permintaan izin tamu diajukan', $4, NOW()
 		)
 	`
-	_, err = tx.Exec(ctx, eventQuery, permit.ID, permit.PropertyID, permit.TenantID, payloadJSON)
+	_, err = tx.Exec(ctx, eventQuery, permit.ID, permit.PropertyID, permit.TenantID, string(payloadJSON))
 	if err != nil {
 		return nil, fmt.Errorf("insert visitor permit event: %w", err)
 	}
@@ -155,7 +155,7 @@ func (r *VisitorPermitRepository) Create(ctx context.Context, permit *model.Visi
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, event_type, aggregate_type, aggregate_id, payload, status)
 		VALUES ($1, 'visitor_permit_submitted', 'visitor_permit', $2, $3, 'pending')
-	`, permit.PropertyID, permit.ID, outboxPayload)
+	`, permit.PropertyID, permit.ID, string(outboxPayload))
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
@@ -504,7 +504,7 @@ func (r *VisitorPermitRepository) UpdateStatus(
 		) VALUES (
 			gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW()
 		)
-	`, permitID, propertyID, actorID, actorRole, eventType, reason, payloadJSON)
+	`, permitID, propertyID, actorID, actorRole, eventType, reason, string(payloadJSON))
 	if err != nil {
 		return nil, fmt.Errorf("insert permit event: %w", err)
 	}
@@ -519,7 +519,7 @@ func (r *VisitorPermitRepository) UpdateStatus(
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO in_app_notifications (property_id, user_id, category, title, message, action_url, metadata)
 		VALUES ($1, $2, 'operations', $3, $4, '/guest-permits', $5)
-	`, propertyID, current.TenantID, notifTitle, notifMsg, payloadJSON)
+	`, propertyID, current.TenantID, notifTitle, notifMsg, string(payloadJSON))
 
 	outboxPayload, _ := json.Marshal(map[string]any{
 		"permit_id":   permitID,
@@ -533,7 +533,7 @@ func (r *VisitorPermitRepository) UpdateStatus(
 	_, _ = tx.Exec(ctx, `
 		INSERT INTO notification_outbox (property_id, recipient_id, event_type, aggregate_type, aggregate_id, payload, status)
 		VALUES ($1, $2, 'visitor_permit_reviewed', 'visitor_permit', $3, $4, 'pending')
-	`, propertyID, current.TenantID, permitID, outboxPayload)
+	`, propertyID, current.TenantID, permitID, string(outboxPayload))
 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf("commit tx: %w", err)
@@ -580,7 +580,7 @@ func (r *VisitorPermitRepository) CheckIn(
 		) VALUES (
 			gen_random_uuid(), $1, $2, $3, $4, 'checked_in', 'Tamu telah check-in di lokasi', $5, NOW()
 		)
-	`, permitID, propertyID, actorID, actorRole, payloadJSON)
+	`, permitID, propertyID, actorID, actorRole, string(payloadJSON))
 	if err != nil {
 		return nil, fmt.Errorf("insert check in event: %w", err)
 	}
@@ -630,7 +630,7 @@ func (r *VisitorPermitRepository) CheckOut(
 		) VALUES (
 			gen_random_uuid(), $1, $2, $3, $4, 'checked_out', 'Tamu telah check-out dan meninggalkan properti', $5, NOW()
 		)
-	`, permitID, propertyID, actorID, actorRole, payloadJSON)
+	`, permitID, propertyID, actorID, actorRole, string(payloadJSON))
 	if err != nil {
 		return nil, fmt.Errorf("insert check out event: %w", err)
 	}
@@ -681,7 +681,7 @@ func (r *VisitorPermitRepository) Cancel(
 		) VALUES (
 			gen_random_uuid(), $1, $2, $3, 'tenant', 'cancelled', $4, $5, NOW()
 		)
-	`, permitID, current.PropertyID, tenantID, reason, payloadJSON)
+	`, permitID, current.PropertyID, tenantID, reason, string(payloadJSON))
 	if err != nil {
 		return nil, fmt.Errorf("insert cancel event: %w", err)
 	}

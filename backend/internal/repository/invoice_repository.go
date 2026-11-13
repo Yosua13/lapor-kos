@@ -239,10 +239,17 @@ func (r *InvoiceRepository) createInvoice(ctx context.Context,c billingCandidate
 	var createdID uuid.UUID
 	err=tx.QueryRow(ctx,`INSERT INTO invoices(id,property_id,contract_id,tenant_id,invoice_number,billing_period,invoice_type,status,currency,due_at,calculation_snapshot,idempotency_key,issued_at,created_by)
 		VALUES($1,$2,$3,$4,$5,$6,$7,'issued',$8,$9,$10,$11,NOW(),$12)
-		ON CONFLICT(property_id,contract_id,billing_period,invoice_type) DO NOTHING RETURNING id`,id,c.PropertyID,c.ContractID,c.TenantID,number,period,invoiceType,c.Currency,due,snapshotJSON,key,actorID).Scan(&createdID)
+		ON CONFLICT(property_id,contract_id,billing_period,invoice_type) DO NOTHING RETURNING id`,id,c.PropertyID,c.ContractID,c.TenantID,number,period,invoiceType,c.Currency,due,string(snapshotJSON),key,actorID).Scan(&createdID)
 	if errors.Is(err,pgx.ErrNoRows){return false,nil};if err!=nil{return false,err}
-	for _,item:=range items{metadata,_:=json.Marshal(item.Metadata);_,err=tx.Exec(ctx,`INSERT INTO invoice_items(property_id,invoice_id,item_type,description,unit_amount_minor,amount_minor,reason,metadata,created_by) VALUES($1,$2,$3,$4,$5,$5,$6,$7,$8)`,c.PropertyID,createdID,item.Type,item.Description,item.Amount,item.Reason,metadata,actorID);if err!=nil{return false,err}}
-	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'issued','Invoice generated from immutable contract snapshot',$3,$4)`,c.PropertyID,createdID,snapshotJSON,actorID);if err!=nil{return false,err}
+	for _,item:=range items{
+		metaBytes := []byte("{}")
+		if item.Metadata != nil {
+			metaBytes, _ = json.Marshal(item.Metadata)
+		}
+		_,err=tx.Exec(ctx,`INSERT INTO invoice_items(property_id,invoice_id,item_type,description,unit_amount_minor,amount_minor,reason,metadata,created_by) VALUES($1,$2,$3,$4,$5,$5,$6,$7,$8)`,c.PropertyID,createdID,item.Type,item.Description,item.Amount,item.Reason,string(metaBytes),actorID)
+		if err!=nil{return false,err}
+	}
+	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'issued','Invoice generated from immutable contract snapshot',$3,$4)`,c.PropertyID,createdID,string(snapshotJSON),actorID);if err!=nil{return false,err}
 	return true,tx.Commit(ctx)
 }
 
@@ -297,10 +304,10 @@ func (r *InvoiceRepository) CreateAdjustment(ctx context.Context,propertyID,acto
 	if strings.TrimSpace(req.Reason)==""||strings.TrimSpace(req.Description)==""||req.AmountMinor==0{return nil,ErrInvoiceInvalidInput}
 	source,err:=r.Get(ctx,propertyID,sourceID);if err!=nil{return nil,err};period:=source.BillingPeriod;id:=uuid.New();key:="adjustment:"+id.String();number:=fmt.Sprintf("ADJ-%s-%s",period.Format("200601"),shortID(id));snapshot,_:=json.Marshal(map[string]any{"source_invoice_id":sourceID,"reason":strings.TrimSpace(req.Reason)})
 	tx,err:=r.db.Begin(ctx);if err!=nil{return nil,err};defer tx.Rollback(ctx) //nolint:errcheck
-	_,err=tx.Exec(ctx,`INSERT INTO invoices(id,property_id,contract_id,tenant_id,source_invoice_id,invoice_number,billing_period,invoice_type,status,currency,due_at,calculation_snapshot,idempotency_key,issued_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,'adjustment','issued',$8,$9,$10,$11,NOW(),$12)`,id,propertyID,source.ContractID,source.TenantID,sourceID,number,period,source.Currency,source.DueAt,snapshot,key,actorID);if err!=nil{return nil,err}
-	_,err=tx.Exec(ctx,`INSERT INTO invoice_items(property_id,invoice_id,item_type,description,unit_amount_minor,amount_minor,reason,metadata,created_by) VALUES($1,$2,'adjustment',$3,$4,$4,$5,$6,$7)`,propertyID,id,strings.TrimSpace(req.Description),req.AmountMinor,strings.TrimSpace(req.Reason),snapshot,actorID);if err!=nil{return nil,err}
-	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'adjustment_issued',$3,$4,$5)`,propertyID,id,strings.TrimSpace(req.Reason),snapshot,actorID);if err!=nil{return nil,err}
-	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'adjustment_applied',$3,$4,$5)`,propertyID,sourceID,strings.TrimSpace(req.Reason),snapshot,actorID);if err!=nil{return nil,err}
+	_,err=tx.Exec(ctx,`INSERT INTO invoices(id,property_id,contract_id,tenant_id,source_invoice_id,invoice_number,billing_period,invoice_type,status,currency,due_at,calculation_snapshot,idempotency_key,issued_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,'adjustment','issued',$8,$9,$10,$11,NOW(),$12)`,id,propertyID,source.ContractID,source.TenantID,sourceID,number,period,source.Currency,source.DueAt,string(snapshot),key,actorID);if err!=nil{return nil,err}
+	_,err=tx.Exec(ctx,`INSERT INTO invoice_items(property_id,invoice_id,item_type,description,unit_amount_minor,amount_minor,reason,metadata,created_by) VALUES($1,$2,'adjustment',$3,$4,$4,$5,$6,$7)`,propertyID,id,strings.TrimSpace(req.Description),req.AmountMinor,strings.TrimSpace(req.Reason),string(snapshot),actorID);if err!=nil{return nil,err}
+	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'adjustment_issued',$3,$4,$5)`,propertyID,id,strings.TrimSpace(req.Reason),string(snapshot),actorID);if err!=nil{return nil,err}
+	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'adjustment_applied',$3,$4,$5)`,propertyID,sourceID,strings.TrimSpace(req.Reason),string(snapshot),actorID);if err!=nil{return nil,err}
 	if err=tx.Commit(ctx);err!=nil{return nil,err};return r.Get(ctx,propertyID,id)
 }
 
@@ -312,10 +319,10 @@ func (r *InvoiceRepository) CreateFinalSettlement(ctx context.Context,propertyID
 	if status!="ended"&&status!="terminated"&&status!="renewed"{return nil,fmt.Errorf("%w: final settlement requires a finished contract",ErrInvoiceInvalidInput)}
 	period:=time.Date(endDate.Year(),endDate.Month(),1,0,0,0,0,time.UTC);id:=uuid.New();number:=fmt.Sprintf("FIN-%s-%s",period.Format("200601"),shortID(contractID));key:=fmt.Sprintf("%s:%s:final_settlement",contractID,period.Format("2006-01"));snapshot,_:=json.Marshal(map[string]any{"contract_id":contractID,"contract_status":status,"contract_end":endDate.Format("2006-01-02"),"reason":strings.TrimSpace(req.Reason)})
 	tx,err:=r.db.Begin(ctx);if err!=nil{return nil,err};defer tx.Rollback(ctx) //nolint:errcheck
-	err=tx.QueryRow(ctx,`INSERT INTO invoices(id,property_id,contract_id,tenant_id,invoice_number,billing_period,invoice_type,status,currency,due_at,calculation_snapshot,idempotency_key,issued_at,created_by) VALUES($1,$2,$3,$4,$5,$6,'final_settlement','issued',$7,NOW(),$8,$9,NOW(),$10) ON CONFLICT(property_id,contract_id,billing_period,invoice_type) DO NOTHING RETURNING id`,id,propertyID,contractID,tenantID,number,period,currency,snapshot,key,actorID).Scan(&id)
+	err=tx.QueryRow(ctx,`INSERT INTO invoices(id,property_id,contract_id,tenant_id,invoice_number,billing_period,invoice_type,status,currency,due_at,calculation_snapshot,idempotency_key,issued_at,created_by) VALUES($1,$2,$3,$4,$5,$6,'final_settlement','issued',$7,NOW(),$8,$9,NOW(),$10) ON CONFLICT(property_id,contract_id,billing_period,invoice_type) DO NOTHING RETURNING id`,id,propertyID,contractID,tenantID,number,period,currency,string(snapshot),key,actorID).Scan(&id)
 	if errors.Is(err,pgx.ErrNoRows){return nil,fmt.Errorf("%w: final settlement already exists",ErrInvoiceInvalidInput)};if err!=nil{return nil,err}
-	_,err=tx.Exec(ctx,`INSERT INTO invoice_items(property_id,invoice_id,item_type,description,unit_amount_minor,amount_minor,reason,metadata,created_by) VALUES($1,$2,'adjustment',$3,$4,$4,$5,$6,$7)`,propertyID,id,strings.TrimSpace(req.Description),req.AmountMinor,strings.TrimSpace(req.Reason),snapshot,actorID);if err!=nil{return nil,err}
-	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'final_settlement_issued',$3,$4,$5)`,propertyID,id,strings.TrimSpace(req.Reason),snapshot,actorID);if err!=nil{return nil,err}
+	_,err=tx.Exec(ctx,`INSERT INTO invoice_items(property_id,invoice_id,item_type,description,unit_amount_minor,amount_minor,reason,metadata,created_by) VALUES($1,$2,'adjustment',$3,$4,$4,$5,$6,$7)`,propertyID,id,strings.TrimSpace(req.Description),req.AmountMinor,strings.TrimSpace(req.Reason),string(snapshot),actorID);if err!=nil{return nil,err}
+	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'final_settlement_issued',$3,$4,$5)`,propertyID,id,strings.TrimSpace(req.Reason),string(snapshot),actorID);if err!=nil{return nil,err}
 	if err=tx.Commit(ctx);err!=nil{return nil,err};return r.Get(ctx,propertyID,id)
 }
 
@@ -335,10 +342,16 @@ func createActivationInvoiceTx(ctx context.Context, tx pgx.Tx, c *lockedContract
 	for _,item:=range []lineItem{{Type:"electricity",Description:"Biaya listrik",Amount:int64(math.Round(c.electricity))},{Type:"water",Description:"Biaya air",Amount:int64(math.Round(c.water))},{Type:"one_off",Description:"Biaya lain",Amount:int64(math.Round(c.other))},{Type:"one_off",Description:"Deposit",Amount:int64(math.Round(c.deposit))}}{if item.Amount!=0{items=append(items,item)}}
 	snapshot,_:=json.Marshal(map[string]any{"contract_id":c.id,"billing_period":period.Format("2006-01-02"),"contract_version_id":c.versionID,"contract_start":c.startDate.Format("2006-01-02"),"contract_end":c.endDate.Format("2006-01-02"),"payment_interval":c.paymentInterval,"active_days":active,"days_in_period":total,"rounding":"integer_half_up","policy":map[string]any{"timezone":timezone,"due_day":dueDay,"invalid_day_policy":"last_day"}})
 	id:=uuid.New();key:=fmt.Sprintf("%s:%s:%s",c.id,period.Format("2006-01"),invoiceType);number:=fmt.Sprintf("INV-%s-%s-%s",period.Format("200601"),shortID(c.id),strings.ToUpper(invoiceType[:3]));due:=billing.ClampDueDate(period.Year(),period.Month(),dueDay,loc)
-	err=tx.QueryRow(ctx,`INSERT INTO invoices(id,property_id,contract_id,tenant_id,invoice_number,billing_period,invoice_type,status,currency,due_at,calculation_snapshot,idempotency_key,issued_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,'issued',$8,$9,$10,$11,NOW(),$12) ON CONFLICT(property_id,idempotency_key) DO NOTHING RETURNING id`,id,c.propertyID,c.id,c.userID,number,period,invoiceType,currency,due,snapshot,key,actorID).Scan(&id)
+	err=tx.QueryRow(ctx,`INSERT INTO invoices(id,property_id,contract_id,tenant_id,invoice_number,billing_period,invoice_type,status,currency,due_at,calculation_snapshot,idempotency_key,issued_at,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,'issued',$8,$9,$10,$11,NOW(),$12) ON CONFLICT(property_id,idempotency_key) DO NOTHING RETURNING id`,id,c.propertyID,c.id,c.userID,number,period,invoiceType,currency,due,string(snapshot),key,actorID).Scan(&id)
 	if errors.Is(err,pgx.ErrNoRows){return nil};if err!=nil{return err}
-	for _,item:=range items{metadata,_:=json.Marshal(item.Metadata);if _,err=tx.Exec(ctx,`INSERT INTO invoice_items(property_id,invoice_id,item_type,description,unit_amount_minor,amount_minor,metadata,created_by) VALUES($1,$2,$3,$4,$5,$5,$6,$7)`,c.propertyID,id,item.Type,item.Description,item.Amount,metadata,actorID);err!=nil{return err}}
-	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'issued','Initial invoice created during contract activation',$3,$4)`,c.propertyID,id,snapshot,actorID)
+	for _,item:=range items{
+		metaBytes := []byte("{}")
+		if item.Metadata != nil {
+			metaBytes, _ = json.Marshal(item.Metadata)
+		}
+		if _,err=tx.Exec(ctx,`INSERT INTO invoice_items(property_id,invoice_id,item_type,description,unit_amount_minor,amount_minor,metadata,created_by) VALUES($1,$2,$3,$4,$5,$5,$6,$7)`,c.propertyID,id,item.Type,item.Description,item.Amount,string(metaBytes),actorID);err!=nil{return err}
+	}
+	_,err=tx.Exec(ctx,`INSERT INTO invoice_events(property_id,invoice_id,event_type,reason,metadata,actor_id) VALUES($1,$2,'issued','Initial invoice created during contract activation',$3,$4)`,c.propertyID,id,string(snapshot),actorID)
 	return err
 }
 

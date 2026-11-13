@@ -114,7 +114,7 @@ func (r *ComplaintRepository) Create(ctx context.Context, complaint *model.Compl
 			event_type, visibility, message, payload, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		complaint.ID, complaint.PropertyID, complaint.UserID, "Penyewa", "tenant",
-		"created", model.EventVisibilityPublic, initEventMsg, eventPayload, now,
+		"created", model.EventVisibilityPublic, initEventMsg, string(eventPayload), now,
 	)
 	if err != nil {
 		return err
@@ -348,7 +348,7 @@ func (r *ComplaintRepository) UpdateStatus(ctx context.Context, id, propertyID u
 			event_type, visibility, message, payload, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		id, propertyID, actorID, actorName, actorRole,
-		"status_changed", model.EventVisibilityPublic, msg, eventPayload, now,
+		"status_changed", model.EventVisibilityPublic, msg, string(eventPayload), now,
 	)
 	if err != nil {
 		return err
@@ -413,7 +413,7 @@ func (r *ComplaintRepository) Triage(ctx context.Context, id, propertyID uuid.UU
 			event_type, visibility, message, payload, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		id, propertyID, actorID, actorName, actorRole,
-		"triaged", model.EventVisibilityPublic, msg, eventPayload, now,
+		"triaged", model.EventVisibilityPublic, msg, string(eventPayload), now,
 	)
 	if err != nil {
 		return err
@@ -472,7 +472,7 @@ func (r *ComplaintRepository) Assign(ctx context.Context, id, propertyID uuid.UU
 			event_type, visibility, message, payload, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		id, propertyID, actorID, actorName, actorRole,
-		"assigned", model.EventVisibilityPublic, msg, eventPayload, now,
+		"assigned", model.EventVisibilityPublic, msg, string(eventPayload), now,
 	)
 	if err != nil {
 		return err
@@ -530,7 +530,7 @@ func (r *ComplaintRepository) TenantConfirmResolution(ctx context.Context, id, u
 			event_type, visibility, message, payload, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		id, propertyID, userID, "Penyewa", "tenant",
-		"confirmed", model.EventVisibilityPublic, msg, payload, now,
+		"confirmed", model.EventVisibilityPublic, msg, string(payload), now,
 	)
 	if err != nil {
 		return err
@@ -593,7 +593,7 @@ func (r *ComplaintRepository) TenantReopen(ctx context.Context, id, userID uuid.
 			event_type, visibility, message, payload, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		id, propertyID, userID, "Penyewa", "tenant",
-		"reopened", model.EventVisibilityPublic, msg, payload, now,
+		"reopened", model.EventVisibilityPublic, msg, string(payload), now,
 	)
 	if err != nil {
 		return err
@@ -628,7 +628,7 @@ func (r *ComplaintRepository) AddEvent(ctx context.Context, event *model.Complai
 
 	err = tx.QueryRow(ctx, query,
 		event.ComplaintID, event.PropertyID, event.ActorID, event.ActorName, event.ActorRole,
-		event.EventType, event.Visibility, event.Message, payloadBytes, now,
+		event.EventType, event.Visibility, event.Message, string(payloadBytes), now,
 	).Scan(&event.ID, &event.CreatedAt)
 	if err != nil {
 		return err
@@ -827,7 +827,7 @@ func (r *ComplaintRepository) CreateWorkOrder(ctx context.Context, wo *model.Wor
 			event_type, visibility, message, payload, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		wo.ComplaintID, wo.PropertyID, wo.CreatedBy, actorName, actorRole,
-		"work_order_created", model.EventVisibilityInternal, internalMsg, woPayload, now,
+		"work_order_created", model.EventVisibilityInternal, internalMsg, string(woPayload), now,
 	)
 	if err != nil {
 		return err
@@ -900,7 +900,7 @@ func (r *ComplaintRepository) UpdateWorkOrder(ctx context.Context, wo *model.Wor
 			event_type, visibility, message, payload, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		wo.ComplaintID, wo.PropertyID, wo.CreatedBy, actorName, actorRole,
-		"cost_updated", model.EventVisibilityInternal, internalMsg, woPayload, now,
+		"cost_updated", model.EventVisibilityInternal, internalMsg, string(woPayload), now,
 	)
 	if err != nil {
 		return err
