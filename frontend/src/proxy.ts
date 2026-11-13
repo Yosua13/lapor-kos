@@ -2,13 +2,13 @@ import { NextResponse, type NextRequest } from 'next/server';
 
 const TOKEN_KEY = 'auth_token';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const token = request.cookies.get(TOKEN_KEY)?.value;
   const { pathname } = request.nextUrl;
 
   // Protected routes
   const protectedPaths = ['/', '/rooms', '/tenants', '/invoices', '/payments', '/calendar', '/complaints', '/reports', '/rules', '/settings', '/properties'];
-  const isProtected = protectedPaths.some(path => pathname === path || pathname.startsWith(`${path}/`));
+  const isProtected = protectedPaths.some(path => pathname === path || (path !== '/' && pathname.startsWith(`${path}/`)));
 
   // Auth routes (redirect to home if already logged in)
   const authPaths = ['/login', '/register'];
@@ -37,3 +37,4 @@ export const config = {
     '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 };
+

@@ -9,6 +9,9 @@
     "lint": "eslint",
     "test": "vitest run"
   },
+  "engines": {
+    "node": ">=26.13.0"
+  },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",
     "@fullcalendar/daygrid": "^6.1.20",
