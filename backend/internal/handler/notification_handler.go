@@ -31,7 +31,10 @@ func NewNotificationHandler(
 }
 
 func getUserIDFromContext(c *gin.Context) (uuid.UUID, bool) {
-	val, exists := c.Get("userID")
+	val, exists := c.Get("user_id")
+	if !exists {
+		val, exists = c.Get("userID")
+	}
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return uuid.Nil, false

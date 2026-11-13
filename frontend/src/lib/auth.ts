@@ -7,12 +7,14 @@ export const setToken = (token: string, remember: boolean = true) => {
     clearStoredActivePropertyId();
     if (remember) {
       localStorage.setItem(TOKEN_KEY, token);
+      sessionStorage.removeItem(TOKEN_KEY);
     } else {
       sessionStorage.setItem(TOKEN_KEY, token);
+      localStorage.removeItem(TOKEN_KEY);
     }
-    // Set cookie for middleware access
+    // Set cookie for proxy/middleware access
     const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; path=/; max-age=${remember ? 86400 * 30 : 86400}; SameSite=Strict${secure}`;
+    document.cookie = `${TOKEN_KEY}=${encodeURIComponent(token)}; path=/; max-age=${remember ? 86400 * 30 : 86400}; SameSite=Lax${secure}`;
   }
 };
 
@@ -29,7 +31,7 @@ export const removeToken = () => {
     sessionStorage.removeItem(TOKEN_KEY);
     clearStoredActivePropertyId();
     const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-    document.cookie = `${TOKEN_KEY}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict${secure}`;
+    document.cookie = `${TOKEN_KEY}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${secure}`;
   }
 };
 

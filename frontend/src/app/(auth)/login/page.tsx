@@ -61,6 +61,7 @@ function LoginFormContent() {
 
       setToken(result.token, data.remember);
       router.push('/');
+      router.refresh();
     } catch (err: any) {
       setError(err.message || 'Email atau password salah. Silakan coba lagi.');
     } finally {

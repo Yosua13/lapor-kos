@@ -132,6 +132,7 @@ func AuthMiddleware(activeUserReaders ...ActiveUserReader) gin.HandlerFunc {
 		}
 
 		c.Set("user_id", userID)
+		c.Set("userID", userID)
 		c.Next()
 	}
 }
