@@ -85,8 +85,8 @@ export default function AuditPage() {
           page: currentPage,
           page_size: 20,
         });
-        setAuditLogs(res.items);
-        setTotalAudits(res.total);
+        setAuditLogs(res?.items ?? []);
+        setTotalAudits(res?.total ?? 0);
       } catch (err: unknown) {
         setErrorMsg((err as Error).message || 'Gagal memuat log audit finansial');
       }
@@ -360,14 +360,14 @@ export default function AuditPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {auditLogs.length === 0 ? (
+                  {(auditLogs ?? []).length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-12 text-center text-slate-400">
                         {isPending ? 'Memuat jejak audit...' : 'Belum ada catatan audit finansial untuk properti ini.'}
                       </td>
                     </tr>
                   ) : (
-                    auditLogs.map((log) => (
+                    (auditLogs ?? []).map((log) => (
                       <tr key={log.id} className="hover:bg-slate-50/75 transition-colors">
                         <td className="py-3 px-4 whitespace-nowrap text-xs text-slate-500 font-mono">
                           {formatAuditDateTime(log.created_at)}
@@ -437,7 +437,7 @@ export default function AuditPage() {
             {totalAudits > 20 && (
               <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
                 <span className="text-xs text-slate-500">
-                  Menampilkan {auditLogs.length} dari {totalAudits} total catatan audit
+                  Menampilkan {(auditLogs ?? []).length} dari {totalAudits} total catatan audit
                 </span>
                 <div className="flex gap-2">
                   <button

@@ -65,7 +65,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <div className="noise-bg" />
       <Sidebar navigation={navigation} pathname={pathname} user={user} membershipRole={role} isTenant={isTenant} onLogout={handleLogout} />
 
-      <div className="no-scrollbar relative z-10 flex h-full min-w-0 flex-1 flex-col overflow-y-auto scroll-smooth">
+      <div className="relative z-10 flex h-full min-w-0 flex-1 flex-col overflow-y-auto scroll-smooth">
         <Topbar user={user} isTenant={isTenant} onOpenMenu={() => setIsSidebarOpen(true)} />
         <main key={`${activeProperty?.id ?? 'tenant'}:${scopeVersion}`} className="p-6 lg:p-10">
           {propertyError && !isTenant ? (
