@@ -1146,7 +1146,7 @@ function ReceiptModal({ payment, onClose }: ReceiptModalProps) {
         </div>
       </div>
 
-      <style jsx global>{`
+      <style>{`
         @media print {
           body > *:not(#print-receipt-portal-wrapper) {
             display: none !important;

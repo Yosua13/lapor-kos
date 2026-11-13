@@ -18,8 +18,8 @@
   --color-white-fixed: #ffffff;
   
   /* Fonts */
-  --font-serif: var(--font-dm-serif);
-  --font-outfit: var(--font-outfit);
+  --font-serif: "DM Serif Display", serif;
+  --font-outfit: "Outfit", sans-serif;
   --font-display: "Outfit", sans-serif;
   --font-body: "Plus Jakarta Sans", sans-serif;
 
