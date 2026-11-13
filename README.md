@@ -71,7 +71,7 @@ Proyek ini terbagi menjadi dua direktori utama:
 Project ini sudah mendukung Docker untuk menjalankan dua service utama:
 
 1. `backend` - API server Go/Gin pada port `8081`.
-2. `frontend` - aplikasi Next.js pada port `3000`.
+2. `frontend` - aplikasi Vite + React 19 pada port `3000`.
 
 Docker membuat environment aplikasi lebih konsisten karena Go, Node.js, dependency, dan command production sudah dibungkus dalam image masing-masing.
 
@@ -79,8 +79,8 @@ Docker membuat environment aplikasi lebih konsisten karena Go, Node.js, dependen
 
 * `backend/Dockerfile` - resep untuk membuat image backend Go.
 * `backend/.dockerignore` - mencegah file lokal seperti `.env` dan file `.exe` ikut masuk ke proses build backend.
-* `frontend/Dockerfile` - resep untuk membuat image frontend Next.js.
-* `frontend/.dockerignore` - mencegah `node_modules`, `.next`, dan `.env.local` ikut masuk ke proses build frontend.
+* `frontend/Dockerfile` - resep untuk membuat image frontend Vite SPA (Nginx).
+* `frontend/.dockerignore` - mencegah `node_modules`, `dist`, dan `.env.local` ikut masuk ke proses build frontend.
 * `docker-compose.yml` - konfigurasi untuk menjalankan container backend dan frontend secara bersamaan.
 * `.env.docker.example` - contoh konfigurasi Docker Compose yang aman untuk disimpan di Git.
 
@@ -219,4 +219,4 @@ Solusi yang direkomendasikan:
 
 Silakan merujuk ke panduan masing-masing folder untuk petunjuk instalasi dan penyiapan detail:
 * 📄 **[Panduan Backend (Go)](file:///d:/project_yosua/lapor-kos/backend/README.md)**
-* 📄 **[Panduan Frontend (Next.js)](file:///d:/project_yosua/lapor-kos/frontend/README.md)**
+* 📄 **[Panduan Frontend (Vite + React 19)](file:///d:/project_yosua/lapor-kos/frontend/README.md)**
