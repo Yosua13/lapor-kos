@@ -39,7 +39,7 @@ GIN_MODE=debug
 # PENTING: Jika menggunakan Supabase Connection Pooler (PgBouncer) pada port 6543, 
 # WAJIB menyertakan parameter berikut agar tidak terjadi error prepared statement:
 # "?sslmode=require&default_query_exec_mode=exec&statement_cache_capacity=0"
-DATABASE_URL=postgresql://postgres.your_project_ref:[PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require&default_query_exec_mode=exec&statement_cache_capacity=0
+DATABASE_URL=postgresql://user:password@host:6543/dbname?sslmode=require&default_query_exec_mode=exec&statement_cache_capacity=0
 
 # Keamanan Token JWT
 JWT_SECRET=rahasia_kunci_jwt_anda_disini
