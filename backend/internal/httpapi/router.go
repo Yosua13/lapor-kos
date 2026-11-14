@@ -262,6 +262,7 @@ func registerLegacyTenantRoutes(api *gin.RouterGroup, h handlers, repos reposito
 	payments := api.Group("/payments", authn)
 	payments.GET("/my", tenantRole, h.payment.GetTenantPayments)
 	payments.POST("/:id/submit", tenantRole, h.payment.SubmitPaymentProof)
+	payments.POST("/:id/snap-token", tenantRole, h.payment.GenerateSnapToken)
 	invoices := api.Group("/invoices", authn)
 	invoices.GET("/my", tenantRole, h.invoice.ListMine)
 	invoices.GET("/:id/my", tenantRole, h.invoice.GetMine)

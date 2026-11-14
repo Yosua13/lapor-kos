@@ -15,6 +15,7 @@ import (
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
 	"github.com/Yosua13/lapor-kos/backend/internal/service"
+	paymentusecase "github.com/Yosua13/lapor-kos/backend/internal/usecase/payment"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -248,6 +249,53 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 		"message":   "Payment proof submitted successfully. Waiting for verification.",
 		"proof_url": proofPath,
 	})
+}
+
+func (h *PaymentHandler) GenerateSnapToken(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payment ID"})
+		return
+	}
+
+	userID, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	var customer *domainpayment.SnapCustomerDetails
+	if h.userRepo != nil {
+		if u, err := h.userRepo.FindByID(c.Request.Context(), userID); err == nil && u != nil {
+			customer = &domainpayment.SnapCustomerDetails{
+				FirstName: u.Name,
+				Email:     u.Email,
+				Phone:     u.Phone,
+			}
+		}
+	}
+
+	uc := paymentusecase.NewGenerateSnapTokenUseCase(h.repo, h.gateway)
+	res, err := uc.Execute(c.Request.Context(), paymentusecase.GenerateSnapTokenInput{
+		PaymentID:       id,
+		UserID:          userID,
+		CustomerDetails: customer,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		case errors.Is(err, domainpayment.ErrPaymentNotPayable), errors.Is(err, domainpayment.ErrInvalidSnapRequest):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, domainpayment.ErrGatewayNotConfigured):
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to generate Snap token: " + err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, res)
 }
 
 func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
