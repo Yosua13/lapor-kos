@@ -6,7 +6,9 @@ import (
 
 	"github.com/Yosua13/lapor-kos/backend/internal/authz"
 	"github.com/Yosua13/lapor-kos/backend/internal/cron"
+	domainpayment "github.com/Yosua13/lapor-kos/backend/internal/domain/payment"
 	"github.com/Yosua13/lapor-kos/backend/internal/handler"
+	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/midtrans"
 	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/rabbitmq"
 	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/redis"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
@@ -45,8 +47,9 @@ type repositories struct {
 
 // RouterOptions specifies optional infrastructure dependencies for the HTTP API.
 type RouterOptions struct {
-	RedisClient *redis.Client
-	RabbitMQ    *rabbitmq.Connection
+	RedisClient    *redis.Client
+	RabbitMQ       *rabbitmq.Connection
+	PaymentGateway domainpayment.Gateway
 }
 
 func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies []string, opts ...RouterOptions) (*gin.Engine, error) {
@@ -125,6 +128,11 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		h.finance.WithRabbitMQ(rOpts.RabbitMQ)
 		h.contract.WithRabbitMQ(rOpts.RabbitMQ)
 	}
+	paymentGateway := rOpts.PaymentGateway
+	if paymentGateway == nil {
+		paymentGateway = midtrans.NewClientFromEnv()
+	}
+	h.payment.WithPaymentGateway(paymentGateway)
 	repos := repositories{db: db, user: userRepo, property: propertyRepo}
 
 	router := gin.New()

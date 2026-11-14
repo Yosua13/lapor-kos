@@ -8,6 +8,7 @@ import (
 	"github.com/Yosua13/lapor-kos/backend/internal/cron"
 	"github.com/Yosua13/lapor-kos/backend/internal/database"
 	"github.com/Yosua13/lapor-kos/backend/internal/httpapi"
+	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/midtrans"
 	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/rabbitmq"
 	"github.com/Yosua13/lapor-kos/backend/internal/infrastructure/redis"
 	"github.com/joho/godotenv"
@@ -52,10 +53,13 @@ func main() {
 		}
 	}
 
+	midtransClient := midtrans.NewClient(appConfig.Midtrans, nil)
+
 	billingCron := cron.NewBillingCron(db, redisClient)
 	router, err := httpapi.NewRouter(db, billingCron, appConfig.TrustedProxies, httpapi.RouterOptions{
-		RedisClient: redisClient,
-		RabbitMQ:    rabbitConn,
+		RedisClient:    redisClient,
+		RabbitMQ:       rabbitConn,
+		PaymentGateway: midtransClient,
 	})
 	if err != nil {
 		log.Fatalf("configure HTTP router: %v", err)
