@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/authz"
+	domainpayment "github.com/Yosua13/lapor-kos/backend/internal/domain/payment"
 	"github.com/Yosua13/lapor-kos/backend/internal/middleware"
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/Yosua13/lapor-kos/backend/internal/repository"
@@ -23,6 +24,7 @@ type PaymentHandler struct {
 	repo           paymentRepository
 	storageService *service.StorageService
 	userRepo       repository.UserRepo
+	gateway        domainpayment.Gateway
 }
 
 type paymentRepository interface {
@@ -52,6 +54,17 @@ func NewPaymentHandler(repo paymentRepository, storageService *service.StorageSe
 		handler.userRepo = userRepo[0]
 	}
 	return handler
+}
+
+// WithPaymentGateway injects the hexagonal outbound payment gateway port (e.g. Midtrans Snap adapter).
+func (h *PaymentHandler) WithPaymentGateway(gw domainpayment.Gateway) *PaymentHandler {
+	h.gateway = gw
+	return h
+}
+
+// PaymentGateway returns the configured outbound payment gateway port.
+func (h *PaymentHandler) PaymentGateway() domainpayment.Gateway {
+	return h.gateway
 }
 
 func (h *PaymentHandler) GetAllPayments(c *gin.Context) {

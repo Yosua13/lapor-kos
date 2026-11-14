@@ -2,9 +2,9 @@ name: CI & Security Release Gate
 
 on:
   push:
-    branches: [main, codex/*]
+    branches: [main, development, codex/*]
   pull_request:
-    branches: [main]
+    branches: [main, development]
 
 jobs:
   # ---------------------------------------------------------------------------

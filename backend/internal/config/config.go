@@ -17,6 +17,7 @@ type Config struct {
 	TrustedProxies []string
 	Redis          RedisConfig
 	RabbitMQ       RabbitMQConfig
+	Midtrans       MidtransConfig
 }
 
 // Load resolves and validates configuration from environment variables.
@@ -44,6 +45,12 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	config.RabbitMQ = rabbitMQConfig
+
+	midtransConfig, err := loadMidtransConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	config.Midtrans = midtransConfig
 
 	return config, nil
 }
