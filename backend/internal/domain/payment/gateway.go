@@ -3,12 +3,20 @@ package payment
 import (
 	"context"
 	"errors"
+
+	"github.com/google/uuid"
 )
 
 var (
 	ErrGatewayNotConfigured = errors.New("payment gateway is not configured: MIDTRANS_SERVER_KEY is missing")
 	ErrInvalidSnapRequest   = errors.New("invalid midtrans snap request")
+	ErrPaymentNotPayable    = errors.New("payment bill cannot be paid: only unpaid or overdue bills can generate a snap token")
 )
+
+// TenantPaymentFinder defines the minimal outbound repository port required to load a tenant-owned payment bill.
+type TenantPaymentFinder interface {
+	FindByIDForUser(ctx context.Context, id, userID uuid.UUID) (*Payment, error)
+}
 
 // Gateway defines the outbound hexagonal port for external payment gateway providers (e.g. Midtrans Snap).
 type Gateway interface {
@@ -17,6 +25,12 @@ type Gateway interface {
 	IsProduction() bool
 	CreateSnapTransaction(ctx context.Context, req SnapRequest) (*SnapResponse, error)
 	VerifySignatureKey(orderID, statusCode, grossAmount, signatureKey string) bool
+}
+
+type SnapTokenResult struct {
+	Token       string `json:"token"`
+	RedirectURL string `json:"redirect_url"`
+	OrderID     string `json:"order_id"`
 }
 
 type SnapTransactionDetails struct {
