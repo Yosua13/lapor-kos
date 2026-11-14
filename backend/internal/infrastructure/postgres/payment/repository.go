@@ -6,8 +6,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Ensure Repository implements the hexagonal outbound port domain/payment.Repository.
-var _ domainpayment.Repository = (*Repository)(nil)
+// Ensure Repository implements the hexagonal outbound ports.
+var (
+	_ domainpayment.Repository                = (*Repository)(nil)
+	_ domainpayment.MidtransWebhookRepository = (*Repository)(nil)
+)
 
 // Repository implements domain/payment.Repository using PostgreSQL.
 type Repository struct {
