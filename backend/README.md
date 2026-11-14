@@ -1,60 +1,48 @@
-# Lapor Kos - Backend API Server 🖥️
+# Panduan Menjalankan Backend API Server 🖥️
 
-Repositori ini berisi kode backend untuk aplikasi **Lapor Kos**, dibangun menggunakan bahasa pemrograman Go (Golang) dan framework Gin Gonic. Backend ini bertanggung jawab mengelola basis data PostgreSQL, mengeksekusi migrasi, menangani alur autentikasi JWT, memicu cron job tagihan bulanan, serta mengintegrasikan Google Gemini AI dan WhatsApp Gateway.
+Direktori ini berisi kode backend untuk aplikasi **Lapor Kos**, dibangun menggunakan bahasa pemrograman **Go (Golang)** dan framework **Gin Gonic**. Backend ini menangani basis data PostgreSQL, alur autentikasi JWT, billing engine otomatis, scheduler cron job, PDF generator, serta integrasi Google Gemini AI dan WhatsApp Gateway.
 
 ---
 
-## 🛠️ Tech Stack & Persyaratan Sistem
+## 🛠️ Prasyarat Sistem
 
-Pastikan perangkat Anda telah terinstal perangkat lunak berikut sebelum memulai:
+Sebelum memulai, pastikan perangkat Anda telah terinstal:
 
 1. **Go (Golang)**: Versi **`v1.25.x`** atau lebih baru.
-   * Cek versi Go di terminal Anda: `go version`
+   * Cek versi Go di terminal: `go version`
    * Unduh di [golang.org/dl](https://golang.org/dl/).
-2. **PostgreSQL**: Versi **`v15.x`** atau lebih baru.
-   * Anda juga dapat menggunakan layanan PostgreSQL cloud terkelola seperti **Supabase**.
-3. **Pustaka Utama Go (Otomatis Terinstal)**:
-   * **Gin Gonic v1.12.0** (HTTP Web Framework)
-   * **pgx/v5 v5.9.2** (Postgres Driver & Connection Pooler)
-   * **gofpdf v1.16.2** (Mesin Pembuat Laporan PDF Gratis & Open Source)
-   * **Go-Dotenv** (Pemuat Konfigurasi `.env`)
+2. **PostgreSQL**: Versi **`v15.x`** atau lebih baru (Sangat direkomendasikan menggunakan layanan cloud terkelola seperti **Supabase**).
+3. **Redis & RabbitMQ** *(Opsional untuk pengujian lokal, bisa dijalankan via Docker)*:
+   * Redis untuk rate limiting dan token blacklist.
+   * RabbitMQ untuk pemrosesan pesan antrean asinkron.
 
 ---
 
-## ⚙️ Langkah Instalasi Ulang (Fresh Setup)
+## ⚙️ Langkah Menjalankan Server
 
-Ikuti langkah-langkah di bawah ini untuk membersihkan dan menyiapkan ulang dependensi backend:
-
-### 1. Bersihkan Cache Go & Unduh Dependensi Baru
-Buka terminal di dalam direktori `backend` (`d:/project_yosua/lapor-kos/backend`) lalu jalankan perintah berikut:
+### 1. Unduh dan Sinkronkan Dependensi Modul
+Buka terminal pada direktori `backend` (`lapor-kos/backend`) dan jalankan:
 
 ```bash
-# Membersihkan cache module Go (Opsional jika terjadi error dependensi)
-go clean -modcache
-
-# Mengunduh dan menyeimbangkan dependensi sesuai go.mod
 go mod tidy
-
-# Memverifikasi integritas modul yang diunduh
-go mod verify
 ```
 
 ### 2. Konfigurasi Environment Variables (`.env`)
-Buat file bernama `.env` di direktori root `backend/` (salin dari contoh konfigurasi di bawah) dan sesuaikan nilainya:
+Buat berkas `.env` di dalam folder `backend/` (dapat menyalin dari `.env.example`) dan sesuaikan nilainya:
 
 ```env
 # Server Port
 PORT=8081
+GIN_MODE=debug
 
-# Database URL Connection String (PostgreSQL / Supabase)
+# Koneksi Database PostgreSQL / Supabase
 # PENTING: Jika menggunakan Supabase Connection Pooler (PgBouncer) pada port 6543, 
-# Anda WAJIB menambahkan parameter di bawah agar tidak terjadi error prepared statement:
+# WAJIB menyertakan parameter berikut agar tidak terjadi error prepared statement:
 # "?sslmode=require&default_query_exec_mode=exec&statement_cache_capacity=0"
-DATABASE_URL=postgresql://postgres.your_project_ref:[YOUR-PASSWORD]@sample-project.pooler.supabase.com:6543/postgres?sslmode=require&default_query_exec_mode=exec&statement_cache_capacity=0
+DATABASE_URL=postgresql://postgres.your_project_ref:[PASSWORD]@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require&default_query_exec_mode=exec&statement_cache_capacity=0
 
-# Keamanan JWT
-JWT_SECRET=your_jwt_secret_here
-
+# Keamanan Token JWT
+JWT_SECRET=rahasia_kunci_jwt_anda_disini
 
 # Pengaturan Pengiriman Email (SMTP Gmail / Mailgun)
 SMTP_HOST=smtp.gmail.com
@@ -63,75 +51,77 @@ SMTP_USER=email_anda@gmail.com
 SMTP_PASS=app_password_gmail_16_karakter
 SMTP_SENDER=Lapor Kos <email_anda@gmail.com>
 
-# Tautan Aplikasi Frontend (Untuk CORS)
+# Tautan Aplikasi Frontend (Untuk CORS Protection)
 FRONTEND_URL=http://localhost:3000
 
-# Google Gemini API Key (Untuk Analisis Prioritas Komplain Keluhan Fasilitas)
-GEMINI_API_KEY=AIzaSyBtu...your_gemini_key
+# Google Gemini API Key (Untuk Triase & Analisis Komplain Kerusakan Fasilitas)
+GEMINI_API_KEY=AIzaSy...your_gemini_key
 
 # WhatsApp Gateway (Fonnte API)
 WHATSAPP_API_URL=https://api.fonnte.com/send
 WHATSAPP_API_TOKEN=your_fonnte_token_here
 
-# Supabase Storage Bucket (Untuk Menyimpan Foto Keluhan / Profil)
-SUPABASE_URL=https://xxx.supabase.co
+# Supabase Storage (Untuk Menyimpan Unggahan Foto Fasilitas & Bukti Transfer)
+SUPABASE_URL=https://your_project.supabase.co
 SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1Ni...your_service_role_key
 SUPABASE_BUCKET=uploads
 ```
 
 ---
 
-## 🚀 Cara Menjalankan Server
+## 🗄️ Menjalankan Migrasi Database
 
-Untuk menjalankan server backend dalam mode pengembangan (*development*):
+Sebelum server pertama kali dijalankan, terapkan seluruh berkas skrip SQL pada direktori `migrations/` secara berurutan (`001` sampai `030`) ke database PostgreSQL / Supabase Anda:
+
+* **Melalui Supabase SQL Editor**: Buka SQL Editor di dasbor Supabase, lalu salin dan jalankan isi berkas SQL dari urutan awal ke akhir.
+* **Melalui CLI (`psql`)**:
+  ```bash
+  for file in migrations/*.sql; do
+    psql "$DATABASE_URL" -f "$file"
+  done
+  ```
+
+---
+
+## 🚀 Menjalankan Server API
+
+Untuk memulai API server dalam mode pengembangan:
 
 ```bash
 go run ./cmd/api
 ```
 
-Setelah dijalankan, server akan:
-* Melakukan koneksi ke database PostgreSQL.
-* Menjalankan scheduler **Cron Job** untuk mengecek tagihan bulanan pada latar belakang.
-* Berjalan dan mendengarkan permintaan API pada alamat: **`http://localhost:8081`**
+Saat server berhasil menyala:
+* Koneksi ke database PostgreSQL akan diinisialisasi.
+* **Cron Job Scheduler** akan aktif di latar belakang untuk pengecekan tagihan rutin dan status kontrak.
+* API server akan mendengarkan request pada:
+  👉 **[http://localhost:8081](http://localhost:8081)**
 
-Migrasi tidak dijalankan otomatis ketika aplikasi mulai. Terapkan semua file SQL
-di direktori `migrations/` secara berurutan sebelum menjalankan versi aplikasi
-yang baru. Untuk perubahan multi-properti, jalankan fase `013`, periksa hasil
-backfill `014`, lalu terapkan constraint `015`. Setelah itu, fase `016`
-menambahkan profile tenant, invitation, consent, dokumen privat, dan
-pencabutan sesi untuk Epic 02.
-
-Endpoint operasional lama tetap tersedia dengan header `X-Property-ID`.
-Endpoint kanonis tersedia di bawah
-`/api/v1/properties/:property_id/...`. Nilai properti selalu diverifikasi oleh
-server terhadap membership pengguna yang masih aktif.
+Endpoint health check:
+* `GET http://localhost:8081/api/health`
 
 ---
 
-## 🧪 Menjalankan Unit Test
+## 🧪 Menjalankan Pengujian (Testing)
 
-Untuk memverifikasi fungsionalitas layanan backend (seperti modul pembuat PDF laporan):
+Untuk menjalankan seluruh unit test backend:
 
 ```bash
-# Menjalankan seluruh test di direktori backend
+# Menjalankan seluruh unit test
 go test ./... -v
 
-# Menjalankan test khusus untuk generator laporan PDF
+# Menjalankan unit test spesifik (contoh: generator laporan keuangan PDF)
 go test -v ./internal/service -run TestGenerateFinancialReport
 ```
 
-### Uji Isolasi Dua Properti (Epic 01)
+---
 
-Acceptance test Epic 01 menjalankan data sementara untuk dua owner, dua
-properti, dan resource operasional yang sama. Seluruh perubahan dilakukan di
-dalam transaksi lalu di-rollback.
+## 🐳 Menjalankan dengan Docker
 
-Gunakan database khusus pengujian dan jalankan:
+```bash
+# Build image Docker backend
+docker build -t lapor-kos-backend .
 
-```powershell
-$env:TEST_DATABASE_URL='postgresql://...'
-go test -tags=integration ./internal/repository -run TestPropertyIsolationWithTwoOwners -v
+# Jalankan container
+docker run -p 8081:8081 --env-file .env lapor-kos-backend
 ```
-
-Test ini memeriksa isolasi read, update, delete, laporan/export, file, dan
-validitas nomor kamar yang sama pada dua properti berbeda.

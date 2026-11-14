@@ -1,79 +1,73 @@
-# Lapor Kos - Frontend Application 🎨
+# Panduan Menjalankan Frontend 🎨
 
-Direktori ini berisi kode frontend untuk aplikasi **Lapor Kos**, dibangun menggunakan framework ultra-cepat **Vite**, **React 19**, **React Router v7**, **Tailwind CSS v4**, dan **TypeScript**. Frontend ini menyediakan antarmuka interaktif bagi pemilik kos (dashboard okupansi, kalender perpanjangan kontrak, laporan grafik keuangan, dan kelola aturan kos) serta portal penghuni (riwayat tagihan, upload bukti transfer, dan input keluhan fasilitas).
+Direktori ini berisi kode frontend untuk aplikasi **Lapor Kos**, dibangun sebagai *Single Page Application* (SPA) menggunakan **Vite**, **React 19**, **React Router v7**, **Tailwind CSS v4**, dan **TypeScript**.
 
 ---
 
-## 🛠️ Tech Stack & Persyaratan Sistem
+## 🛠️ Prasyarat Sistem
 
-Sebelum menjalankan aplikasi, pastikan komputer Anda telah terinstal perangkat lunak berikut:
+Sebelum memulai, pastikan perangkat Anda telah terinstal:
 
-1. **Node.js**: Versi **`v26.13.0`** (Recommended) atau lebih baru.
-   * Cek versi Node.js di terminal: `node --version`
+1. **Node.js**: Versi **`v26.13.0`** atau lebih baru.
+   * Cek versi di terminal: `node --version`
    * Unduh di [nodejs.org](https://nodejs.org/).
-2. **NPM**: Pengelola paket bawaan Node.js (Versi 10.x atau lebih baru).
-3. **Teknologi Utama (Otomatis Terinstal)**:
-   * **Vite** (Next-Generation Frontend Tooling & Dev Server)
-   * **React v19.2.4** & **React DOM v19.2.4**
-   * **React Router v7** (Client-side Routing & Navigation)
-   * **Tailwind CSS v4** (Utility-first CSS Framework dengan `@tailwindcss/vite`)
-   * **TypeScript v5.x** (Static Typing)
-   * **Lucide React** (Kumpulan Ikon Modern)
-   * **FullCalendar v6.1.20** (Peta Visual Kalender Kontrak)
-   * **Vitest** (Unit Testing Utility)
+2. **NPM**: Versi **`10.x`** atau lebih baru (bawaan Node.js).
 
 ---
 
-## ⚙️ Langkah Instalasi Ulang (Fresh Setup)
+## ⚙️ Langkah Menjalankan Aplikasi
 
-Jika Anda ingin membersihkan file instalasi lama dan menginstal ulang seluruh paket dependensi frontend secara bersih:
-
-### 1. Bersihkan File Sampah & Cache NPM
-Buka terminal pada direktori `frontend` (`d:/project_yosua/lapor-kos/frontend`) dan jalankan perintah:
-
-```bash
-# Menghapus folder node_modules lama
-rm -rf node_modules
-
-# Menghapus file lock lama (Opsional jika ingin fresh lock file)
-rm package-lock.json
-
-# Membersihkan cache NPM secara paksa
-npm cache clean --force
-```
-
-### 2. Jalankan Instalasi Ulang Paket Dependensi
-Jalankan perintah berikut untuk mengunduh ulang seluruh package yang tercatat pada `package.json`:
+### 1. Instalasi Dependensi
+Buka terminal pada direktori `frontend` (`lapor-kos/frontend`) dan jalankan:
 
 ```bash
 npm install
 ```
 
-### 3. Konfigurasi Environment Variables (`.env.local`)
-Buat file baru bernama `.env.local` pada direktori root `frontend/` (sejajar dengan `package.json`) dengan konfigurasi berikut:
+### 2. Konfigurasi Environment Variables (`.env.local`)
+Buat berkas `.env.local` pada direktori root `frontend/` (sejajar dengan `package.json`):
 
 ```env
-# Alamat server URL backend API Lapor Kos
+# Alamat server backend API Lapor Kos
 NEXT_PUBLIC_API_URL=http://localhost:8081
 ```
 
----
+> **Catatan:** Dalam mode pengembangan (`npm run dev`), Vite juga menyediakan proxy otomatis untuk request yang mengarah ke `/api` sehingga langsung diarahkan ke `http://localhost:8081`.
 
-## 🚀 Cara Menjalankan Aplikasi
-
-Untuk menjalankan server pengembangan lokal (*development server*):
+### 3. Menjalankan Server Pengembangan (Dev Server)
+Jalankan perintah:
 
 ```bash
 npm run dev
 ```
 
-Aplikasi web dapat diakses langsung pada peramban/browser Anda di alamat: **`http://localhost:3000`**
+Aplikasi web dapat langsung diakses pada peramban Anda di alamat:
+👉 **[http://localhost:3000](http://localhost:3000)**
+
+Server Vite dilengkapi dengan fitur *Instant Hot Module Replacement (HMR)* untuk pembaruan kode secara seketika tanpa me-refresh halaman manual.
 
 ---
 
-## 📋 Daftar Perintah Tersedia (Available Commands)
+## 📋 Daftar Perintah yang Tersedia
 
-* **`npm run dev`**: Menjalankan aplikasi dalam mode pengembangan lokal Vite dengan fitur *Instant Hot Module Replacement (HMR)* pada port 3000.
-* **`npm run build`**: Mengompilasi dan mengoptimalkan aplikasi menjadi berkas statis siap rilis (*production bundle* di folder `dist/`).
-* **`npm run preview`**: Menjalankan server preview lokal untuk menguji hasil build produksi.
-* **`npm run test`**: Mengeksekusi rangkaian pengujian unit test menggunakan **Vitest** untuk memastikan kestabilan kode.
+| Perintah | Deskripsi |
+| :--- | :--- |
+| **`npm run dev`** | Menjalankan server pengembangan lokal pada port `3000`. |
+| **`npm run build`** | Memvalidasi tipe data TypeScript (`tsc -b`) dan membuat bundle produksi teroptimasi ke folder `dist/`. |
+| **`npm run preview`** | Menjalankan server lokal untuk menguji pratinjau hasil build produksi dari folder `dist/`. |
+| **`npm run test`** | Mengeksekusi seluruh pengujian unit dan komponen menggunakan **Vitest**. |
+| **`npm run lint`** | Memeriksa kepatuhan kode dan sintaks menggunakan **ESLint**. |
+
+---
+
+## 🐳 Menjalankan dengan Docker
+
+Frontend ini sudah dilengkapi dengan `Dockerfile` multi-stage berbasis **Nginx Alpine** yang sangat ringan (~20 MB):
+
+```bash
+# Build image Docker frontend
+docker build -t lapor-kos-frontend .
+
+# Jalankan container
+docker run -p 3000:3000 lapor-kos-frontend
+```

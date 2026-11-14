@@ -1,222 +1,102 @@
-# Lapor Kos 🏢
+# Lapor Kos 🏠
 
-**Lapor Kos** adalah platform aplikasi manajemen kos-kosan terintegrasi yang dirancang untuk mempermudah operasional pemilik kos (owner) sekaligus meningkatkan kenyamanan bagi penghuni (tenant). Aplikasi ini mengotomatiskan siklus tagihan bulanan, pencatatan pembayaran, manajemen kontrak, pelaporan keluhan fasilitas berbasis AI, hingga pembuatan dokumen laporan keuangan dalam format PDF secara instan.
-
----
-
-## 🎯 Tujuan Aplikasi
-Tujuan utama dari **Lapor Kos** adalah menghilangkan kompleksitas administrasi manual pada pengelolaan kos-kosan dengan cara:
-* **Digitalisasi Administrasi**: Mengganti pembukuan kertas atau spreadsheet manual dengan basis data yang terorganisir.
-* **Otomatisasi Tagihan**: Mengurangi keterlambatan pembayaran dengan sistem kalkulasi tagihan bulanan otomatis.
-* **Transparansi Komunikasi**: Menyediakan portal pengajuan keluhan fasilitas bagi penghuni yang terpantau langsung oleh pemilik.
-* **Analisis Finansial Cepat**: Menyajikan visualisasi arus kas bulanan secara langsung untuk mendukung pengambilan keputusan.
+> Platform manajemen hunian kos pintar untuk efisiensi operasional pengelola dan kemudahan transparansi bagi penghuni.
 
 ---
 
-## 🚀 Fitur Utama & Penjelasan
+## 📖 Tentang Lapor Kos
 
-### 1. Manajemen Kamar & Penghuni (Room Visualizer)
-* **Keterangan**: Pemilik dapat memantau status hunian setiap kamar (kosong vs terisi) di setiap lantai secara visual. Sistem mendukung draf pendaftaran kamar baru, pembagian tipe kamar, dan alokasi penghuni baru.
-* **Kelebihan**: Tampilan berbasis grid yang interaktif memberikan gambaran okupansi kos secara cepat dalam sekali pandang.
+**Lapor Kos** adalah sistem manajemen kos modern yang dirancang untuk menghilangkan friksi administrasi manual dalam pengelolaan rumah kos dan properti sewa. Aplikasi ini menyediakan solusi komprehensif dua arah:
 
-### 2. Otomatisasi Tagihan Bulanan (Billing Engine)
-* **Keterangan**: Setiap bulan, sistem secara otomatis menghitung tagihan sewa bulanan beserta biaya tambahan (listrik, air, dan biaya lainnya).
-* **Kelebihan**: Fleksibilitas tinggi di mana pemilik dapat mengubah rincian tagihan secara manual untuk setiap penghuni sebelum diverifikasi.
+* **Untuk Pemilik & Staf Properti**:
+  * **Manajemen Multi-Properti**: Mendukung isolasi data antar kos dalam satu akun manajemen.
+  * **Visualisasi Kamar & Okupansi**: Denah interaktif per lantai untuk melihat kamar kosong, terisi, atau dalam perbaikan.
+  * **Billing Engine Otomatis**: Otomatisasi kalkulasi tagihan bulanan (sewa, listrik, air, denda) dan invoice per periode.
+  * **Verifikasi Pembayaran & Kwitansi**: Validasi bukti transfer, pelacakan pelunasan, dan pencetakan kwitansi digital resmi.
+  * **Triase Komplain Berbasis AI**: Menganalisis laporan kerusakan fasilitas dari penghuni secara otomatis menggunakan Google Gemini AI.
+  * **Laporan Keuangan & Rekonsiliasi**: Grafik pendapatan bulanan, catatan pengeluaran, dan ekspor laporan PDF formal instan.
 
-### 3. Pelacakan Pembayaran Multi-Metode (Payment Tracking)
-* **Keterangan**: Portal khusus penghuni untuk mengunggah bukti pembayaran, memilih metode pembayaran (transfer bank, e-wallet, tunai), serta melihat riwayat kwitansi digital. Pemilik memiliki panel khusus untuk memverifikasi pembayaran (Lunas, Sebagian, Terlambat).
-* **Kelebihan**: Transparansi data yang tinggi. Kwitansi digital terintegrasi dapat dicetak langsung oleh penghuni maupun pemilik.
-
-### 4. Kalender Kontrak & Pengingat Jatuh Tempo
-* **Keterangan**: Menyediakan kalender interaktif yang memetakan tanggal berakhirnya kontrak setiap penghuni dengan indikator warna dinamis. Mendukung perpanjangan kontrak instan (*extend*) maupun proses *checkout* penghuni.
-* **Kelebihan**: Mencegah kehilangan potensi pendapatan karena keterlambatan perpanjangan kontrak.
-
-### 5. Komplain & Pelaporan Fasilitas Berbasis AI (Gemini Integration)
-* **Keterangan**: Penghuni dapat melaporkan kerusakan fasilitas kos dengan mengunggah foto keluhan. Sistem backend memanfaatkan **Google Gemini API** untuk menganalisis deskripsi keluhan, mengkategorikannya secara otomatis, serta menentukan prioritas perbaikan (Low, Medium, High).
-* **Kelebihan**: Pemilik kos dapat memprioritaskan perbaikan kerusakan yang kritis secara objektif berdasarkan rekomendasi AI.
-
-### 6. Integrasi Notifikasi WhatsApp Gateway (Fonnte)
-* **Keterangan**: Mengirimkan notifikasi langsung ke nomor WhatsApp penghuni saat tagihan baru dibuat, atau saat komplain mereka telah diperbarui statusnya oleh pemilik.
-* **Kelebihan**: Menjangkau pengguna langsung pada aplikasi chat yang paling sering mereka gunakan tanpa perlu membuka aplikasi web terus-menerus.
-
-### 7. Dashboard & Laporan Keuangan PDF Instan
-* **Keterangan**: Menyajikan grafik tren pendapatan bulanan, rasio keberhasilan penagihan (*collection rate*), serta tabel transaksi detail. Dilengkapi fitur pratinjau (*preview*) interaktif dan unduhan laporan PDF formal.
-* **Kelebihan**: Menggunakan mesin pembuat PDF open-source yang ringan tanpa lisensi berbayar, memastikan laporan siap cetak secara instan kapan saja.
+* **Untuk Penghuni Kos**:
+  * **Portal Mandiri**: Akses rincian kamar, tanggal sewa, riwayat tagihan, dan pembayaran dari perangkat apapun.
+  * **Pembayaran & Bukti Transfer**: Pembayaran tagihan dengan konfirmasi cepat dan unduhan kwitansi digital.
+  * **Izin Tamu & Kerabat**: Pendaftaran kunjungan tamu dan tamu menginap dengan kode pass digital.
+  * **Komplain Fasilitas**: Pelaporan keluhan kerusakan fasilitas kos disertai unggahan foto untuk penanganan cepat.
+  * **Aturan Kos Digital**: Akses peraturan tata tertib hunian terbaru yang disepakati bersama.
 
 ---
 
-## 🛠️ Tech Stack & Persyaratan Sistem
+## 🏛️ Arsitektur Sistem
 
-### Arsitektur Sistem
-Aplikasi ini dibangun menggunakan arsitektur monolitik terpisah (Decoupled Frontend & Backend):
+Lapor Kos mengadopsi arsitektur **Decoupled Architecture** yang memisahkan lapisan frontend (*Single Page Application*) dengan backend (*High-Performance API Service*):
 
-### Versi Minimum Perangkat Lunak
-* **Golang runtime**: `v1.25.x` atau lebih baru.
-* **Node.js**: `v26.13.0` atau lebih baru.
-* **PostgreSQL Database**: `v15.x` atau lebih baru (Sangat direkomendasikan menggunakan Supabase).
+```mermaid
+graph TD
+    User["Penghuni & Pemilik Kos"] -->|Browser / HTTPS| FE["Frontend (Vite + React 19)"]
+    FE -->|REST API + JWT Bearer| BE["Backend (Go Gin API)"]
+    BE -->|PostgreSQL Protocol| DB[("Database (Supabase / PostgreSQL)")]
+    BE -->|Sliding-Window Rate Limit & Cache| Redis[("Redis Cache")]
+    BE -->|Event Driven Messages| MQ[("RabbitMQ Broker")]
+    BE -->|Analisis Keluhan Kerusakan| Gemini["Google Gemini AI"]
+    BE -->|Notifikasi Chat WhatsApp| Fonnte["WhatsApp Gateway (Fonnte)"]
+    BE -->|Upload Foto & Dokumen| Storage["Supabase Storage"]
+```
+
+### Komponen Teknologi Utama
+
+| Layer | Teknologi | Peran & Deskripsi |
+| :--- | :--- | :--- |
+| **Frontend SPA** | Vite, React 19, React Router v7, Tailwind CSS v4, TypeScript | Antarmuka pengguna ultra-responsif, instant HMR, dan rendering berbasis client. |
+| **Backend API** | Go (Golang) 1.25+, Gin Gonic, pgx/v5, Gofpdf | Layanan REST API berkinerja tinggi, scheduler cron job tagihan, dan PDF generator. |
+| **Database** | PostgreSQL 15+ / Supabase | Penyimpanan relasional terstruktur dengan dukungan connection pooler (PgBouncer). |
+| **Cache & Queue** | Redis 7 & RabbitMQ 3.13 | Distributed rate limiting, session blacklist, dan pengolahan antrean pesan asinkron. |
+| **Integrasi Eksternal** | Google Gemini AI & Fonnte WhatsApp | Triase prioritas komplain fasilitas dan pengiriman notifikasi instan ke WhatsApp penghuni. |
+
+---
+
+## 📁 Struktur Monorepo
+
+```text
+lapor-kos/
+├── backend/            # API Server Golang (Gin, Repositori, Usecase, Migrasi SQL)
+├── frontend/           # Aplikasi Web SPA (Vite, React 19, React Router, Tailwind v4)
+├── scripts/ci/         # Security & Quality Release Gates (Secret scanning, audit)
+├── docs/               # Dokumentasi teknis, user stories, dan arsitektur modul
+├── dev.ps1             # Skrip runner lokal untuk Windows PowerShell
+├── docker-compose.yml  # Konfigurasi containerization multi-service
+├── go.work             # Multi-module Go Workspace
+└── README.md           # Dokumentasi utama proyek
+```
 
 ---
 
 ## 🚀 Panduan Memulai Cepat
 
-Proyek ini terbagi menjadi dua direktori utama:
-1. `/backend` - Logika API server, cron job tagihan bulanan, notifikasi, dan integrasi AI.
-2. `/frontend` - Antarmuka pengguna (Dashboard, Grafik Keuangan, Portal Penghuni).
+Untuk petunjuk teknis langkah-demi-langkah mengenai instalasi dan cara menjalankan masing-masing bagian sistem, silakan baca dokumentasi spesifik berikut:
 
+* 🖥️ **[Panduan Menjalankan Backend (Go API)](file:///backend/README.md)** — Menyiapkan database, konfigurasi `.env`, menjalankan migrasi, dan menyalakan API server di port `8081`.
+* 🎨 **[Panduan Menjalankan Frontend (Vite + React 19)](file:///frontend/README.md)** — Menyiapkan runtime Node.js, dependensi, dan menjalankan server web di port `3000`.
 
 ---
 
-## Menjalankan Project dengan Docker
+### Menjalankan Seluruh Sistem dengan Docker Compose
 
-Project ini sudah mendukung Docker untuk menjalankan dua service utama:
-
-1. `backend` - API server Go/Gin pada port `8081`.
-2. `frontend` - aplikasi Vite + React 19 pada port `3000`.
-
-Docker membuat environment aplikasi lebih konsisten karena Go, Node.js, dependency, dan command production sudah dibungkus dalam image masing-masing.
-
-### File Docker yang Digunakan
-
-* `backend/Dockerfile` - resep untuk membuat image backend Go.
-* `backend/.dockerignore` - mencegah file lokal seperti `.env` dan file `.exe` ikut masuk ke proses build backend.
-* `frontend/Dockerfile` - resep untuk membuat image frontend Vite SPA (Nginx).
-* `frontend/.dockerignore` - mencegah `node_modules`, `dist`, dan `.env.local` ikut masuk ke proses build frontend.
-* `docker-compose.yml` - konfigurasi untuk menjalankan container backend dan frontend secara bersamaan.
-* `.env.docker.example` - contoh konfigurasi Docker Compose yang aman untuk disimpan di Git.
-
-### Persiapan Environment
-
-Pastikan file environment lokal berikut sudah tersedia:
+Jika Anda ingin menjalankan seluruh service (Backend, Frontend, Redis, RabbitMQ) dalam satu perintah menggunakan Docker:
 
 ```bash
-backend/.env
-frontend/.env.local
-```
-
-File `backend/.env` berisi konfigurasi sensitif seperti `DATABASE_URL`, `JWT_SECRET`, `GEMINI_API_KEY`, token WhatsApp, dan Supabase service key. File ini tidak boleh di-push ke GitHub.
-
-Contoh konfigurasi Docker Compose dapat dilihat di:
-
-```bash
-.env.docker.example
-```
-
-Jika ingin mengubah nilai default Docker Compose, salin file tersebut menjadi `.env` di root project:
-
-```bash
+# 1. Salin environment docker
 cp .env.docker.example .env
+
+# 2. Build dan jalankan seluruh container di latar belakang
+docker compose up -d --build
 ```
 
-Untuk Windows PowerShell:
+Setelah berjalan:
+* **Frontend Web**: [http://localhost:3000](http://localhost:3000)
+* **Backend API**: [http://localhost:8081](http://localhost:8081)
+* **RabbitMQ Dashboard**: [http://localhost:15672](http://localhost:15672) (User: `guest`, Pass: `guest`)
 
-```powershell
-Copy-Item .env.docker.example .env
-```
+---
 
-### Menjalankan Container
+## 📜 Lisensi
 
-Jalankan dari root project:
-
-```bash
-docker compose up --build -d
-```
-
-Perintah tersebut akan:
-
-1. Membuat image backend dari `backend/Dockerfile`.
-2. Membuat image frontend dari `frontend/Dockerfile`.
-3. Membuat container `lapor-kos-backend`.
-4. Membuat container `lapor-kos-frontend`.
-5. Menjalankan keduanya di background.
-
-Setelah berhasil, akses aplikasi melalui:
-
-```bash
-Frontend: http://localhost:3000
-Backend:  http://localhost:8081/api/health
-```
-
-### Command Docker yang Sering Dipakai
-
-Cek status container:
-
-```bash
-docker compose ps
-```
-
-Melihat log semua service:
-
-```bash
-docker compose logs -f
-```
-
-Melihat log backend saja:
-
-```bash
-docker compose logs -f backend
-```
-
-Melihat log frontend saja:
-
-```bash
-docker compose logs -f frontend
-```
-
-Restart container:
-
-```bash
-docker compose restart
-```
-
-Mematikan dan menghapus container:
-
-```bash
-docker compose down
-```
-
-Build ulang image setelah ada perubahan Dockerfile atau dependency:
-
-```bash
-docker compose up --build -d
-```
-
-### Catatan Keamanan GitHub
-
-Aman untuk mengirim file berikut ke GitHub:
-
-```bash
-backend/Dockerfile
-backend/.dockerignore
-frontend/Dockerfile
-frontend/.dockerignore
-docker-compose.yml
-.env.docker.example
-backend/.env.example
-frontend/.env.example
-```
-
-Tidak aman untuk mengirim file berikut ke GitHub:
-
-```bash
-backend/.env
-frontend/.env.local
-.env
-```
-
-Alasannya, file tersebut biasanya berisi password database, JWT secret, API key Gemini, token WhatsApp, SMTP password, dan Supabase service role key. Jika terlanjur ter-push ke GitHub, anggap secret tersebut sudah bocor dan segera rotasi/ganti semua key terkait.
-
-Solusi yang direkomendasikan:
-
-1. Simpan secret hanya di file lokal `.env` yang sudah masuk `.gitignore`.
-2. Commit hanya file contoh seperti `.env.example` atau `.env.docker.example`.
-3. Untuk deployment production, simpan secret di environment server, Docker secrets, GitHub Actions Secrets, atau Jenkins Credentials.
-4. Jalankan `git status --short` sebelum commit untuk memastikan file `.env` asli tidak ikut masuk.
-5. Hindari membagikan output `docker compose config` karena command tersebut dapat menampilkan isi environment variable.
-
-### Referensi Manual
-
-=======
-
-Silakan merujuk ke panduan masing-masing folder untuk petunjuk instalasi dan penyiapan detail:
-* 📄 **[Panduan Backend (Go)](file:///d:/project_yosua/lapor-kos/backend/README.md)**
-* 📄 **[Panduan Frontend (Vite + React 19)](file:///d:/project_yosua/lapor-kos/frontend/README.md)**
+Proyek ini dilisensikan di bawah lisensi **MIT License** - lihat berkas [LICENSE](file:///LICENSE) untuk informasi lebih lanjut.
