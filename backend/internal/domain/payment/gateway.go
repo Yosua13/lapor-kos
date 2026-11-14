@@ -4,18 +4,27 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Yosua13/lapor-kos/backend/internal/model"
 	"github.com/google/uuid"
 )
 
 var (
-	ErrGatewayNotConfigured = errors.New("payment gateway is not configured: MIDTRANS_SERVER_KEY is missing")
-	ErrInvalidSnapRequest   = errors.New("invalid midtrans snap request")
-	ErrPaymentNotPayable    = errors.New("payment bill cannot be paid: only unpaid or overdue bills can generate a snap token")
+	ErrGatewayNotConfigured    = errors.New("payment gateway is not configured: MIDTRANS_SERVER_KEY is missing")
+	ErrInvalidSnapRequest      = errors.New("invalid midtrans snap request")
+	ErrPaymentNotPayable       = errors.New("payment bill cannot be paid: only unpaid or overdue bills can generate a snap token")
+	ErrInvalidWebhookSignature = errors.New("invalid midtrans webhook signature")
 )
+
+type MidtransWebhookNotification = model.MidtransWebhookNotification
 
 // TenantPaymentFinder defines the minimal outbound repository port required to load a tenant-owned payment bill.
 type TenantPaymentFinder interface {
 	FindByIDForUser(ctx context.Context, id, userID uuid.UUID) (*Payment, error)
+}
+
+// MidtransWebhookRepository defines the outbound persistence port for processing Midtrans webhook notifications atomically.
+type MidtransWebhookRepository interface {
+	ProcessMidtransWebhook(ctx context.Context, notif MidtransWebhookNotification, mappedStatus string, grossAmountMinor int64) (*Payment, bool, error)
 }
 
 // Gateway defines the outbound hexagonal port for external payment gateway providers (e.g. Midtrans Snap).

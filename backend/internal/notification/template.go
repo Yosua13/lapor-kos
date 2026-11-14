@@ -51,7 +51,7 @@ func RenderTemplate(eventType string, payloadBytes []byte) FormattedNotification
 
 	switch eventType {
 	// Payment Events
-	case "payment_verified":
+	case "payment_verified", "webhook_payment_received":
 		invNum := getString("invoice_number", "")
 		msg := "Pembayaran tagihan Anda telah diverifikasi oleh tim pengelola."
 		if invNum != "" {

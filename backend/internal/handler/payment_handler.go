@@ -409,6 +409,50 @@ func (h *PaymentHandler) ProcessWebhook(c *gin.Context) {
 	})
 }
 
+func (h *PaymentHandler) ProcessMidtransWebhook(c *gin.Context) {
+	var notif model.MidtransWebhookNotification
+	if err := c.ShouldBindJSON(&notif); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	midtransRepo, ok := h.repo.(domainpayment.MidtransWebhookRepository)
+	if !ok {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "Midtrans webhook processing not supported by repository"})
+		return
+	}
+
+	uc := paymentusecase.NewProcessMidtransWebhookUseCase(midtransRepo, h.gateway)
+	res, err := uc.Execute(c.Request.Context(), notif)
+	if err != nil {
+		switch {
+		case errors.Is(err, domainpayment.ErrInvalidWebhookSignature):
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid signature key"})
+		case errors.Is(err, domainpayment.ErrInvalidSnapRequest):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, domainpayment.ErrGatewayNotConfigured):
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		case errors.Is(err, pgx.ErrNoRows):
+			c.JSON(http.StatusNotFound, gin.H{"error": "Payment bill not found for order_id"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process Midtrans webhook: " + err.Error()})
+		}
+		return
+	}
+
+	statusLabel := "processed"
+	if res.IsDuplicate {
+		statusLabel = "already_processed"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":         statusLabel,
+		"is_duplicate":   res.IsDuplicate,
+		"payment_status": res.MappedStatus,
+		"payment":        res.Payment,
+	})
+}
+
 func (h *PaymentHandler) GetReceipt(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {

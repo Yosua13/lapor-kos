@@ -25,6 +25,7 @@ func TestRouterRegistersLegacyAndCanonicalPropertyRoutes(t *testing.T) {
 		"GET /api/v1/properties/:property_id/files/sign",
 		"PATCH /api/properties/:property_id/members/:membership_id",
 		"POST /api/payments/:id/snap-token",
+		"POST /api/payments/webhook/midtrans",
 	} {
 		_, exists := routes[expected]
 		require.Truef(t, exists, "route %s must be registered", expected)

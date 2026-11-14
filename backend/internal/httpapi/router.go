@@ -169,7 +169,7 @@ func NewRouter(db *pgxpool.Pool, billingCron *cron.BillingCron, trustedProxies [
 		c.JSON(http.StatusOK, gin.H{"status": "success", "runs": results})
 	})
 	api.POST("/payments/webhook", h.payment.ProcessWebhook)
-	api.POST("/payments/webhook/:provider", h.payment.ProcessWebhook)
+	api.POST("/payments/webhook/midtrans", h.payment.ProcessMidtransWebhook)
 	api.GET("/visitor-passes/:token", middleware.RateLimit(30, time.Minute), h.visitorPermit.VerifyPass)
 
 	registerAuthRoutes(api, h.auth, repos.user)

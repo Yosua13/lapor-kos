@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/model"
@@ -826,6 +827,215 @@ func (r *PaymentRepository) ProcessWebhook(ctx context.Context, payload model.Pa
 	}
 
 	p, err := r.FindByID(ctx, newPaymentID, payload.PropertyID)
+	return p, false, err
+}
+
+func extractOrderPaymentPrefix(orderID string) string {
+	trimmed := strings.TrimSpace(orderID)
+	if !strings.HasPrefix(strings.ToUpper(trimmed), "LK-") {
+		return ""
+	}
+	parts := strings.Split(trimmed, "-")
+	if len(parts) < 2 || len(parts[1]) != 8 {
+		return ""
+	}
+	return strings.ToLower(parts[1])
+}
+
+// ProcessMidtransWebhook updates an existing payment bill from a verified Midtrans webhook notification
+// inside an atomic database transaction with strict idempotency, automatic receipt issuance, and outbox notification.
+func (r *PaymentRepository) ProcessMidtransWebhook(
+	ctx context.Context,
+	notif model.MidtransWebhookNotification,
+	mappedStatus string,
+	grossAmountMinor int64,
+) (*model.Payment, bool, error) {
+	providerRef := strings.TrimSpace(notif.TransactionID)
+	if providerRef == "" {
+		providerRef = strings.TrimSpace(notif.OrderID)
+	}
+	orderID := strings.TrimSpace(notif.OrderID)
+	prefix8 := extractOrderPaymentPrefix(orderID)
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Check idempotency by provider_ref first
+	var existingID, existingPropID uuid.UUID
+	var existingStatus string
+	err = tx.QueryRow(ctx, `
+		SELECT id, property_id, status
+		FROM payments
+		WHERE provider = 'midtrans' AND provider_ref = $1
+		LIMIT 1
+		FOR UPDATE`,
+		providerRef,
+	).Scan(&existingID, &existingPropID, &existingStatus)
+	if err == nil && (existingStatus == "paid" || existingStatus == mappedStatus) {
+		_ = tx.Rollback(ctx)
+		p, findErr := r.FindByID(ctx, existingID, existingPropID)
+		return p, true, findErr
+	} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, err
+	}
+
+	// 2. Locate target payment bill by order_id / payment_id prefix
+	var paymentID, propertyID, contractID uuid.UUID
+	var tenantID, invoiceID *uuid.UUID
+	var currentStatus string
+	var billAmountMinor int64
+
+	err = tx.QueryRow(ctx, `
+		SELECT p.id, p.property_id, p.contract_id, COALESCE(p.tenant_id, c.user_id),
+		       p.status, COALESCE(p.amount_minor, 0), p.invoice_id
+		FROM payments p
+		JOIN contracts c ON c.id = p.contract_id AND c.property_id = p.property_id
+		WHERE p.provider_ref = $1
+		   OR p.id::text = $1
+		   OR ($2 <> '' AND LEFT(p.id::text, 8) = $2)
+		ORDER BY p.created_at DESC
+		LIMIT 1
+		FOR UPDATE OF p`,
+		orderID, prefix8,
+	).Scan(&paymentID, &propertyID, &contractID, &tenantID, &currentStatus, &billAmountMinor, &invoiceID)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// 3. Idempotency guard: if payment is already paid, never mutate or issue duplicate receipts
+	if currentStatus == "paid" {
+		_ = tx.Rollback(ctx)
+		p, findErr := r.FindByID(ctx, paymentID, propertyID)
+		return p, true, findErr
+	}
+
+	now := time.Now().UTC()
+	paymentMethod := strings.TrimSpace(notif.PaymentType)
+	if paymentMethod == "" {
+		paymentMethod = "midtrans"
+	}
+
+	if mappedStatus == "paid" {
+		paidMinor := grossAmountMinor
+		if paidMinor <= 0 {
+			paidMinor = billAmountMinor
+		}
+
+		_, err = tx.Exec(ctx, `
+			UPDATE payments
+			SET status = 'paid',
+			    paid_at = $1,
+			    provider = 'midtrans',
+			    provider_ref = $2,
+			    payment_method = $3,
+			    paid_amount_minor = $4,
+			    total_paid = $5,
+			    verification_notes = 'Terverifikasi otomatis melalui Midtrans Sandbox Webhook'
+			WHERE id = $6 AND property_id = $7`,
+			now, providerRef, paymentMethod, paidMinor, float64(paidMinor), paymentID, propertyID,
+		)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to update payment via midtrans webhook: %w", err)
+		}
+
+		// Allocate to linked invoice if present and not yet allocated
+		if invoiceID != nil {
+			var existingAllocCount int
+			_ = tx.QueryRow(ctx, `SELECT COUNT(1) FROM invoice_allocations WHERE payment_id = $1 AND status = 'valid'`, paymentID).Scan(&existingAllocCount)
+			if existingAllocCount == 0 {
+				_, _ = tx.Exec(ctx, `
+					INSERT INTO invoice_allocations (property_id, invoice_id, payment_id, amount_minor, status, reason)
+					VALUES ($1, $2, $3, $4, 'valid', 'Alokasi otomatis pembayaran Midtrans')`,
+					propertyID, *invoiceID, paymentID, paidMinor,
+				)
+			}
+		}
+
+		// Issue digital payment receipt automatically
+		if tenantID != nil {
+			var existingReceiptCount int
+			_ = tx.QueryRow(ctx, `SELECT COUNT(1) FROM payment_receipts WHERE payment_id = $1`, paymentID).Scan(&existingReceiptCount)
+			if existingReceiptCount == 0 {
+				var tenantName, roomNumber string
+				_ = tx.QueryRow(ctx, `SELECT COALESCE(name, '') FROM users WHERE id = $1`, *tenantID).Scan(&tenantName)
+				_ = tx.QueryRow(ctx, `
+					SELECT COALESCE(r.room_number, '')
+					FROM contracts c
+					LEFT JOIN rooms r ON r.id = c.room_id
+					WHERE c.id = $1`, contractID).Scan(&roomNumber)
+
+				receiptNum := payment.GenerateReceiptNumber(now, paymentID)
+				snapshot := map[string]interface{}{
+					"receipt_number": receiptNum,
+					"property_id":    propertyID.String(),
+					"payment_id":     paymentID.String(),
+					"contract_id":    contractID.String(),
+					"tenant_name":    tenantName,
+					"room_number":    roomNumber,
+					"provider":       "midtrans",
+					"provider_ref":   providerRef,
+					"payment_method": paymentMethod,
+					"total_minor":    paidMinor,
+					"currency":       "IDR",
+					"status":         "paid",
+					"issued_at":      now.Format(time.RFC3339),
+				}
+				if checksum, csErr := payment.ComputeChecksum(snapshot); csErr == nil {
+					snapshotBytes, _ := json.Marshal(snapshot)
+					_, _ = tx.Exec(ctx, `
+						INSERT INTO payment_receipts (property_id, payment_id, receipt_number, tenant_id, total_minor, currency, snapshot, checksum, issued_at)
+						VALUES ($1, $2, $3, $4, $5, 'IDR', $6, $7, $8)
+						ON CONFLICT (receipt_number) DO NOTHING`,
+						propertyID, paymentID, receiptNum, *tenantID, paidMinor, string(snapshotBytes), checksum, now,
+					)
+				}
+			}
+
+			// Enqueue instant WhatsApp & In-App notification for tenant
+			var tenantPhone, tenantEmail string
+			_ = tx.QueryRow(ctx, `SELECT COALESCE(phone, ''), COALESCE(email, '') FROM users WHERE id = $1`, *tenantID).Scan(&tenantPhone, &tenantEmail)
+			dedupKey := "midtrans-paid-" + paymentID.String()
+			outboxPayload, _ := json.Marshal(map[string]interface{}{
+				"payment_id":     paymentID,
+				"property_id":    propertyID,
+				"provider":       "midtrans",
+				"provider_ref":   providerRef,
+				"payment_method": paymentMethod,
+				"amount_minor":   paidMinor,
+				"status":         "paid",
+			})
+			_, _ = tx.Exec(ctx, `
+				INSERT INTO notification_outbox (
+					property_id, event_type, aggregate_type, aggregate_id,
+					recipient_id, recipient_phone, recipient_email, channel,
+					dedup_key, priority, payload, status
+				) VALUES ($1, 'payment_verified', 'payment', $2, $3, NULLIF($4, ''), NULLIF($5, ''), 'all', $6, 'normal', $7, 'pending')`,
+				propertyID, paymentID, *tenantID, tenantPhone, tenantEmail, dedupKey, string(outboxPayload),
+			)
+		}
+	} else {
+		_, err = tx.Exec(ctx, `
+			UPDATE payments
+			SET status = $1,
+			    provider = 'midtrans',
+			    provider_ref = $2,
+			    payment_method = $3
+			WHERE id = $4 AND property_id = $5`,
+			mappedStatus, providerRef, paymentMethod, paymentID, propertyID,
+		)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to update payment status via midtrans webhook: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, false, err
+	}
+
+	p, err := r.FindByID(ctx, paymentID, propertyID)
 	return p, false, err
 }
 
