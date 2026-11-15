@@ -11,10 +11,13 @@ import (
 const (
 	DefaultSandboxSnapURL    = "https://app.sandbox.midtrans.com/snap/v1/transactions"
 	DefaultProductionSnapURL = "https://app.midtrans.com/snap/v1/transactions"
+	DefaultSandboxCoreURL    = "https://api.sandbox.midtrans.com/v2"
+	DefaultProductionCoreURL = "https://api.midtrans.com/v2"
 )
 
-// Ensure Client implements the domain payment.Gateway outbound port.
+// Ensure Client implements the domain payment.Gateway and payment.CoreTransactionGateway outbound ports.
 var _ payment.Gateway = (*Client)(nil)
+var _ payment.CoreTransactionGateway = (*Client)(nil)
 
 // Client is the outbound hexagonal adapter for Midtrans Snap API.
 type Client struct {
@@ -51,6 +54,16 @@ func (c *Client) SnapURL() string {
 		return ""
 	}
 	return c.snapURL
+}
+
+func (c *Client) CoreBaseURL() string {
+	if c == nil {
+		return ""
+	}
+	if c.isProduction {
+		return DefaultProductionCoreURL
+	}
+	return DefaultSandboxCoreURL
 }
 
 func (c *Client) BasicAuthHeader() string {

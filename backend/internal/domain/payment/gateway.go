@@ -36,10 +36,17 @@ type Gateway interface {
 	VerifySignatureKey(orderID, statusCode, grossAmount, signatureKey string) bool
 }
 
+// CoreTransactionGateway defines the outbound hexagonal port for querying and cancelling Midtrans Core API transactions.
+type CoreTransactionGateway interface {
+	CancelTransaction(ctx context.Context, orderID string) error
+	GetTransactionStatus(ctx context.Context, orderID string) (*MidtransWebhookNotification, error)
+}
+
 type SnapTokenResult struct {
 	Token       string `json:"token"`
 	RedirectURL string `json:"redirect_url"`
 	OrderID     string `json:"order_id"`
+	ClientKey   string `json:"client_key,omitempty"`
 }
 
 type SnapTransactionDetails struct {

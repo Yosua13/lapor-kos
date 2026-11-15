@@ -48,12 +48,19 @@ import type {
   VerifyPaymentPayload,
 } from '@/features/payments/types';
 import {
+  clearStoredSnapSession,
   createPaymentBill,
+  ensureSnapScriptLoaded,
   getPayment,
   getReceipt,
   getReconciliationReport,
+  getSnapToken,
+  getStoredSnapSession,
   listPayments,
+  saveSnapSession,
   submitPaymentProof,
+  syncMidtransStatus,
+  syncSnapCallback,
   verifyPayment,
 } from '@/features/payments/api';
 import {
@@ -129,6 +136,13 @@ export default function PaymentsPage() {
     notes: '',
     file: null as File | null,
   });
+  const [tenantPaymentMode, setTenantPaymentMode] = useState<'midtrans' | 'manual'>('midtrans');
+  const [snapLoading, setSnapLoading] = useState(false);
+  const [hasSavedSnapSession, setHasSavedSnapSession] = useState(false);
+  const [activeSnapPoll, setActiveSnapPoll] = useState<{
+    paymentId: string;
+    orderId: string;
+  } | null>(null);
 
   // Reconciliation state
   const [reconcileReport, setReconcileReport] = useState<ReconciliationReport | null>(null);
@@ -259,6 +273,8 @@ export default function PaymentsPage() {
   // Open Pay Modal (Tenant)
   const handleOpenPay = (p: Payment) => {
     setSelectedPayment(p);
+    const grossAmount =
+      p.amount_minor || p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other;
     const totalBill = p.amount_rent + p.amount_electricity + p.amount_water + p.amount_other - p.total_paid;
     setTenantPayForm({
       payment_method: 'transfer',
@@ -266,7 +282,216 @@ export default function PaymentsPage() {
       notes: '',
       file: null,
     });
+    let storedSession = getStoredSnapSession(p.id, grossAmount);
+    // If the payment in DB is unpaid (never selected a method or was reset to unpaid), clear any stale method_selected session
+    if (p.status === 'unpaid' && !p.provider_ref && storedSession?.method_selected) {
+      clearStoredSnapSession(p.id);
+      storedSession = null;
+    }
+    const alreadySelectedMethod =
+      p.status === 'pending' || Boolean(storedSession?.method_selected && p.status !== 'unpaid');
+    setHasSavedSnapSession(alreadySelectedMethod);
+    setTenantPaymentMode(p.status !== 'paid' && p.status !== 'partial' ? 'midtrans' : 'manual');
     setShowPayModal(true);
+  };
+
+  // Automatic background status sync with Midtrans Core API every 4 seconds
+  // while a Snap session is active or a bill is in 'pending' status (no need to click "Check Status").
+  useEffect(() => {
+    if (!isTenant) return;
+
+    const pendingPayment = payments.find(
+      (p) =>
+        p.status === 'pending' &&
+        (p.provider === 'midtrans' || getStoredSnapSession(p.id) !== null),
+    );
+    const targetPaymentId = activeSnapPoll?.paymentId || pendingPayment?.id;
+    if (!targetPaymentId) return;
+
+    const stored = getStoredSnapSession(targetPaymentId);
+    const targetOrderId =
+      activeSnapPoll?.orderId || stored?.order_id || pendingPayment?.provider_ref || '';
+
+    let cancelled = false;
+    const interval = window.setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const res = await syncMidtransStatus(targetPaymentId, targetOrderId);
+        if (cancelled) return;
+        if (res.payment_status === 'paid') {
+          clearStoredSnapSession(targetPaymentId);
+          setHasSavedSnapSession(false);
+          setActiveSnapPoll(null);
+          if (typeof window !== 'undefined' && window.snap?.hide) {
+            try {
+              window.snap.hide();
+            } catch {
+              // ignore if popup already closed
+            }
+          }
+          setNotice(
+            'Pembayaran via Midtrans berhasil! Status tagihan otomatis Lunas dan kwitansi digital resmi telah diterbitkan.',
+          );
+          await fetchPayments();
+          if (res.payment) {
+            void handleOpenReceipt(res.payment);
+          }
+        } else if (res.midtrans_status === 'pending' || res.payment_status === 'pending') {
+          if (stored && !stored.method_selected) {
+            saveSnapSession(targetPaymentId, stored.gross_amount, stored, true);
+          }
+          setHasSavedSnapSession(true);
+        }
+      } catch {
+        // Ignore transient polling errors
+      }
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isTenant, activeSnapPoll, payments, fetchPayments]);
+
+  // Pay Online via Midtrans Snap (Tenant)
+  // forceNew = false -> Resume existing Snap token (opens at last payment screen until completed)
+  // forceNew = true  -> Cancel previous method on Midtrans & generate a fresh Snap token (opens method selection list)
+  const handlePayWithMidtrans = async (forceNew = false) => {
+    if (!selectedPayment) return;
+    setSnapLoading(true);
+    setError(null);
+    try {
+      const grossAmount =
+        selectedPayment.amount_minor ||
+        selectedPayment.amount_rent +
+          selectedPayment.amount_electricity +
+          selectedPayment.amount_water +
+          selectedPayment.amount_other;
+
+      const existingSession = getStoredSnapSession(selectedPayment.id, grossAmount);
+      let snapData = !forceNew ? existingSession : null;
+      if (!snapData) {
+        const previousOrderId =
+          existingSession?.order_id || selectedPayment.provider_ref || undefined;
+        if (forceNew) {
+          clearStoredSnapSession(selectedPayment.id);
+        }
+        snapData = await getSnapToken(selectedPayment.id, {
+          forceNew,
+          previousOrderId,
+        });
+        saveSnapSession(
+          selectedPayment.id,
+          grossAmount,
+          snapData,
+          !forceNew && selectedPayment.status === 'pending',
+        );
+      }
+
+      setActiveSnapPoll({
+        paymentId: selectedPayment.id,
+        orderId: snapData.order_id,
+      });
+
+      await ensureSnapScriptLoaded(snapData.client_key);
+
+      if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function') {
+        setShowPayModal(false);
+        window.snap.pay(snapData.token, {
+          onSuccess: async (result) => {
+            clearStoredSnapSession(selectedPayment.id);
+            setHasSavedSnapSession(false);
+            setActiveSnapPoll(null);
+            let updatedPayment = selectedPayment;
+            try {
+              const synced = await syncSnapCallback(selectedPayment.id, {
+                ...result,
+                order_id: result?.order_id || snapData.order_id,
+                transaction_status: result?.transaction_status || 'settlement',
+              });
+              if (synced?.payment) {
+                updatedPayment = synced.payment;
+              }
+            } catch {
+              // Webhook or auto-sync may have already processed it
+            }
+            setNotice(
+              'Pembayaran via Midtrans berhasil! Status tagihan otomatis Lunas dan kwitansi digital resmi telah diterbitkan.',
+            );
+            await fetchPayments();
+            void handleOpenReceipt(updatedPayment);
+          },
+          onPending: async (result) => {
+            saveSnapSession(selectedPayment.id, grossAmount, snapData, true);
+            setHasSavedSnapSession(true);
+            try {
+              await syncSnapCallback(selectedPayment.id, {
+                ...result,
+                order_id: result?.order_id || snapData.order_id,
+                transaction_status: result?.transaction_status || 'pending',
+              });
+            } catch {
+              // Ignore sync error on pending
+            }
+            setNotice(
+              'Instruksi pembayaran berhasil dibuat. Status akan otomatis menjadi Lunas segera setelah Anda membayar di Simulator Midtrans.',
+            );
+            await fetchPayments();
+          },
+          onError: () => {
+            clearStoredSnapSession(selectedPayment.id);
+            setHasSavedSnapSession(false);
+            setActiveSnapPoll(null);
+            setError(
+              'Transaksi pembayaran Midtrans gagal diproses. Silakan coba lagi atau gunakan metode Transfer Manual.',
+            );
+          },
+          onClose: async () => {
+            try {
+              const syncRes = await syncMidtransStatus(selectedPayment.id, snapData.order_id);
+              if (syncRes.payment_status === 'paid') {
+                clearStoredSnapSession(selectedPayment.id);
+                setHasSavedSnapSession(false);
+                setActiveSnapPoll(null);
+                setNotice(
+                  'Pembayaran via Midtrans berhasil! Status tagihan otomatis Lunas dan kwitansi digital resmi telah diterbitkan.',
+                );
+                await fetchPayments();
+                if (syncRes.payment) {
+                  void handleOpenReceipt(syncRes.payment);
+                }
+                return;
+              }
+              if (syncRes.midtrans_status === 'pending' || syncRes.payment_status === 'pending') {
+                saveSnapSession(selectedPayment.id, grossAmount, snapData, true);
+                setHasSavedSnapSession(true);
+                await fetchPayments();
+                setNotice(
+                  'Jendela pembayaran ditutup. Klik Bayar -> Lanjutkan Pembayaran untuk kembali ke halaman terakhir, atau Ganti Metode Pembayaran untuk memilih metode lain.',
+                );
+                return;
+              }
+              // User closed the popup before choosing any payment method
+              setHasSavedSnapSession(false);
+              setActiveSnapPoll(null);
+              setNotice('Jendela pembayaran Midtrans ditutup.');
+            } catch {
+              setNotice('Jendela pembayaran Midtrans ditutup.');
+            }
+          },
+        });
+      } else if (snapData.redirect_url) {
+        window.open(snapData.redirect_url, '_blank', 'noopener,noreferrer');
+        setShowPayModal(false);
+        setNotice('Halaman pembayaran Midtrans dibuka di tab baru.');
+      } else {
+        throw new Error('Midtrans Snap SDK belum siap di browser Anda.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Gagal memulai pembayaran online Midtrans.');
+    } finally {
+      setSnapLoading(false);
+    }
   };
 
   // Submit Tenant Pay Form
@@ -1056,26 +1281,62 @@ export default function PaymentsPage() {
       {/* TENANT PAY MODAL */}
       {showPayModal && selectedPayment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 overflow-y-auto">
-          <div className="relative my-8 w-full max-w-lg rounded-3xl bg-white shadow-2xl overflow-hidden border border-slate-100">
+          <div className="relative my-8 w-full max-w-xl rounded-3xl bg-white shadow-2xl overflow-hidden border border-slate-100">
             <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/75 p-6">
               <div className="flex items-center gap-2.5">
-                <Upload className="h-5 w-5 text-brand-teal" />
-                <h3 className="font-extrabold text-brand-navy text-lg">Lapor Pembayaran Kos</h3>
+                <CreditCard className="h-5 w-5 text-brand-teal" />
+                <div>
+                  <h3 className="font-extrabold text-brand-navy text-lg">Pembayaran Tagihan Kos</h3>
+                  <p className="text-xs text-slate-500">
+                    Pilih pembayaran instan otomatis (Midtrans Sandbox) atau unggah bukti transfer manual
+                  </p>
+                </div>
               </div>
               <button type="button" onClick={() => setShowPayModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitPay} className="p-6 space-y-4 text-xs">
-              <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-3.5 space-y-1">
-                <span className="font-bold text-teal-900">Periode Tagihan:</span>
-                <p className="font-semibold text-slate-700">
-                  {formatPeriod(selectedPayment.period_month, selectedPayment.period_year)}
-                </p>
-                <div className="flex justify-between text-slate-600 pt-1">
-                  <span>Total Tagihan:</span>
-                  <span className="font-bold text-slate-800">
+            <div className="p-6 space-y-5 text-xs">
+              {/* Bill Summary Card */}
+              <div className="rounded-2xl border border-teal-100 bg-teal-50/60 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-teal-900">Periode Tagihan</span>
+                  <span className="font-extrabold text-brand-navy text-sm">
+                    {formatPeriod(selectedPayment.period_month, selectedPayment.period_year)}
+                  </span>
+                </div>
+
+                <div className="border-t border-teal-200/60 pt-2 space-y-1 text-slate-600">
+                  {selectedPayment.amount_rent > 0 && (
+                    <div className="flex justify-between">
+                      <span>Sewa Kamar Bulanan</span>
+                      <span className="font-semibold text-slate-800">{formatMoney(selectedPayment.amount_rent)}</span>
+                    </div>
+                  )}
+                  {selectedPayment.amount_electricity > 0 && (
+                    <div className="flex justify-between">
+                      <span>Biaya Listrik</span>
+                      <span className="font-semibold text-slate-800">{formatMoney(selectedPayment.amount_electricity)}</span>
+                    </div>
+                  )}
+                  {selectedPayment.amount_water > 0 && (
+                    <div className="flex justify-between">
+                      <span>Biaya Air</span>
+                      <span className="font-semibold text-slate-800">{formatMoney(selectedPayment.amount_water)}</span>
+                    </div>
+                  )}
+                  {selectedPayment.amount_other > 0 && (
+                    <div className="flex justify-between">
+                      <span>Biaya Lainnya / Denda</span>
+                      <span className="font-semibold text-slate-800">{formatMoney(selectedPayment.amount_other)}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between items-center border-t border-teal-200/80 pt-2 text-sm">
+                  <span className="font-bold text-teal-950">Total Tagihan</span>
+                  <span className="font-extrabold text-brand-teal text-base">
                     {formatMoney(
                       selectedPayment.amount_minor ||
                         selectedPayment.amount_rent +
@@ -1087,90 +1348,226 @@ export default function PaymentsPage() {
                 </div>
               </div>
 
-              <div>
-                <label htmlFor="pay-amount" className="block font-bold text-slate-500 uppercase tracking-wider">
-                  Nominal yang Ditransfer (IDR)
-                </label>
-                <input
-                  id="pay-amount"
-                  type="number"
-                  min={1000}
-                  required
-                  value={tenantPayForm.total_paid || 0}
-                  onChange={(e) => setTenantPayForm({ ...tenantPayForm, total_paid: parseFloat(e.target.value) || 0 })}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-bold text-slate-800"
-                />
-                <p className="mt-1 text-[11px] text-slate-400">
-                  Mendukung pembayaran penuh maupun cicilan (parsial). Bukti sebelumnya tetap tersimpan rapi.
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="pay-method" className="block font-bold text-slate-500 uppercase tracking-wider">
-                  Metode Pembayaran
-                </label>
-                <select
-                  id="pay-method"
-                  value={tenantPayForm.payment_method}
-                  onChange={(e) => setTenantPayForm({ ...tenantPayForm, payment_method: e.target.value })}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-slate-800"
-                >
-                  <option value="transfer">Transfer Bank (BCA / Mandiri / BRI / BNI)</option>
-                  <option value="qris">QRIS / E-Wallet (GoPay, OVO, Dana)</option>
-                  <option value="cash">Tunai (Cash ke Pengelola)</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="pay-file" className="block font-bold text-slate-500 uppercase tracking-wider">
-                  Unggah Foto Bukti Transfer / Resi
-                </label>
-                <input
-                  id="pay-file"
-                  type="file"
-                  accept="image/*,.pdf"
-                  required
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setTenantPayForm({ ...tenantPayForm, file: e.target.files[0] });
-                    }
-                  }}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-700"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="pay-notes" className="block font-bold text-slate-500 uppercase tracking-wider">
-                  Catatan Tambahan (Opsional)
-                </label>
-                <input
-                  id="pay-notes"
-                  type="text"
-                  placeholder="Contoh: Transfer atas nama Budi"
-                  value={tenantPayForm.notes}
-                  onChange={(e) => setTenantPayForm({ ...tenantPayForm, notes: e.target.value })}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-800"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
+              {/* Payment Method Selector Cards */}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => setShowPayModal(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 font-bold text-slate-600 hover:bg-slate-100"
+                  disabled={selectedPayment.status === 'paid'}
+                  onClick={() => setTenantPaymentMode('midtrans')}
+                  className={`rounded-2xl border p-3.5 text-left transition ${
+                    tenantPaymentMode === 'midtrans'
+                      ? 'border-brand-teal bg-teal-50/40 ring-2 ring-brand-teal/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  Batal
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-brand-navy text-xs">
+                      Bayar Instan Online (Midtrans Sandbox)
+                    </span>
+                    <span className="rounded-full bg-brand-teal/15 px-2 py-0.5 text-[10px] font-bold text-brand-teal">
+                      Otomatis
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Verifikasi instan & kwitansi digital terbit otomatis tanpa menunggu pemilik kos.
+                  </p>
                 </button>
+
                 <button
-                  type="submit"
-                  disabled={busy}
-                  className="inline-flex items-center gap-2 rounded-xl bg-brand-teal px-5 py-2 font-bold text-white shadow-sm hover:bg-[#0c7668] disabled:opacity-50"
+                  type="button"
+                  onClick={() => setTenantPaymentMode('manual')}
+                  className={`rounded-2xl border p-3.5 text-left transition ${
+                    tenantPaymentMode === 'manual'
+                      ? 'border-brand-teal bg-teal-50/40 ring-2 ring-brand-teal/20'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
                 >
-                  {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Kirim Bukti Pembayaran
+                  <div className="flex items-center justify-between">
+                    <span className="font-extrabold text-brand-navy text-xs">
+                      Transfer Manual & Upload Bukti
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                      Cadangan
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Unggah foto resi transfer bank atau cicilan parsial untuk diverifikasi staf.
+                  </p>
                 </button>
               </div>
-            </form>
+
+              {/* Mode 1: Midtrans Snap Instant Online Payment */}
+              {tenantPaymentMode === 'midtrans' ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
+                  <div>
+                    <p className="font-bold text-slate-600 uppercase tracking-wider text-[11px] mb-2">
+                      Channel Pembayaran Populer yang Didukung
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {['QRIS', 'GoPay', 'Virtual Account BCA', 'Mandiri Bill', 'BNI VA', 'BRI VA'].map(
+                        (channel) => (
+                          <span
+                            key={channel}
+                            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-2xs"
+                          >
+                            {channel}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-sky-200 bg-sky-50/80 p-3 text-[11px] text-sky-900 space-y-1">
+                    <p className="font-bold">Mode Portofolio (Midtrans Sandbox Simulator):</p>
+                    <p>
+                      Tidak menggunakan uang asli. Setelah menyalin nomor Virtual Account atau kode QRIS dari popup Snap, simulasikan pelunasan di{' '}
+                      <a
+                        href="https://simulator.sandbox.midtrans.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-bold underline text-brand-teal hover:text-[#0c7668]"
+                      >
+                        Midtrans Payment Simulator
+                      </a>
+                      .
+                    </p>
+                  </div>
+
+                  {(hasSavedSnapSession || selectedPayment.status === 'pending') && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-[11px] text-amber-900 space-y-1">
+                      <p className="font-bold">Sesi Pembayaran Sebelumnya Masih Aktif:</p>
+                      <p>
+                        Klik <span className="font-bold">Lanjutkan Pembayaran</span> untuk langsung menuju ke halaman instruksi pembayaran terakhir Anda, atau klik{' '}
+                        <span className="font-bold">Ganti Metode Pembayaran</span> untuk membatalkan metode sebelumnya dan memilih metode lain (misalnya dari VA ke QRIS / GoPay).
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowPayModal(false)}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 font-bold text-slate-600 hover:bg-slate-100"
+                    >
+                      Batal
+                    </button>
+                    {(hasSavedSnapSession || selectedPayment.status === 'pending') && (
+                      <button
+                        type="button"
+                        disabled={snapLoading}
+                        onClick={() => void handlePayWithMidtrans(true)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-brand-teal/40 bg-white px-4 py-2 font-bold text-brand-teal hover:bg-teal-50 disabled:opacity-50 transition"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${snapLoading ? 'animate-spin' : ''}`} />
+                        Ganti Metode Pembayaran
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={snapLoading}
+                      onClick={() => void handlePayWithMidtrans(false)}
+                      className="inline-flex items-center gap-2 rounded-xl bg-brand-teal px-5 py-2.5 font-bold text-white shadow-sm hover:bg-[#0c7668] disabled:opacity-50 transition"
+                    >
+                      {snapLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CreditCard className="h-4 w-4" />
+                      )}
+                      {hasSavedSnapSession || selectedPayment.status === 'pending'
+                        ? 'Lanjutkan Pembayaran'
+                        : 'Bayar Sekarang via Midtrans'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Mode 2: Manual Bank Transfer & Proof Upload */
+                <form onSubmit={handleSubmitPay} className="space-y-4">
+                  <div>
+                    <label htmlFor="pay-amount" className="block font-bold text-slate-500 uppercase tracking-wider">
+                      Nominal yang Ditransfer (IDR)
+                    </label>
+                    <input
+                      id="pay-amount"
+                      type="number"
+                      min={1000}
+                      required
+                      value={tenantPayForm.total_paid || 0}
+                      onChange={(e) => setTenantPayForm({ ...tenantPayForm, total_paid: parseFloat(e.target.value) || 0 })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-bold text-slate-800"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Mendukung pembayaran penuh maupun cicilan (parsial). Bukti sebelumnya tetap tersimpan rapi.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="pay-method" className="block font-bold text-slate-500 uppercase tracking-wider">
+                      Metode Pembayaran
+                    </label>
+                    <select
+                      id="pay-method"
+                      value={tenantPayForm.payment_method}
+                      onChange={(e) => setTenantPayForm({ ...tenantPayForm, payment_method: e.target.value })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3.5 py-2 text-slate-800"
+                    >
+                      <option value="transfer">Transfer Bank (BCA / Mandiri / BRI / BNI)</option>
+                      <option value="qris">QRIS / E-Wallet (GoPay, OVO, Dana)</option>
+                      <option value="cash">Tunai (Cash ke Pengelola)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="pay-file" className="block font-bold text-slate-500 uppercase tracking-wider">
+                      Unggah Foto Bukti Transfer / Resi
+                    </label>
+                    <input
+                      id="pay-file"
+                      type="file"
+                      accept="image/*,.pdf"
+                      required
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setTenantPayForm({ ...tenantPayForm, file: e.target.files[0] });
+                        }
+                      }}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-700"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="pay-notes" className="block font-bold text-slate-500 uppercase tracking-wider">
+                      Catatan Tambahan (Opsional)
+                    </label>
+                    <input
+                      id="pay-notes"
+                      type="text"
+                      placeholder="Contoh: Transfer atas nama Budi"
+                      value={tenantPayForm.notes}
+                      onChange={(e) => setTenantPayForm({ ...tenantPayForm, notes: e.target.value })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-800"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPayModal(false)}
+                      className="rounded-xl border border-slate-200 px-4 py-2 font-bold text-slate-600 hover:bg-slate-100"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={busy}
+                      className="inline-flex items-center gap-2 rounded-xl bg-brand-teal px-5 py-2 font-bold text-white shadow-sm hover:bg-[#0c7668] disabled:opacity-50"
+                    >
+                      {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Kirim Bukti Pembayaran
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}
