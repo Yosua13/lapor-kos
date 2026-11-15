@@ -65,6 +65,11 @@ WHATSAPP_API_TOKEN=your_fonnte_token_here
 SUPABASE_URL=https://your_project.supabase.co
 SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1Ni...your_service_role_key
 SUPABASE_BUCKET=uploads
+
+# Midtrans Payment Gateway (Sandbox / Production)
+MIDTRANS_SERVER_KEY=SB-Mid-server-your_server_key_here
+MIDTRANS_CLIENT_KEY=SB-Mid-client-your_client_key_here
+MIDTRANS_IS_PRODUCTION=false
 ```
 
 ---

@@ -53,6 +53,7 @@ import {
   ensureSnapScriptLoaded,
   getPayment,
   getReceipt,
+  getReceiptHTML,
   getReconciliationReport,
   getSnapToken,
   getStoredSnapSession,
@@ -283,27 +284,34 @@ export default function PaymentsPage() {
       file: null,
     });
     let storedSession = getStoredSnapSession(p.id, grossAmount);
-    // If the payment in DB is unpaid (never selected a method or was reset to unpaid), clear any stale method_selected session
-    if (p.status === 'unpaid' && !p.provider_ref && storedSession?.method_selected) {
+    // If the payment in DB is unpaid or has a manual proof, clear any stale Midtrans session
+    const isManualPending =
+      p.status === 'pending' &&
+      (p.provider !== 'midtrans' || Boolean(p.proof_photo_url) || Boolean(p.proofs && p.proofs.length > 0));
+    if ((p.status === 'unpaid' && !p.provider_ref && storedSession?.method_selected) || isManualPending) {
       clearStoredSnapSession(p.id);
       storedSession = null;
     }
     const alreadySelectedMethod =
-      p.status === 'pending' || Boolean(storedSession?.method_selected && p.status !== 'unpaid');
+      (p.status === 'pending' && p.provider === 'midtrans' && !p.proof_photo_url) ||
+      Boolean(storedSession?.method_selected && p.status !== 'unpaid' && !isManualPending);
     setHasSavedSnapSession(alreadySelectedMethod);
-    setTenantPaymentMode(p.status !== 'paid' && p.status !== 'partial' ? 'midtrans' : 'manual');
+    setTenantPaymentMode(
+      p.status !== 'paid' && p.status !== 'partial' && !isManualPending ? 'midtrans' : 'manual',
+    );
     setShowPayModal(true);
   };
 
   // Automatic background status sync with Midtrans Core API every 4 seconds
-  // while a Snap session is active or a bill is in 'pending' status (no need to click "Check Status").
+  // while a Snap session is active or a Midtrans bill is in 'pending' status (no need to click "Check Status").
   useEffect(() => {
     if (!isTenant) return;
 
     const pendingPayment = payments.find(
       (p) =>
         p.status === 'pending' &&
-        (p.provider === 'midtrans' || getStoredSnapSession(p.id) !== null),
+        p.provider === 'midtrans' &&
+        !p.proof_photo_url,
     );
     const targetPaymentId = activeSnapPoll?.paymentId || pendingPayment?.id;
     if (!targetPaymentId) return;
@@ -517,6 +525,9 @@ export default function PaymentsPage() {
       formData.append('notes', tenantPayForm.notes);
 
       await submitPaymentProof(selectedPayment.id, formData);
+      clearStoredSnapSession(selectedPayment.id);
+      setHasSavedSnapSession(false);
+      setActiveSnapPoll(null);
       setNotice('Bukti pembayaran berhasil dikirim. Menunggu verifikasi pemilik kos.');
       setShowPayModal(false);
       void fetchPayments();
@@ -551,16 +562,42 @@ export default function PaymentsPage() {
   // Open Receipt Modal
   const handleOpenReceipt = async (p: Payment) => {
     setSelectedPayment(p);
-    setSelectedReceipt(null);
+    setSelectedReceipt(p.receipt || null);
     setReceiptLoading(true);
     setShowReceiptModal(true);
     try {
       const rc = await getReceipt(p.id, isTenant);
       setSelectedReceipt(rc);
     } catch {
-      // Fallback: will render printable HTML view via link
+      // Fallback: will still render receipt summary in modal and printable HTML view
     } finally {
       setReceiptLoading(false);
+    }
+  };
+
+  // Print / Download Official Receipt HTML
+  const handlePrintReceipt = async (paymentId: string) => {
+    const printWin = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+    if (!printWin) {
+      setError('Popup diblokir oleh browser. Izinkan popup untuk mencetak kwitansi.');
+      return;
+    }
+    try {
+      const htmlContent = await getReceiptHTML(paymentId, isTenant);
+      printWin.document.open();
+      printWin.document.write(htmlContent);
+      printWin.document.close();
+      window.setTimeout(() => {
+        try {
+          printWin.focus();
+          printWin.print();
+        } catch {
+          // User can still click Cetak Kwitansi (PDF) button inside the opened window
+        }
+      }, 350);
+    } catch (err) {
+      printWin.close();
+      setError(err instanceof Error ? err.message : 'Gagal membuka halaman cetak kwitansi.');
     }
   };
 
@@ -835,16 +872,34 @@ export default function PaymentsPage() {
                           <td className="px-5 py-4 text-center">
                             <div className="flex items-center justify-center gap-1.5">
                               {/* Tenant Pay Action */}
-                              {isTenant && (p.status === 'unpaid' || p.status === 'partial' || p.status === 'overdue' || p.status === 'pending') && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenPay(p)}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-brand-teal px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#0c7668] transition"
-                                >
-                                  <Upload className="h-3.5 w-3.5" />
-                                  Bayar
-                                </button>
-                              )}
+                              {isTenant &&
+                                (p.status === 'unpaid' ||
+                                  p.status === 'partial' ||
+                                  p.status === 'overdue' ||
+                                  p.status === 'rejected' ||
+                                  (p.status === 'pending' && p.provider === 'midtrans' && !p.proof_photo_url)) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenPay(p)}
+                                    className="inline-flex items-center gap-1 rounded-lg bg-brand-teal px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#0c7668] transition"
+                                  >
+                                    <Upload className="h-3.5 w-3.5" />
+                                    Bayar
+                                  </button>
+                                )}
+                              {isTenant &&
+                                p.status === 'pending' &&
+                                (p.provider !== 'midtrans' || Boolean(p.proof_photo_url)) && (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    title="Bukti pembayaran manual Anda sudah dikirim dan sedang menunggu verifikasi pemilik kos"
+                                    className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 opacity-75 cursor-not-allowed"
+                                  >
+                                    <Clock className="h-3.5 w-3.5" />
+                                    Menunggu Verifikasi
+                                  </button>
+                                )}
 
                               {/* Staff Verify Action */}
                               {!isTenant && canVerifyPayment && (
@@ -1352,7 +1407,12 @@ export default function PaymentsPage() {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  disabled={selectedPayment.status === 'paid'}
+                  disabled={
+                    selectedPayment.status === 'paid' ||
+                    selectedPayment.status === 'partial' ||
+                    (selectedPayment.status === 'pending' &&
+                      (selectedPayment.provider !== 'midtrans' || Boolean(selectedPayment.proof_photo_url)))
+                  }
                   onClick={() => setTenantPaymentMode('midtrans')}
                   className={`rounded-2xl border p-3.5 text-left transition ${
                     tenantPaymentMode === 'midtrans'
@@ -1816,15 +1876,14 @@ export default function PaymentsPage() {
                   )}
 
                   <div className="pt-2 flex gap-2">
-                    <a
-                      href={`/api/payments/${selectedPayment.id}/receipt`}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => void handlePrintReceipt(selectedPayment.id)}
                       className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-brand-teal px-4 py-2.5 font-bold text-white shadow-sm hover:bg-[#0c7668] transition"
                     >
                       <Printer className="h-4 w-4" />
                       Cetak / Unduh Kwitansi PDF
-                    </a>
+                    </button>
                   </div>
                 </>
               )}

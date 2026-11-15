@@ -233,6 +233,15 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 		return
 	}
 
+	if payment.Status == domainpayment.StatusPaid {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tagihan ini sudah lunas dan tidak dapat dibayar lagi"})
+		return
+	}
+	if payment.Status == domainpayment.StatusPending && (payment.ProofPhotoURL != "" || len(payment.Proofs) > 0 || payment.Provider == "manual") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Bukti transfer manual sudah dikirim dan sedang menunggu verifikasi"})
+		return
+	}
+
 	proofPath, err := h.uploadFile(c, "proof", payment.PropertyID, "payment-proof")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to upload proof photo: " + err.Error()})
@@ -245,6 +254,15 @@ func (h *PaymentHandler) SubmitPaymentProof(c *gin.Context) {
 	} else if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to submit payment proof"})
 		return
+	}
+
+	if h.snapTokenUC != nil {
+		if prevOrder := h.snapTokenUC.GetCachedOrderID(id); prevOrder != "" {
+			if coreGw, ok := h.gateway.(domainpayment.CoreTransactionGateway); ok {
+				_ = coreGw.CancelTransaction(c.Request.Context(), prevOrder)
+			}
+		}
+		h.snapTokenUC.ClearSession(id)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -1141,8 +1159,7 @@ func (h *PaymentHandler) GetReceiptHTML(c *gin.Context) {
 		html.EscapeString(payment.Notes),
 	)
 
-	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.String(http.StatusOK, htmlOutput)
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(htmlOutput))
 }
 
 func formatRupiah(amount float64) string {

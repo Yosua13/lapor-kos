@@ -63,6 +63,15 @@ export const getReceipt = async (
   });
 };
 
+export const getReceiptHTML = async (
+  id: string,
+  isTenant = false,
+): Promise<string> => {
+  return apiFetch<string>(`/api/payments/${id}/receipt`, {
+    propertyScoped: !isTenant,
+  });
+};
+
 export const getReconciliationReport = async (
   startDate?: string,
   endDate?: string,

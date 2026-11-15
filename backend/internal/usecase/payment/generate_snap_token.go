@@ -66,6 +66,12 @@ func (uc *GenerateSnapTokenUseCase) Execute(ctx context.Context, input GenerateS
 		status != payment.StatusRejected {
 		return nil, fmt.Errorf("%w (current status: %s)", payment.ErrPaymentNotPayable, bill.Status)
 	}
+	if status == payment.StatusPending {
+		provider := strings.ToLower(strings.TrimSpace(bill.Provider))
+		if strings.TrimSpace(bill.ProofPhotoURL) != "" || len(bill.Proofs) > 0 || provider == "manual" {
+			return nil, fmt.Errorf("%w: pembayaran manual sedang menunggu verifikasi pemilik kos", payment.ErrPaymentNotPayable)
+		}
+	}
 
 	periodLabel := "Bulanan"
 	if bill.PeriodMonth > 0 && bill.PeriodYear > 0 {
