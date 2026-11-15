@@ -182,3 +182,38 @@ export interface ReconciliationReport {
   refunds?: RefundRequest[];
   credits?: TenantCredit[];
 }
+
+export interface SnapTokenResponse {
+  token: string;
+  redirect_url: string;
+  order_id: string;
+  client_key?: string;
+}
+
+export interface SnapCallbackResult {
+  status_code?: string;
+  status_message?: string;
+  transaction_id?: string;
+  order_id?: string;
+  gross_amount?: string;
+  payment_type?: string;
+  transaction_time?: string;
+  transaction_status?: string;
+  fraud_status?: string;
+}
+
+export interface SnapPayCallbacks {
+  onSuccess?: (result: SnapCallbackResult) => void;
+  onPending?: (result: SnapCallbackResult) => void;
+  onError?: (result: SnapCallbackResult) => void;
+  onClose?: () => void;
+}
+
+declare global {
+  interface Window {
+    snap?: {
+      pay: (token: string, callbacks?: SnapPayCallbacks) => void;
+      hide?: () => void;
+    };
+  }
+}
