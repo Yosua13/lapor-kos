@@ -76,14 +76,14 @@ Lapor Kos mendukung **Dual Payment Flow** yang menggabungkan kemudahan pembayara
 
 Tambahkan variabel berikut pada `backend/.env`:
 ```env
-MIDTRANS_SERVER_KEY=SB-Mid-server-xxxxxxxxxxxxxxxxxxxxxxxx
-MIDTRANS_CLIENT_KEY=SB-Mid-client-xxxxxxxxxxxxxxxxxxxxxxxx
+MIDTRANS_SERVER_KEY=<MIDTRANS_SERVER_KEY_SANDBOX_ANDA>
+MIDTRANS_CLIENT_KEY=<MIDTRANS_CLIENT_KEY_SANDBOX_ANDA>
 MIDTRANS_IS_PRODUCTION=false
 ```
 
 Dan pada `frontend/.env`:
 ```env
-VITE_MIDTRANS_CLIENT_KEY=SB-Mid-client-xxxxxxxxxxxxxxxxxxxxxxxx
+VITE_MIDTRANS_CLIENT_KEY=<MIDTRANS_CLIENT_KEY_SANDBOX_ANDA>
 ```
 
 > 💡 **Simulasi Pembayaran Sandbox**: Salin Nomor Virtual Account atau kode QRIS dari popup Midtrans Snap pada halaman **Tagihan & Pembayaran Saya**, lalu selesaikan simulasi pembayaran melalui **[Midtrans Sandbox Payment Simulator](https://simulator.sandbox.midtrans.com/)**.
