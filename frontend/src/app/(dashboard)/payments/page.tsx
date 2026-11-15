@@ -377,24 +377,33 @@ export default function PaymentsPage() {
           selectedPayment.amount_other;
 
       const existingSession = getStoredSnapSession(selectedPayment.id, grossAmount);
-      let snapData = !forceNew ? existingSession : null;
-      if (!snapData) {
+      let resolvedSnap: {
+        token: string;
+        redirect_url: string;
+        order_id: string;
+        client_key?: string;
+      };
+      if (!forceNew && existingSession) {
+        resolvedSnap = existingSession;
+      } else {
         const previousOrderId =
           existingSession?.order_id || selectedPayment.provider_ref || undefined;
         if (forceNew) {
           clearStoredSnapSession(selectedPayment.id);
         }
-        snapData = await getSnapToken(selectedPayment.id, {
+        const freshToken = await getSnapToken(selectedPayment.id, {
           forceNew,
           previousOrderId,
         });
         saveSnapSession(
           selectedPayment.id,
           grossAmount,
-          snapData,
+          freshToken,
           !forceNew && selectedPayment.status === 'pending',
         );
+        resolvedSnap = freshToken;
       }
+      const snapData = resolvedSnap;
 
       setActiveSnapPoll({
         paymentId: selectedPayment.id,
