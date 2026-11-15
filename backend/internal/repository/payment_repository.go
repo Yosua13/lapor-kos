@@ -150,6 +150,7 @@ func (r *PaymentRepository) preloadRelations(ctx context.Context, p *model.Payme
 		SELECT id, property_id, payment_id, receipt_number, tenant_id, total_minor, currency, snapshot, checksum, issued_by, issued_at, created_at
 		FROM payment_receipts
 		WHERE payment_id = $1
+		ORDER BY created_at DESC
 		LIMIT 1`, p.ID).Scan(
 		&rc.ID, &rc.PropertyID, &rc.PaymentID, &rc.ReceiptNumber, &rc.TenantID, &rc.TotalMinor, &rc.Currency,
 		&snapshotJSON, &rc.Checksum, &rc.IssuedBy, &rc.IssuedAt, &rc.CreatedAt,
@@ -419,11 +420,12 @@ func (r *PaymentRepository) SubmitProof(ctx context.Context, id, userID uuid.UUI
 		return fmt.Errorf("failed to append payment proof: %w", err)
 	}
 
-	// 2. Update payment row status to pending
+	// 2. Update payment row status to pending and mark provider as manual
 	_, err = tx.Exec(ctx, `
 		UPDATE payments
 		SET proof_photo_url = $1, payment_method = $2, total_paid = $3,
-			paid_amount_minor = $4, status = 'pending', notes = $5
+			paid_amount_minor = $4, status = 'pending', provider = 'manual',
+			provider_ref = NULL, notes = $5
 		WHERE id = $6 AND property_id = $7`,
 		proofURL, method, totalPaid, amountMinor, notes, id, propertyID,
 	)
@@ -627,7 +629,12 @@ func (r *PaymentRepository) VerifyPaymentTx(ctx context.Context, propertyID, act
 
 	// 6. Generate immutable receipt with SHA-256 checksum
 	if tenantID != nil {
+		var existingReceiptCount int
+		_ = tx.QueryRow(ctx, `SELECT COUNT(1) FROM payment_receipts WHERE payment_id = $1`, paymentID).Scan(&existingReceiptCount)
 		receiptNum := payment.GenerateReceiptNumber(now, paymentID)
+		if existingReceiptCount > 0 {
+			receiptNum = fmt.Sprintf("%s-%d", receiptNum, existingReceiptCount+1)
+		}
 		var tenantName, roomNumber string
 		_ = tx.QueryRow(ctx, `SELECT COALESCE(name, '') FROM users WHERE id = $1`, *tenantID).Scan(&tenantName)
 		_ = tx.QueryRow(ctx, `
@@ -958,40 +965,41 @@ func (r *PaymentRepository) ProcessMidtransWebhook(
 		if tenantID != nil {
 			var existingReceiptCount int
 			_ = tx.QueryRow(ctx, `SELECT COUNT(1) FROM payment_receipts WHERE payment_id = $1`, paymentID).Scan(&existingReceiptCount)
-			if existingReceiptCount == 0 {
-				var tenantName, roomNumber string
-				_ = tx.QueryRow(ctx, `SELECT COALESCE(name, '') FROM users WHERE id = $1`, *tenantID).Scan(&tenantName)
-				_ = tx.QueryRow(ctx, `
-					SELECT COALESCE(r.room_number, '')
-					FROM contracts c
-					LEFT JOIN rooms r ON r.id = c.room_id
-					WHERE c.id = $1`, contractID).Scan(&roomNumber)
+			var tenantName, roomNumber string
+			_ = tx.QueryRow(ctx, `SELECT COALESCE(name, '') FROM users WHERE id = $1`, *tenantID).Scan(&tenantName)
+			_ = tx.QueryRow(ctx, `
+				SELECT COALESCE(r.room_number, '')
+				FROM contracts c
+				LEFT JOIN rooms r ON r.id = c.room_id
+				WHERE c.id = $1`, contractID).Scan(&roomNumber)
 
-				receiptNum := payment.GenerateReceiptNumber(now, paymentID)
-				snapshot := map[string]interface{}{
-					"receipt_number": receiptNum,
-					"property_id":    propertyID.String(),
-					"payment_id":     paymentID.String(),
-					"contract_id":    contractID.String(),
-					"tenant_name":    tenantName,
-					"room_number":    roomNumber,
-					"provider":       "midtrans",
-					"provider_ref":   providerRef,
-					"payment_method": paymentMethod,
-					"total_minor":    paidMinor,
-					"currency":       "IDR",
-					"status":         "paid",
-					"issued_at":      now.Format(time.RFC3339),
-				}
-				if checksum, csErr := payment.ComputeChecksum(snapshot); csErr == nil {
-					snapshotBytes, _ := json.Marshal(snapshot)
-					_, _ = tx.Exec(ctx, `
-						INSERT INTO payment_receipts (property_id, payment_id, receipt_number, tenant_id, total_minor, currency, snapshot, checksum, issued_at)
-						VALUES ($1, $2, $3, $4, $5, 'IDR', $6, $7, $8)
-						ON CONFLICT (receipt_number) DO NOTHING`,
-						propertyID, paymentID, receiptNum, *tenantID, paidMinor, string(snapshotBytes), checksum, now,
-					)
-				}
+			receiptNum := payment.GenerateReceiptNumber(now, paymentID)
+			if existingReceiptCount > 0 {
+				receiptNum = fmt.Sprintf("%s-%d", receiptNum, existingReceiptCount+1)
+			}
+			snapshot := map[string]interface{}{
+				"receipt_number": receiptNum,
+				"property_id":    propertyID.String(),
+				"payment_id":     paymentID.String(),
+				"contract_id":    contractID.String(),
+				"tenant_name":    tenantName,
+				"room_number":    roomNumber,
+				"provider":       "midtrans",
+				"provider_ref":   providerRef,
+				"payment_method": paymentMethod,
+				"total_minor":    paidMinor,
+				"currency":       "IDR",
+				"status":         "paid",
+				"issued_at":      now.Format(time.RFC3339),
+			}
+			if checksum, csErr := payment.ComputeChecksum(snapshot); csErr == nil {
+				snapshotBytes, _ := json.Marshal(snapshot)
+				_, _ = tx.Exec(ctx, `
+					INSERT INTO payment_receipts (property_id, payment_id, receipt_number, tenant_id, total_minor, currency, snapshot, checksum, issued_at)
+					VALUES ($1, $2, $3, $4, $5, 'IDR', $6, $7, $8)
+					ON CONFLICT (receipt_number) DO NOTHING`,
+					propertyID, paymentID, receiptNum, *tenantID, paidMinor, string(snapshotBytes), checksum, now,
+				)
 			}
 
 			// Enqueue instant WhatsApp & In-App notification for tenant
@@ -1047,12 +1055,19 @@ func (r *PaymentRepository) GetReceipt(ctx context.Context, propertyID, paymentI
 		SELECT id, property_id, payment_id, receipt_number, tenant_id, total_minor, currency, snapshot, checksum, issued_by, issued_at, created_at
 		FROM payment_receipts
 		WHERE payment_id = $1 AND property_id = $2
+		ORDER BY created_at DESC
 		LIMIT 1`
 
 	err := r.db.QueryRow(ctx, query, paymentID, propertyID).Scan(
 		&rc.ID, &rc.PropertyID, &rc.PaymentID, &rc.ReceiptNumber, &rc.TenantID, &rc.TotalMinor, &rc.Currency,
 		&snapshotJSON, &rc.Checksum, &rc.IssuedBy, &rc.IssuedAt, &rc.CreatedAt,
 	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if backfilled, bfErr := r.ensureReceiptForPaidPayment(ctx, paymentID); bfErr == nil && backfilled != nil && backfilled.PropertyID == propertyID {
+			return backfilled, nil
+		}
+		return nil, err
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1077,12 +1092,19 @@ func (r *PaymentRepository) GetReceiptForUser(ctx context.Context, userID, payme
 		SELECT id, property_id, payment_id, receipt_number, tenant_id, total_minor, currency, snapshot, checksum, issued_by, issued_at, created_at
 		FROM payment_receipts
 		WHERE payment_id = $1 AND tenant_id = $2
+		ORDER BY created_at DESC
 		LIMIT 1`
 
 	err := r.db.QueryRow(ctx, query, paymentID, userID).Scan(
 		&rc.ID, &rc.PropertyID, &rc.PaymentID, &rc.ReceiptNumber, &rc.TenantID, &rc.TotalMinor, &rc.Currency,
 		&snapshotJSON, &rc.Checksum, &rc.IssuedBy, &rc.IssuedAt, &rc.CreatedAt,
 	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if backfilled, bfErr := r.ensureReceiptForPaidPayment(ctx, paymentID); bfErr == nil && backfilled != nil && backfilled.TenantID == userID {
+			return backfilled, nil
+		}
+		return nil, err
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1095,6 +1117,84 @@ func (r *PaymentRepository) GetReceiptForUser(ctx context.Context, userID, payme
 		return nil, errors.New("receipt checksum mismatch: data integrity violation detected")
 	}
 
+	return &rc, nil
+}
+
+func (r *PaymentRepository) ensureReceiptForPaidPayment(ctx context.Context, paymentID uuid.UUID) (*model.PaymentReceipt, error) {
+	var propertyID, contractID, tenantID uuid.UUID
+	var status, paymentMethod, provider string
+	var paidMinor int64
+	var totalPaid float64
+	var tenantName, roomNumber string
+	var paidAt *time.Time
+	var createdAt time.Time
+
+	err := r.db.QueryRow(ctx, `
+		SELECT p.property_id, p.contract_id, COALESCE(p.tenant_id, c.user_id),
+		       p.status, COALESCE(p.payment_method, 'transfer'), COALESCE(p.provider, 'manual'),
+		       COALESCE(p.paid_amount_minor, 0), COALESCE(p.total_paid, 0),
+		       COALESCE(u.name, ''), COALESCE(r.room_number, ''), p.paid_at, p.created_at
+		FROM payments p
+		JOIN contracts c ON c.id = p.contract_id AND c.property_id = p.property_id
+		LEFT JOIN users u ON u.id = COALESCE(p.tenant_id, c.user_id)
+		LEFT JOIN rooms r ON r.id = c.room_id
+		WHERE p.id = $1`, paymentID).Scan(
+		&propertyID, &contractID, &tenantID,
+		&status, &paymentMethod, &provider,
+		&paidMinor, &totalPaid,
+		&tenantName, &roomNumber, &paidAt, &createdAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if status != "paid" && status != "partial" {
+		return nil, pgx.ErrNoRows
+	}
+	if paidMinor <= 0 && totalPaid > 0 {
+		paidMinor = int64(totalPaid)
+	}
+	issuedAt := time.Now().UTC()
+	if paidAt != nil {
+		issuedAt = paidAt.UTC()
+	} else if !createdAt.IsZero() {
+		issuedAt = createdAt.UTC()
+	}
+
+	receiptNum := payment.GenerateReceiptNumber(issuedAt, paymentID)
+	snapshot := map[string]interface{}{
+		"receipt_number": receiptNum,
+		"property_id":    propertyID.String(),
+		"payment_id":     paymentID.String(),
+		"contract_id":    contractID.String(),
+		"tenant_name":    tenantName,
+		"room_number":    roomNumber,
+		"provider":       provider,
+		"payment_method": paymentMethod,
+		"total_minor":    paidMinor,
+		"currency":       "IDR",
+		"status":         status,
+		"issued_at":      issuedAt.Format(time.RFC3339),
+	}
+	checksum, err := payment.ComputeChecksum(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	snapshotBytes, _ := json.Marshal(snapshot)
+	var rc model.PaymentReceipt
+	err = r.db.QueryRow(ctx, `
+		INSERT INTO payment_receipts (property_id, payment_id, receipt_number, tenant_id, total_minor, currency, snapshot, checksum, issued_at)
+		VALUES ($1, $2, $3, $4, $5, 'IDR', $6, $7, $8)
+		ON CONFLICT (receipt_number) DO NOTHING
+		RETURNING id, property_id, payment_id, receipt_number, tenant_id, total_minor, currency, checksum, issued_by, issued_at, created_at`,
+		propertyID, paymentID, receiptNum, tenantID, paidMinor, string(snapshotBytes), checksum, issuedAt,
+	).Scan(
+		&rc.ID, &rc.PropertyID, &rc.PaymentID, &rc.ReceiptNumber, &rc.TenantID, &rc.TotalMinor, &rc.Currency,
+		&rc.Checksum, &rc.IssuedBy, &rc.IssuedAt, &rc.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	rc.Snapshot = snapshot
 	return &rc, nil
 }
 
