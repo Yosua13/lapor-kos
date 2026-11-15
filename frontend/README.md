@@ -24,12 +24,15 @@ Buka terminal pada direktori `frontend` (`lapor-kos/frontend`) dan jalankan:
 npm install
 ```
 
-### 2. Konfigurasi Environment Variables (`.env.local`)
-Buat berkas `.env.local` pada direktori root `frontend/` (sejajar dengan `package.json`):
+### 2. Konfigurasi Environment Variables (`.env` / `.env.local`)
+Buat berkas `.env` atau `.env.local` pada direktori root `frontend/` (sejajar dengan `package.json`):
 
 ```env
 # Alamat server backend API Lapor Kos
 NEXT_PUBLIC_API_URL=http://localhost:8081
+
+# Midtrans Snap Client Key (Sandbox)
+VITE_MIDTRANS_CLIENT_KEY=SB-Mid-client-your_client_key_here
 ```
 
 > **Catatan:** Dalam mode pengembangan (`npm run dev`), Vite juga menyediakan proxy otomatis untuk request yang mengarah ke `/api` sehingga langsung diarahkan ke `http://localhost:8081`.
