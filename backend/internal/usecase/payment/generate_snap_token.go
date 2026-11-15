@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Yosua13/lapor-kos/backend/internal/domain/payment"
@@ -15,19 +16,30 @@ type GenerateSnapTokenInput struct {
 	PaymentID       uuid.UUID
 	UserID          uuid.UUID
 	CustomerDetails *payment.SnapCustomerDetails
+	ForceNew        bool
+	PreviousOrderID string
+}
+
+type cachedSnapSession struct {
+	result      payment.SnapTokenResult
+	grossAmount int64
+	createdAt   time.Time
 }
 
 type GenerateSnapTokenUseCase struct {
-	repo    payment.TenantPaymentFinder
-	gateway payment.Gateway
-	nowFn   func() time.Time
+	repo     payment.TenantPaymentFinder
+	gateway  payment.Gateway
+	nowFn    func() time.Time
+	mu       sync.RWMutex
+	sessions map[uuid.UUID]cachedSnapSession
 }
 
 func NewGenerateSnapTokenUseCase(repo payment.TenantPaymentFinder, gateway payment.Gateway) *GenerateSnapTokenUseCase {
 	return &GenerateSnapTokenUseCase{
-		repo:    repo,
-		gateway: gateway,
-		nowFn:   time.Now,
+		repo:     repo,
+		gateway:  gateway,
+		nowFn:    time.Now,
+		sessions: make(map[uuid.UUID]cachedSnapSession),
 	}
 }
 
@@ -48,7 +60,10 @@ func (uc *GenerateSnapTokenUseCase) Execute(ctx context.Context, input GenerateS
 	}
 
 	status := strings.ToLower(strings.TrimSpace(bill.Status))
-	if status != payment.StatusUnpaid && status != payment.StatusOverdue {
+	if status != payment.StatusUnpaid &&
+		status != payment.StatusOverdue &&
+		status != payment.StatusPending &&
+		status != payment.StatusRejected {
 		return nil, fmt.Errorf("%w (current status: %s)", payment.ErrPaymentNotPayable, bill.Status)
 	}
 
@@ -124,6 +139,39 @@ func (uc *GenerateSnapTokenUseCase) Execute(ctx context.Context, input GenerateS
 		return nil, fmt.Errorf("%w: total bill amount must be greater than zero", payment.ErrInvalidSnapRequest)
 	}
 
+	now := uc.nowFn()
+	var prevOrderID string
+
+	uc.mu.RLock()
+	cached, hasCached := uc.sessions[bill.ID]
+	uc.mu.RUnlock()
+
+	if hasCached {
+		prevOrderID = cached.result.OrderID
+		if !input.ForceNew && cached.grossAmount == grossAmount && now.Sub(cached.createdAt) < 23*time.Hour {
+			resCopy := cached.result
+			return &resCopy, nil
+		}
+	}
+
+	if input.ForceNew {
+		if coreGw, ok := uc.gateway.(payment.CoreTransactionGateway); ok {
+			ordersToCancel := make(map[string]struct{})
+			if prevOrderID != "" {
+				ordersToCancel[prevOrderID] = struct{}{}
+			}
+			if input.PreviousOrderID != "" {
+				ordersToCancel[strings.TrimSpace(input.PreviousOrderID)] = struct{}{}
+			}
+			if bill.ProviderRef != nil && strings.HasPrefix(strings.TrimSpace(*bill.ProviderRef), "LK-") {
+				ordersToCancel[strings.TrimSpace(*bill.ProviderRef)] = struct{}{}
+			}
+			for oldOrderID := range ordersToCancel {
+				_ = coreGw.CancelTransaction(ctx, oldOrderID)
+			}
+		}
+	}
+
 	customer := input.CustomerDetails
 	if customer == nil && bill.Contract != nil && bill.Contract.User != nil {
 		u := bill.Contract.User
@@ -136,7 +184,13 @@ func (uc *GenerateSnapTokenUseCase) Execute(ctx context.Context, input GenerateS
 		}
 	}
 
-	orderID := fmt.Sprintf("LK-%s-%d", bill.ID.String()[:8], uc.nowFn().Unix())
+	ts := now.Unix()
+	orderID := fmt.Sprintf("LK-%s-%d", bill.ID.String()[:8], ts)
+	if (prevOrderID != "" && orderID == prevOrderID) || (input.PreviousOrderID != "" && orderID == input.PreviousOrderID) {
+		ts++
+		orderID = fmt.Sprintf("LK-%s-%d", bill.ID.String()[:8], ts)
+	}
+
 	snapReq := payment.SnapRequest{
 		TransactionDetails: payment.SnapTransactionDetails{
 			OrderID:     orderID,
@@ -151,10 +205,35 @@ func (uc *GenerateSnapTokenUseCase) Execute(ctx context.Context, input GenerateS
 		return nil, err
 	}
 
-	return &payment.SnapTokenResult{
+	result := payment.SnapTokenResult{
 		Token:       resp.Token,
 		RedirectURL: resp.RedirectURL,
 		OrderID:     orderID,
-	}, nil
+		ClientKey:   uc.gateway.ClientKey(),
+	}
+
+	uc.mu.Lock()
+	uc.sessions[bill.ID] = cachedSnapSession{
+		result:      result,
+		grossAmount: grossAmount,
+		createdAt:   now,
+	}
+	uc.mu.Unlock()
+
+	return &result, nil
 }
 
+func (uc *GenerateSnapTokenUseCase) GetCachedOrderID(paymentID uuid.UUID) string {
+	uc.mu.RLock()
+	defer uc.mu.RUnlock()
+	if s, ok := uc.sessions[paymentID]; ok {
+		return s.result.OrderID
+	}
+	return ""
+}
+
+func (uc *GenerateSnapTokenUseCase) ClearSession(paymentID uuid.UUID) {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	delete(uc.sessions, paymentID)
+}
