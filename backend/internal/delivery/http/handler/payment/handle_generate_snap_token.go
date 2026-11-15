@@ -40,9 +40,22 @@ func HandleGenerateSnapToken(uc *usecase.GenerateSnapTokenUseCase) gin.HandlerFu
 			return
 		}
 
+		var reqBody struct {
+			ForceNew        bool   `json:"force_new"`
+			PreviousOrderID string `json:"previous_order_id"`
+		}
+		_ = c.ShouldBindJSON(&reqBody)
+		forceNew := reqBody.ForceNew || c.Query("force_new") == "true" || c.Query("force_new") == "1"
+		prevOrderID := reqBody.PreviousOrderID
+		if prevOrderID == "" {
+			prevOrderID = c.Query("previous_order_id")
+		}
+
 		res, err := uc.Execute(c.Request.Context(), usecase.GenerateSnapTokenInput{
-			PaymentID: id,
-			UserID:    userID,
+			PaymentID:       id,
+			UserID:          userID,
+			ForceNew:        forceNew,
+			PreviousOrderID: prevOrderID,
 		})
 		if err != nil {
 			switch {

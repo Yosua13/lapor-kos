@@ -26,6 +26,7 @@ type PaymentHandler struct {
 	storageService *service.StorageService
 	userRepo       repository.UserRepo
 	gateway        domainpayment.Gateway
+	snapTokenUC    *paymentusecase.GenerateSnapTokenUseCase
 }
 
 type paymentRepository interface {
@@ -60,6 +61,7 @@ func NewPaymentHandler(repo paymentRepository, storageService *service.StorageSe
 // WithPaymentGateway injects the hexagonal outbound payment gateway port (e.g. Midtrans Snap adapter).
 func (h *PaymentHandler) WithPaymentGateway(gw domainpayment.Gateway) *PaymentHandler {
 	h.gateway = gw
+	h.snapTokenUC = paymentusecase.NewGenerateSnapTokenUseCase(h.repo, gw)
 	return h
 }
 
@@ -275,11 +277,28 @@ func (h *PaymentHandler) GenerateSnapToken(c *gin.Context) {
 		}
 	}
 
-	uc := paymentusecase.NewGenerateSnapTokenUseCase(h.repo, h.gateway)
+	var reqBody struct {
+		ForceNew        bool   `json:"force_new"`
+		PreviousOrderID string `json:"previous_order_id"`
+	}
+	_ = c.ShouldBindJSON(&reqBody)
+	forceNew := reqBody.ForceNew || c.Query("force_new") == "true" || c.Query("force_new") == "1"
+	prevOrderID := reqBody.PreviousOrderID
+	if prevOrderID == "" {
+		prevOrderID = c.Query("previous_order_id")
+	}
+
+	uc := h.snapTokenUC
+	if uc == nil {
+		uc = paymentusecase.NewGenerateSnapTokenUseCase(h.repo, h.gateway)
+		h.snapTokenUC = uc
+	}
 	res, err := uc.Execute(c.Request.Context(), paymentusecase.GenerateSnapTokenInput{
 		PaymentID:       id,
 		UserID:          userID,
 		CustomerDetails: customer,
+		ForceNew:        forceNew,
+		PreviousOrderID: prevOrderID,
 	})
 	if err != nil {
 		switch {
@@ -296,6 +315,219 @@ func (h *PaymentHandler) GenerateSnapToken(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, res)
+}
+
+func (h *PaymentHandler) SyncSnapCallback(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payment ID"})
+		return
+	}
+
+	userID, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	bill, err := h.repo.FindByIDForUser(c.Request.Context(), id, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to authorize payment"})
+		return
+	}
+
+	var notif model.MidtransWebhookNotification
+	if err := c.ShouldBindJSON(&notif); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if notif.OrderID == "" {
+		notif.OrderID = bill.ID.String()
+	}
+
+	midtransRepo, ok := h.repo.(domainpayment.MidtransWebhookRepository)
+	if !ok {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "Midtrans callback sync not supported"})
+		return
+	}
+
+	txStatus := notif.TransactionStatus
+	if txStatus == "" {
+		txStatus = "settlement"
+	}
+	mappedStatus := domainpayment.StatusPaid
+	switch txStatus {
+	case "settlement", "capture":
+		if notif.FraudStatus == "challenge" {
+			mappedStatus = domainpayment.StatusPending
+		} else {
+			mappedStatus = domainpayment.StatusPaid
+		}
+	case "pending":
+		mappedStatus = domainpayment.StatusPending
+	case "deny":
+		mappedStatus = domainpayment.StatusRejected
+	case "expire", "cancel", "failure":
+		mappedStatus = domainpayment.StatusUnpaid
+	}
+
+	grossMinor := bill.AmountMinor
+	if grossMinor <= 0 {
+		grossMinor = int64(bill.AmountRent + bill.AmountElectricity + bill.AmountWater + bill.AmountOther)
+	}
+	if notif.GrossAmount != "" {
+		if parsed, parseErr := strconv.ParseFloat(notif.GrossAmount, 64); parseErr == nil && parsed > 0 {
+			grossMinor = int64(parsed)
+		}
+	}
+
+	updated, isDup, err := midtransRepo.ProcessMidtransWebhook(c.Request.Context(), notif, mappedStatus, grossMinor)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to sync payment status: " + err.Error()})
+		return
+	}
+	if mappedStatus == domainpayment.StatusPaid && h.snapTokenUC != nil {
+		h.snapTokenUC.ClearSession(id)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":         "synced",
+		"is_duplicate":   isDup,
+		"payment_status": mappedStatus,
+		"payment":        updated,
+	})
+}
+
+func (h *PaymentHandler) SyncMidtransStatus(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payment ID"})
+		return
+	}
+
+	userID, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	bill, err := h.repo.FindByIDForUser(c.Request.Context(), id, userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Payment not found"})
+		return
+	} else if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to authorize payment"})
+		return
+	}
+
+	var reqBody struct {
+		OrderID string `json:"order_id"`
+	}
+	_ = c.ShouldBindJSON(&reqBody)
+	orderID := reqBody.OrderID
+	if orderID == "" {
+		orderID = c.Query("order_id")
+	}
+	if orderID == "" && h.snapTokenUC != nil {
+		orderID = h.snapTokenUC.GetCachedOrderID(id)
+	}
+	if orderID == "" && bill.ProviderRef != nil {
+		orderID = *bill.ProviderRef
+	}
+
+	coreGw, hasCoreGw := h.gateway.(domainpayment.CoreTransactionGateway)
+	if !hasCoreGw || orderID == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"status":          "no_active_order",
+			"midtrans_status": "",
+			"payment_status":  bill.Status,
+			"payment":         bill,
+		})
+		return
+	}
+
+	notif, err := coreGw.GetTransactionStatus(c.Request.Context(), orderID)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"status":          "check_skipped",
+			"midtrans_status": "",
+			"payment_status":  bill.Status,
+			"payment":         bill,
+		})
+		return
+	}
+
+	// StatusCode "404" means the user opened the Snap popup but has not selected any payment method yet.
+	if notif.StatusCode == "404" || notif.TransactionStatus == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"status":          "not_selected",
+			"midtrans_status": "not_found",
+			"payment_status":  bill.Status,
+			"payment":         bill,
+		})
+		return
+	}
+
+	if notif.OrderID == "" {
+		notif.OrderID = orderID
+	}
+
+	mappedStatus := bill.Status
+	switch notif.TransactionStatus {
+	case "settlement", "capture":
+		if notif.FraudStatus == "challenge" {
+			mappedStatus = domainpayment.StatusPending
+		} else {
+			mappedStatus = domainpayment.StatusPaid
+		}
+	case "pending":
+		mappedStatus = domainpayment.StatusPending
+	case "deny":
+		mappedStatus = domainpayment.StatusRejected
+	case "expire", "cancel", "failure":
+		mappedStatus = domainpayment.StatusUnpaid
+	}
+
+	midtransRepo, ok := h.repo.(domainpayment.MidtransWebhookRepository)
+	if !ok {
+		c.JSON(http.StatusOK, gin.H{
+			"status":          "checked",
+			"midtrans_status": notif.TransactionStatus,
+			"payment_status":  mappedStatus,
+			"payment":         bill,
+		})
+		return
+	}
+
+	grossMinor := bill.AmountMinor
+	if grossMinor <= 0 {
+		grossMinor = int64(bill.AmountRent + bill.AmountElectricity + bill.AmountWater + bill.AmountOther)
+	}
+	if notif.GrossAmount != "" {
+		if parsed, parseErr := strconv.ParseFloat(notif.GrossAmount, 64); parseErr == nil && parsed > 0 {
+			grossMinor = int64(parsed)
+		}
+	}
+
+	updated, isDup, err := midtransRepo.ProcessMidtransWebhook(c.Request.Context(), *notif, mappedStatus, grossMinor)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to sync payment status: " + err.Error()})
+		return
+	}
+	if mappedStatus == domainpayment.StatusPaid && h.snapTokenUC != nil {
+		h.snapTokenUC.ClearSession(id)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":          "synced",
+		"is_duplicate":    isDup,
+		"midtrans_status": notif.TransactionStatus,
+		"payment_status":  mappedStatus,
+		"payment":         updated,
+	})
 }
 
 func (h *PaymentHandler) VerifyPayment(c *gin.Context) {
