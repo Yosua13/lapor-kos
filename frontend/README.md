@@ -32,7 +32,7 @@ Buat berkas `.env` atau `.env.local` pada direktori root `frontend/` (sejajar de
 NEXT_PUBLIC_API_URL=http://localhost:8081
 
 # Midtrans Snap Client Key (Sandbox)
-VITE_MIDTRANS_CLIENT_KEY=SB-Mid-client-your_client_key_here
+VITE_MIDTRANS_CLIENT_KEY=<MIDTRANS_CLIENT_KEY_SANDBOX_ANDA>
 ```
 
 > **Catatan:** Dalam mode pengembangan (`npm run dev`), Vite juga menyediakan proxy otomatis untuk request yang mengarah ke `/api` sehingga langsung diarahkan ke `http://localhost:8081`.

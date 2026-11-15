@@ -67,8 +67,8 @@ SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1Ni...your_service_role_key
 SUPABASE_BUCKET=uploads
 
 # Midtrans Payment Gateway (Sandbox / Production)
-MIDTRANS_SERVER_KEY=SB-Mid-server-your_server_key_here
-MIDTRANS_CLIENT_KEY=SB-Mid-client-your_client_key_here
+MIDTRANS_SERVER_KEY=<MIDTRANS_SERVER_KEY_SANDBOX_ANDA>
+MIDTRANS_CLIENT_KEY=<MIDTRANS_CLIENT_KEY_SANDBOX_ANDA>
 MIDTRANS_IS_PRODUCTION=false
 ```
 
